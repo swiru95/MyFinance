@@ -25,3 +25,13 @@ tsconfig.tsbuildinfo
 
 # Playwright MCP scratch output (snapshots, console logs)
 .playwright-mcp/
+
+# Portfolio data must never land here - this repository is public, while the
+# numbers it manages are not. Covers SQLite in all its spellings, its sidecar
+# journals, and Actual Budget exports.
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.blob
+data/
