@@ -22,3 +22,6 @@ tsconfig.tsbuildinfo
 # house convention of backing a file up before changing it.
 *.bak-*
 *.i18nbak-*
+
+# Playwright MCP scratch output (snapshots, console logs)
+.playwright-mcp/

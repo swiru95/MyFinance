@@ -1,6 +1,6 @@
 """Position model - each row is a timestamped snapshot of an asset."""
-from datetime import datetime, timezone
-from sqlalchemy import Integer, String, Numeric, DateTime, ForeignKey, Text
+from datetime import date, datetime, timezone
+from sqlalchemy import Integer, String, Numeric, Date, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
@@ -22,4 +22,7 @@ class Position(Base):
     price_used: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, default=0.0)
     base_currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Only for kind="interest": the day the principal started accruing. NULL
+    # everywhere else.
+    accrues_from: Mapped["date | None"] = mapped_column(Date, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

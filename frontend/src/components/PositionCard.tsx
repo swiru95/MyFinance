@@ -24,16 +24,48 @@ export default function PositionCard({
 }: Props) {
   const { t, locale } = useI18n();
   const { timeZone } = useSettings();
+  const isInterest = asset.kind === "interest";
   const unit =
-    asset.kind === "currency" ? pos.currency : asset.kind === "gold" ? "g" : asset.units;
+    asset.kind === "currency"
+      ? pos.currency
+      : asset.kind === "gold"
+        ? "g"
+        : isInterest
+          ? pos.currency
+          : asset.units;
+  // For a debt the headline is what it is worth today; the principal it grew
+  // from matters just as much, so show both rather than one bare figure.
+  const accrued = isInterest ? pos.value_in_base - pos.amount : 0;
   return (
     <>
       <div>
         <p className="text-2xl font-semibold tabular-nums">
-          {fmtNum(pos.amount, pos.amount % 1 === 0 ? 0 : 2, locale)}
-          <span className="ml-1 text-sm font-normal subtle">{unit}</span>
+          {isInterest
+            ? fmtMoney(pos.value_in_base, base, locale)
+            : fmtNum(pos.amount, pos.amount % 1 === 0 ? 0 : 2, locale)}
+          {!isInterest && (
+            <span className="ml-1 text-sm font-normal subtle">{unit}</span>
+          )}
         </p>
-        <p className="text-sm muted">= {fmtMoney(pos.value_in_base, base, locale)}</p>
+        {isInterest ? (
+          <p className="text-sm muted">
+            {t("pos.principal")} {fmtMoney(pos.amount, base, locale)} +{" "}
+            {t("pos.accrued").toLowerCase()} {fmtMoney(accrued, base, locale)}
+            {pos.price_used > 0 && (
+              <>
+                {" · "}
+                {t("pos.rateNow")} {fmtNum(pos.price_used, 2, locale)}%
+              </>
+            )}
+          </p>
+        ) : (
+          <p className="text-sm muted">= {fmtMoney(pos.value_in_base, base, locale)}</p>
+        )}
+        {isInterest && pos.accrues_from && (
+          <p className="text-xs subtle">
+            {t("pos.accruesFrom")} {pos.accrues_from}
+          </p>
+        )}
         <p className="mt-1 text-xs subtle">
           {t("pos.updatedAt", {
             when: fmtDateTime(pos.timestamp, locale, timeZone),

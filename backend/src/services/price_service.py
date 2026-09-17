@@ -18,6 +18,14 @@ _FALLBACK_FX = {"USD": 1.0, "EUR": 0.92, "PLN": 3.95, "CHF": 0.88}
 
 _OZ_TO_GRAM = 31.1034768
 
+# NBP publishes the current policy rates as XML. There is no API for the
+# *historical* series (api.nbp.pl covers FX and gold only), so the past lives in
+# services/interest.py and only today's rate is fetched.
+_NBP_RATES_URL = "https://static.nbp.pl/dane/stopy/stopy_procentowe.xml"
+# Last value known at authoring time; used when NBP is unreachable.
+_FALLBACK_NBP_REF = (2026, 3, 5, 3.75)
+_NBP_CACHE: dict[str, tuple[tuple, float]] = {}
+
 # Cache shared across PriceService instances *and* requests. Each request used
 # to build its own instance, so the per-instance cache never survived a call and
 # every position re-hit the upstream APIs - which gets you rate-limited (HTTP
@@ -147,6 +155,37 @@ class PriceService:
         return _FALLBACK_CRYPTO_USD.get(symbol.upper(), 0.0), False
 
     # ------------------------------------------------------------- convenience
+    def nbp_reference_rate(self) -> tuple["date", float]:
+        """Current NBP reference rate as (in force from, percent).
+
+        Cached for a day: the rate changes at most once a month, after an RPP
+        meeting, so polling it per request would be pointless traffic.
+        """
+        from datetime import date as _date
+        import xml.etree.ElementTree as ET
+
+        entry = _NBP_CACHE.get("ref")
+        if entry and (time.time() - entry[1]) < 86400:
+            return entry[0]
+
+        y, m, d, pct = _FALLBACK_NBP_REF
+        value = (_date(y, m, d), pct)
+        try:
+            resp = httpx.get(_NBP_RATES_URL, timeout=10)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            for pos in root.iter("pozycja"):
+                if pos.get("id") == "ref":
+                    # NBP writes decimals with a comma.
+                    rate = float(pos.get("oprocentowanie", "").replace(",", "."))
+                    when = _date.fromisoformat(pos.get("obowiazuje_od", ""))
+                    value = (when, rate)
+                    break
+        except Exception:
+            pass
+        _NBP_CACHE["ref"] = (value, time.time())
+        return value
+
     def rates(self) -> dict[str, float]:
         """1 USD in each currency (base-aware)."""
         return {c: self.fx_rate(c) for c in ("EUR", "PLN", "CHF", "USD")}

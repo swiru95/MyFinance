@@ -33,7 +33,9 @@ def create_position(payload: PositionIn, db: Session = Depends(get_db)):
     asset = get_asset(db, payload.asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    value, price, base = compute_value(db, asset, payload.amount, payload.currency)
+    value, price, base = compute_value(
+        db, asset, payload.amount, payload.currency, payload.accrues_from
+    )
     pos = Position(
         asset_id=asset.id,
         amount=payload.amount,
@@ -42,6 +44,7 @@ def create_position(payload: PositionIn, db: Session = Depends(get_db)):
         price_used=round(price, 6),
         base_currency=base,
         notes=payload.notes,
+        accrues_from=payload.accrues_from,
     )
     db.add(pos)
     db.commit()
@@ -83,7 +86,9 @@ def update_position(position_id: int, payload: PositionUpdate, db: Session = Dep
     asset = get_asset(db, pos.asset_id)
     if not asset:
         raise HTTPException(404, "Asset not found")
-    value, price, base = compute_value(db, asset, payload.amount, payload.currency)
+    value, price, base = compute_value(
+        db, asset, payload.amount, payload.currency, payload.accrues_from
+    )
     snapshot = Position(
         asset_id=asset.id,
         amount=payload.amount,
@@ -92,6 +97,7 @@ def update_position(position_id: int, payload: PositionUpdate, db: Session = Dep
         price_used=round(price, 6),
         base_currency=base,
         notes=payload.notes,
+        accrues_from=payload.accrues_from,
     )
     db.add(snapshot)
     db.commit()

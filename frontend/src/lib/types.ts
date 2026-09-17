@@ -1,4 +1,9 @@
-export type AssetKind = "currency" | "gold" | "crypto";
+/** How a holding is valued. "interest" accrues Polish statutory interest on a
+ *  principal; everything else is a spot amount or a live-priced quantity. */
+export type AssetKind = "currency" | "gold" | "crypto" | "interest";
+
+/** Statutory basis for kind="interest": art. 481 §2 KC (+5.5pp) or art. 359 §2 KC (+3.5pp). */
+export type InterestBasis = "" | "late" | "capital";
 
 export interface Asset {
   id: number;
@@ -6,6 +11,7 @@ export interface Asset {
   kind: AssetKind;
   /** User-facing class (Cash, Stocks, Retirement...). Several assets share one. */
   category: string;
+  interest_basis: InterestBasis;
   icon: string;
   units: string;
   created_at: string;
@@ -20,6 +26,8 @@ export interface Position {
   price_used: number;
   base_currency: string;
   notes: string;
+  /** kind="interest" only: the day the principal started accruing. */
+  accrues_from: string | null;
   timestamp: string;
 }
 

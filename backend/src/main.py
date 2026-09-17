@@ -35,19 +35,28 @@ def _migrate() -> None:
     from sqlalchemy import inspect, text
 
     inspector = inspect(engine)
-    if "assets" not in inspector.get_table_names():
-        return
-    columns = {c["name"] for c in inspector.get_columns("assets")}
-    if "category" not in columns:
+    tables = inspector.get_table_names()
+    # (table, column, DDL to add it, optional index DDL)
+    wanted = [
+        ("assets", "category",
+         "ALTER TABLE assets ADD COLUMN category VARCHAR(60) NOT NULL DEFAULT ''",
+         "CREATE INDEX IF NOT EXISTS ix_assets_category ON assets (category)"),
+        ("assets", "interest_basis",
+         "ALTER TABLE assets ADD COLUMN interest_basis VARCHAR(10) NOT NULL DEFAULT ''",
+         None),
+        ("positions", "accrues_from",
+         "ALTER TABLE positions ADD COLUMN accrues_from DATE",
+         None),
+    ]
+    for table, column, add_sql, index_sql in wanted:
+        if table not in tables:
+            continue
+        if column in {c["name"] for c in inspector.get_columns(table)}:
+            continue
         with engine.begin() as conn:
-            conn.execute(
-                text("ALTER TABLE assets ADD COLUMN category VARCHAR(60) "
-                     "NOT NULL DEFAULT ''")
-            )
-            conn.execute(
-                text("CREATE INDEX IF NOT EXISTS ix_assets_category "
-                     "ON assets (category)")
-            )
+            conn.execute(text(add_sql))
+            if index_sql:
+                conn.execute(text(index_sql))
 
 
 _migrate()

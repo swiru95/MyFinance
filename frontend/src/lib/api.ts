@@ -40,6 +40,7 @@ export const api = {
     amount: number;
     currency: string;
     notes: string;
+    accrues_from?: string | null;
   }) =>
     request<Position>("/positions", {
       method: "POST",

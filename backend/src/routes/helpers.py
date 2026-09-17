@@ -38,17 +38,35 @@ def get_asset(db: Session, asset_id: int) -> Asset | None:
 
 
 def compute_value(
-    db: Session, asset: Asset, amount: float, currency: str
+    db: Session,
+    asset: Asset,
+    amount: float,
+    currency: str,
+    accrues_from: date | None = None,
 ) -> tuple[float, float, str]:
     """Return (value_in_base, price_used, base_currency) for a position.
 
     - currency asset: amount converted from `currency` to base.
     - gold: amount (grams) * gold price (base per gram).
     - crypto: amount (coin qty) * crypto price (base per coin).
+    - interest: principal + statutory interest accrued since `accrues_from`.
+      `price_used` carries the effective annual rate so the stored snapshot
+      records the rate that produced the figure.
     """
     base = get_base_currency(db)
     amount = float(amount)
     ps = PriceService(base)
+    if asset.kind == "interest":
+        from ..services.interest import STATUTORY_MARGIN, accrued
+
+        if not accrues_from:
+            # No start date means nothing has accrued yet; the principal stands.
+            return amount, 0.0, base
+        margin = STATUTORY_MARGIN.get(asset.interest_basis or "late", 5.5)
+        live = ps.nbp_reference_rate()
+        today = today_in(db)
+        value = amount + accrued(amount, accrues_from, today, margin, live)
+        return value, round(live[1] + margin, 4), base
     if asset.kind == "gold":
         price = ps.gold_price()
         value = amount * price
@@ -91,5 +109,5 @@ def latest_positions_by_asset(db: Session) -> dict[int, "Position"]:
 
 def value_of_position(db: Session, asset: Asset, p: "Position") -> float:
     """Current base-currency value of a position row (live prices)."""
-    value, _, _ = compute_value(db, asset, p.amount, p.currency)
+    value, _, _ = compute_value(db, asset, p.amount, p.currency, p.accrues_from)
     return float(value)

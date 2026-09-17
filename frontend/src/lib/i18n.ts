@@ -68,6 +68,13 @@ const en: Dict = {
   "pos.livePrice": "Live price",
   "pos.estimate": "≈ {value} in base currency",
   "pos.invalidAmount": "Enter a valid amount.",
+  "pos.principal": "Principal",
+  "pos.accruesFrom": "Accruing since",
+  "pos.accrued": "Interest accrued",
+  "pos.rateNow": "Current rate",
+  "pos.interestNote":
+    "Statutory interest is worked out on the server against the NBP reference rate, so it grows on its own.",
+  "pos.needStartDate": "Give the date the interest starts running.",
 
   "exp.title": "Expenses",
   "exp.subtitle":
@@ -236,6 +243,13 @@ const pl: Dict = {
   "pos.livePrice": "Cena bieżąca",
   "pos.estimate": "≈ {value} w walucie bazowej",
   "pos.invalidAmount": "Podaj poprawną kwotę.",
+  "pos.principal": "Kapitał",
+  "pos.accruesFrom": "Nalicza się od",
+  "pos.accrued": "Naliczone odsetki",
+  "pos.rateNow": "Bieżąca stopa",
+  "pos.interestNote":
+    "Odsetki ustawowe liczy serwer wg stopy referencyjnej NBP, więc rosną same.",
+  "pos.needStartDate": "Podaj datę, od której biegną odsetki.",
 
   "exp.title": "Wydatki",
   "exp.subtitle":

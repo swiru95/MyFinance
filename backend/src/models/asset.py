@@ -16,6 +16,10 @@ class Asset(Base):
     # user calls it. `category` is the user-facing class (Cash, Stocks,
     # Retirement, ...) that several differently-named assets can share.
     category: Mapped[str] = mapped_column(String(60), nullable=False, default="", index=True)
+    # Only for kind="interest": which statutory basis accrues on the principal.
+    # "late" = art. 481 par. 2 KC (+5.5 pp), "capital" = art. 359 par. 2 KC
+    # (+3.5 pp). Empty for every other kind.
+    interest_basis: Mapped[str] = mapped_column(String(10), nullable=False, default="")
     icon: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     units: Mapped[str] = mapped_column(String(10), nullable=False, default="")
     # units: e.g. "BTC", "SOL", "g"
