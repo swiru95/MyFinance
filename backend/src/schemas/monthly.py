@@ -29,6 +29,13 @@ class MonthlyOut(BaseModel):
     surplus: float = 0.0
     savings_rate: float | None = None
     variance: float = 0.0
+    # Spend read off the portfolio instead of typed in: income minus the change
+    # in total value over the month. None when there is no income recorded or no
+    # snapshot on one end of the month - see services/budget.effective_spend.
+    wallet_start: float | None = None
+    wallet_end: float | None = None
+    wallet_change: float | None = None
+    effective_spent: float | None = None
     by_category: list[dict] = []
     saved: bool = True
     updated_at: datetime | None = None
@@ -40,6 +47,7 @@ class TimelinePoint(BaseModel):
     income: float | None = None
     actual: float | None = None
     surplus: float | None = None
+    effective: float | None = None
 
 
 class MonthlyAnalytics(BaseModel):
@@ -50,5 +58,6 @@ class MonthlyAnalytics(BaseModel):
     category_series: list[dict]
     avg_income: float | None
     avg_actual: float | None
+    avg_effective: float | None
     avg_savings_rate: float | None
     months_recorded: int

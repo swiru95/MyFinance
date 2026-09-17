@@ -5,6 +5,7 @@ import {
   readLanguage,
   storeLanguage,
   translate,
+  translateData,
 } from "@/lib/i18n";
 import type { Language } from "@/lib/i18n";
 
@@ -37,6 +38,7 @@ export default function I18nProvider({
       setLang,
       t: (key: string, vars?: Record<string, string | number>) =>
         translate(lang, key, vars),
+      td: (value: string) => translateData(lang, value),
     }),
     [lang, setLang]
   );

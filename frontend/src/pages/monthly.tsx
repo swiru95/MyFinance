@@ -214,6 +214,25 @@ export default function MonthlyPage() {
             </p>
           </div>
           <div className="card">
+            <p className="text-sm muted">{t("mon.effective")}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">
+              {record?.effective_spent != null
+                ? fmtMoney(record.effective_spent, base, locale)
+                : "—"}
+            </p>
+            <p className="mt-1 text-xs subtle">
+              {record?.effective_spent != null && record.wallet_change != null
+                ? t("mon.walletChange", {
+                    value: `${record.wallet_change >= 0 ? "+" : ""}${fmtMoney(
+                      record.wallet_change,
+                      base,
+                      locale,
+                    )}`,
+                  })
+                : t("mon.effectiveUnavailable")}
+            </p>
+          </div>
+          <div className="card">
             <p className="text-sm muted">{t("mon.avgSavings")}</p>
             <p className="mt-1 text-2xl font-semibold tabular-nums">
               {analytics?.avg_savings_rate != null
@@ -237,6 +256,7 @@ export default function MonthlyPage() {
         <p className="mb-3 text-sm muted">
           {t("mon.chartSubtitle")}
         </p>
+        <p className="mb-3 text-xs subtle">{t("mon.effectiveNote")}</p>
         <BudgetTimelineChart
           points={analytics?.timeline ?? []}
           currency={base}
@@ -277,6 +297,7 @@ export default function MonthlyPage() {
                 <th className="px-5 py-2">{t("mon.tblMonth")}</th>
                 <th className="px-5 py-2 text-right">{t("mon.tblIncome")}</th>
                 <th className="px-5 py-2 text-right">{t("mon.tblActual")}</th>
+                <th className="px-5 py-2 text-right">{t("mon.tblEffective")}</th>
                 <th className="px-5 py-2 text-right">{t("mon.tblCommitted")}</th>
                 <th className="px-5 py-2 text-right">{t("mon.tblSurplus")}</th>
                 <th className="px-5 py-2 text-right">{t("mon.tblSaved")}</th>
@@ -285,7 +306,7 @@ export default function MonthlyPage() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {months.filter((m) => m.saved).length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-6 text-center text-sm subtle">
+                  <td colSpan={7} className="px-5 py-6 text-center text-sm subtle">
                     {t("mon.tblEmpty")}
                   </td>
                 </tr>
@@ -300,6 +321,11 @@ export default function MonthlyPage() {
                       </td>
                       <td className="px-5 py-2 text-right tabular-nums">
                         {fmtMoney(m.actual_in_base, base, locale)}
+                      </td>
+                      <td className="px-5 py-2 text-right tabular-nums">
+                        {m.effective_spent != null
+                          ? fmtMoney(m.effective_spent, base, locale)
+                          : "—"}
                       </td>
                       <td className="px-5 py-2 text-right tabular-nums">
                         {fmtMoney(m.committed, base, locale)}

@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function PositionForm({ asset, prices, onSubmit, initial }: Props) {
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
   const isCurrency = asset.kind === "currency";
   const isInterest = asset.kind === "interest";
   const [amount, setAmount] = useState<string>(
@@ -88,7 +88,7 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="label">
-          {t("pos.amountLabel", { name: asset.name, unit: unitLabel })}
+          {t("pos.amountLabel", { name: td(asset.name), unit: unitLabel })}
         </label>
         <input
           className="input"
@@ -164,7 +164,7 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <button type="submit" className="btn-primary w-full" disabled={busy}>
-        {busy ? t("common.saving") : t("pos.addNamed", { name: asset.name })}
+        {busy ? t("common.saving") : t("pos.addNamed", { name: td(asset.name) })}
       </button>
     </form>
   );

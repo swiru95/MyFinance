@@ -7,6 +7,7 @@ const links = [
   { href: "/positions", key: "nav.positions" },
   { href: "/expenses", key: "nav.expenses" },
   { href: "/monthly", key: "nav.monthly" },
+  { href: "/report", key: "nav.report" },
   { href: "/settings", key: "nav.settings" },
 ];
 

@@ -8,7 +8,7 @@ import AllocationChart from "@/components/AllocationChart";
 import PortfolioProfile from "@/components/PortfolioProfile";
 
 export default function Dashboard() {
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [valueTime, setValueTime] = useState<ValueOverTime | null>(null);
   const [allocation, setAllocation] = useState<Allocation | null>(null);
@@ -127,7 +127,7 @@ export default function Dashboard() {
               currency={currency}
               slices={(allocation?.by_category ?? []).map((g) => ({
                 key: g.category,
-                label: g.category,
+                label: td(g.category),
                 icon: g.icon,
                 value: g.value,
                 percent: g.percent,

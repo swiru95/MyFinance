@@ -16,9 +16,12 @@ from ..schemas.monthly import (
 from ..services.budget import (
     MONTH_RE,
     committed_for_month,
+    effective_spend,
     month_key,
     shift_month,
+    wallet_window,
 )
+from ..services.portfolio import wallet_values
 from ..services.price_service import PriceService
 from .helpers import convert_currency, get_base_currency, today_in
 
@@ -35,12 +38,31 @@ def _validate_month(month: str) -> str:
     return month
 
 
+def _wallet_for_months(
+    db: Session, months: list[str], today: date
+) -> dict[str, tuple[float | None, float | None]]:
+    """Opening and closing portfolio value for each month, in one scan.
+
+    The two boundary days of every month are collected first and priced
+    together, so a two-year analytics span walks the snapshot history once
+    rather than once per month.
+    """
+    windows = {m: wallet_window(m, today) for m in months}
+    days = [d for w in windows.values() if w for d in w]
+    values = wallet_values(db, days)
+    return {
+        m: (values.get(w[0]), values.get(w[1])) if w else (None, None)
+        for m, w in windows.items()
+    }
+
+
 def _build(
     month: str,
     record: MonthlyRecord | None,
     expenses: list[Expense],
     ps: PriceService,
     base: str,
+    wallet: tuple[float | None, float | None] = (None, None),
 ) -> MonthlyOut:
     committed, by_cat = committed_for_month(expenses, month, ps, base)
     currency = record.currency if record else base
@@ -49,6 +71,13 @@ def _build(
     income_base = convert_currency(ps, income, currency, base)
     actual_base = convert_currency(ps, actual, currency, base)
     surplus = income_base - actual_base
+    wallet_start, wallet_end = wallet
+    change = (
+        round(wallet_end - wallet_start, 2)
+        if wallet_start is not None and wallet_end is not None
+        else None
+    )
+    effective = effective_spend(income_base, wallet_start, wallet_end)
     return MonthlyOut(
         month=month,
         income=income,
@@ -62,6 +91,10 @@ def _build(
         surplus=round(surplus, 2),
         savings_rate=round(100.0 * surplus / income_base, 1) if income_base else None,
         variance=round(actual_base - committed, 2),
+        wallet_start=wallet_start,
+        wallet_end=wallet_end,
+        wallet_change=change,
+        effective_spent=round(effective, 2) if effective is not None else None,
         by_category=sorted(
             ({"category": k, "total": round(v, 2)} for k, v in by_cat.items()),
             key=lambda d: d["total"],
@@ -83,11 +116,12 @@ def list_months(db: Session = Depends(get_db)):
     ps = PriceService(base)
     expenses = db.query(Expense).all()
     records = {r.month: r for r in db.query(MonthlyRecord).all()}
-    current = month_key(today_in(db))
-    months = set(records) | {current}
+    today = today_in(db)
+    current = month_key(today)
+    months = sorted(set(records) | {current}, reverse=True)
+    wallet = _wallet_for_months(db, months, today)
     return [
-        _build(m, records.get(m), expenses, ps, base)
-        for m in sorted(months, reverse=True)
+        _build(m, records.get(m), expenses, ps, base, wallet[m]) for m in months
     ]
 
 
@@ -103,11 +137,13 @@ def analytics(
     expenses = db.query(Expense).all()
     records = {r.month: r for r in db.query(MonthlyRecord).all()}
 
-    current = month_key(today_in(db))
+    today = today_in(db)
+    current = month_key(today)
     span = [
         shift_month(current, offset)
         for offset in range(-months_back, months_ahead + 1)
     ]
+    wallet = _wallet_for_months(db, span, today)
 
     timeline: list[TimelinePoint] = []
     category_series: list[dict] = []
@@ -126,6 +162,7 @@ def analytics(
             actual_base = convert_currency(
                 ps, float(rec.actual_spent), rec.currency, base
             )
+            effective = effective_spend(income_base, *wallet[m])
             timeline.append(
                 TimelinePoint(
                     month=m,
@@ -133,6 +170,7 @@ def analytics(
                     income=round(income_base, 2),
                     actual=round(actual_base, 2),
                     surplus=round(income_base - actual_base, 2),
+                    effective=round(effective, 2) if effective is not None else None,
                 )
             )
         else:
@@ -148,6 +186,12 @@ def analytics(
     avg_actual = (
         round(sum(p.actual or 0 for p in recorded) / len(recorded), 2)
         if recorded
+        else None
+    )
+    with_effective = [p for p in timeline if p.effective is not None]
+    avg_effective = (
+        round(sum(p.effective or 0 for p in with_effective) / len(with_effective), 2)
+        if with_effective
         else None
     )
     avg_rate = (
@@ -167,6 +211,7 @@ def analytics(
         category_series=category_series,
         avg_income=avg_income,
         avg_actual=avg_actual,
+        avg_effective=avg_effective,
         avg_savings_rate=avg_rate,
         months_recorded=len(recorded),
     )
@@ -178,7 +223,8 @@ def get_month(month: str, db: Session = Depends(get_db)):
     base = get_base_currency(db)
     ps = PriceService(base)
     record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
-    return _build(month, record, db.query(Expense).all(), ps, base)
+    wallet = _wallet_for_months(db, [month], today_in(db))[month]
+    return _build(month, record, db.query(Expense).all(), ps, base, wallet)
 
 
 @router.put("/{month}", response_model=MonthlyOut)
@@ -195,7 +241,10 @@ def upsert_month(month: str, payload: MonthlyIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(record)
     base = get_base_currency(db)
-    return _build(month, record, db.query(Expense).all(), PriceService(base), base)
+    wallet = _wallet_for_months(db, [month], today_in(db))[month]
+    return _build(
+        month, record, db.query(Expense).all(), PriceService(base), base, wallet
+    )
 
 
 @router.delete("/{month}", status_code=204)

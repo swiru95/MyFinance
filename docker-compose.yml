@@ -5,6 +5,14 @@ services:
     restart: unless-stopped
     environment:
       - MYFINANCE_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      # Wallet assessment. Taken from your shell so the key is never written
+      # into this file; leave them unset and the Report page reports itself
+      # unconfigured instead of failing. See README "Wallet assessment".
+      - MYFINANCE_LLM_BASE_URL=${MYFINANCE_LLM_BASE_URL:-}
+      - MYFINANCE_LLM_API_KEY=${MYFINANCE_LLM_API_KEY:-}
+      - MYFINANCE_LLM_MODEL=${MYFINANCE_LLM_MODEL:-Thinker}
+      - MYFINANCE_LLM_TRANSLATE_MODEL=${MYFINANCE_LLM_TRANSLATE_MODEL:-Bielik}
+      - MYFINANCE_LLM_VERIFY_TLS=${MYFINANCE_LLM_VERIFY_TLS:-false}
     volumes:
       - myfinance-data:/app/data
     ports:

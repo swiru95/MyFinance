@@ -178,6 +178,12 @@ export interface MonthlyRecord {
   surplus: number;
   savings_rate: number | null;
   variance: number;
+  /** Portfolio value at each end of the month, and what that implies was
+   *  really spent. Null when there is no income or no snapshot on one end. */
+  wallet_start: number | null;
+  wallet_end: number | null;
+  wallet_change: number | null;
+  effective_spent: number | null;
   by_category: CategoryTotal[];
   saved: boolean;
   updated_at: string | null;
@@ -196,6 +202,7 @@ export interface TimelinePoint {
   income: number | null;
   actual: number | null;
   surplus: number | null;
+  effective: number | null;
 }
 
 export interface MonthlyAnalytics {
@@ -205,9 +212,54 @@ export interface MonthlyAnalytics {
   category_series: Record<string, number | string>[];
   avg_income: number | null;
   avg_actual: number | null;
+  avg_effective: number | null;
   avg_savings_rate: number | null;
   months_recorded: number;
 }
+
+/** Wallet styles the assessment can be written against. */
+export type ReportStyle = "safe" | "balanced" | "risky" | "long_term";
+
+/** pending -> running -> translating -> done, or failed from any of them. */
+export type ReportState =
+  | "pending"
+  | "running"
+  | "translating"
+  | "done"
+  | "failed";
+
+export interface Report {
+  id: number;
+  created_at: string;
+  status: ReportState;
+  style: ReportStyle;
+  language: string;
+  content: string;
+  model: string;
+  translator: string;
+  error: string;
+}
+
+/** A history row: the same thing without the report text. */
+export type ReportSummary = Omit<Report, "content">;
+
+export interface ReportStatus {
+  configured: boolean;
+  model: string;
+  translate_model: string;
+  styles: ReportStyle[];
+  /** True when the backend authenticates with a client certificate rather
+   *  than a shared API key. */
+  mtls: boolean;
+  tls_verified: boolean;
+}
+
+export const REPORT_STYLES: ReportStyle[] = [
+  "safe",
+  "balanced",
+  "risky",
+  "long_term",
+];
 
 export const INPUT_CURRENCIES = ["PLN", "EUR", "USD", "CHF"] as const;
 export const BASE_CURRENCIES = ["PLN", "EUR", "USD", "CHF"] as const;

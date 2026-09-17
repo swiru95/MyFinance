@@ -30,7 +30,7 @@ const STATUS_STYLES: Record<Expense["status"], string> = {
 };
 
 export default function ExpenseRow({ expense, base, onEdit, onDelete }: Props) {
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
   const ended = expense.status === "ended";
 
   function term() {
@@ -96,7 +96,7 @@ export default function ExpenseRow({ expense, base, onEdit, onDelete }: Props) {
             </span>
           )}
           {expense.category && (
-            <span className="text-xs subtle">{expense.category}</span>
+            <span className="text-xs subtle">{td(expense.category)}</span>
           )}
         </div>
         <p className="mt-0.5 text-xs muted">{term()}</p>

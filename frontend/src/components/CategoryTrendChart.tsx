@@ -26,7 +26,7 @@ interface Props {
  */
 export default function CategoryTrendChart({ series, categories, currency }: Props) {
   const theme = useChartTheme();
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
 
   const OTHER = t("mon.other");
 
@@ -103,7 +103,7 @@ export default function CategoryTrendChart({ series, categories, currency }: Pro
             <Bar
               key={key}
               dataKey={key}
-              name={key}
+              name={td(key)}
               stackId="spend"
               fill={theme.series[idx % theme.series.length]}
               /* Surface-coloured stroke gives each segment a 2px visual gap. */

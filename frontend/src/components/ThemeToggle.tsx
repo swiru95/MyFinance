@@ -61,7 +61,9 @@ export default function ThemeToggle() {
       </div>
       <p className="mt-1 text-xs muted">
         {mounted && theme === "system"
-          ? t("set.followingSystem", { mode: resolveTheme("system") })
+          ? t("set.followingSystem", {
+              mode: t(LABEL_KEYS[resolveTheme("system")]).toLowerCase(),
+            })
           : t("set.savedInBrowser")}
       </p>
     </div>

@@ -10,6 +10,10 @@ import type {
   MonthlyRecord,
   Prices,
   Position,
+  Report,
+  ReportStatus,
+  ReportStyle,
+  ReportSummary,
   Settings,
   Summary,
   ValueOverTime,
@@ -78,6 +82,16 @@ export const api = {
     request<ValueOverTime>(`/statistics/value-over-time?by=${by}`),
   allocation: () => request<Allocation>("/statistics/allocation"),
   prices: () => request<Prices>("/prices"),
+  reportStatus: () => request<ReportStatus>("/reports/status"),
+  reports: () => request<ReportSummary[]>("/reports"),
+  report: (id: number) => request<Report>(`/reports/${id}`),
+  createReport: (style: ReportStyle, language: string) =>
+    request<Report>("/reports", {
+      method: "POST",
+      body: JSON.stringify({ style, language }),
+    }),
+  deleteReport: (id: number) =>
+    request<void>(`/reports/${id}`, { method: "DELETE" }),
   getSettings: () => request<Settings>("/settings"),
   setSettings: (base_currency: string, timezone?: string) =>
     request<Settings>("/settings", {

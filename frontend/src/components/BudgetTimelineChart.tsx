@@ -44,7 +44,9 @@ export default function BudgetTimelineChart({
 
   const data = points.map((p) => ({ ...p, label: monthLabel(p.month, locale) }));
   // Slot order is fixed; income takes aqua (positive) and actual orange.
-  const [committed, actual, income] = theme.series;
+  // Effective spend takes the fourth slot rather than reusing actual's hue:
+  // the two are deliberately comparable, so they must stay distinguishable.
+  const [committed, actual, income, effective] = theme.series;
 
   return (
     <div className="h-80 w-full">
@@ -116,6 +118,20 @@ export default function BudgetTimelineChart({
             stroke={actual}
             strokeWidth={2}
             dot={{ r: 3, strokeWidth: 0, fill: actual }}
+            activeDot={{ r: 5, stroke: theme.surface, strokeWidth: 2 }}
+            connectNulls
+          />
+          {/* Dashed because this one is derived from the portfolio rather than
+              recorded by hand - the dash says "computed" without a legend note,
+              and survives greyscale where the hue alone would not. */}
+          <Line
+            type="monotone"
+            dataKey="effective"
+            name={t("mon.legendEffective")}
+            stroke={effective}
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            dot={{ r: 3, strokeWidth: 0, fill: effective }}
             activeDot={{ r: 5, stroke: theme.surface, strokeWidth: 2 }}
             connectNulls
           />

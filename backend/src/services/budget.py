@@ -22,6 +22,38 @@ def month_bounds(month: str) -> tuple[date, date]:
     return first, nxt - timedelta(days=1)
 
 
+def wallet_window(month: str, today: date) -> tuple[date, date] | None:
+    """The two days a month's portfolio change is measured between.
+
+    The opening balance is the *previous* month's closing value, not the 1st:
+    a snapshot taken on the 1st already includes whatever happened that day.
+    A month still running is measured up to today rather than to a last day
+    that has not arrived yet; a month entirely in the future has no window.
+    """
+    first, last = month_bounds(month)
+    if today < first:
+        return None
+    return first - timedelta(days=1), min(last, today)
+
+
+def effective_spend(
+    income_in_base: float, wallet_start: float | None, wallet_end: float | None
+) -> float | None:
+    """What was really spent, read off the portfolio rather than typed in.
+
+    Everything earned either sits in the portfolio at the end of the month or
+    has been spent, so income minus the change in portfolio value is the spend
+    - including the spending that never gets entered as an expense.
+
+    None unless there is income to subtract from and a snapshot on both ends:
+    without an opening value the change is unknown, and an unknown change would
+    silently turn into "you spent your entire income".
+    """
+    if income_in_base <= 0 or wallet_start is None or wallet_end is None:
+        return None
+    return income_in_base - (wallet_end - wallet_start)
+
+
 def month_key(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
 

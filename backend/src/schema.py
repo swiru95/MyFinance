@@ -20,6 +20,7 @@ from .models import (  # noqa: F401 (import registers the tables on Base)
     expense,
     monthly,
     position,
+    report,
     settings as settings_model,
 )
 from .models.asset import Asset

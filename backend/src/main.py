@@ -8,6 +8,7 @@ from .models import (  # noqa: F401 (register models)
     expense,
     monthly,
     position,
+    report,
     settings as settings_model,
 )
 from .routes import positions as positions_routes
@@ -15,6 +16,7 @@ from .routes import assets as assets_routes
 from .routes import expenses as expenses_routes
 from .routes import monthly as monthly_routes
 from .routes import prices as prices_routes
+from .routes import reports as reports_routes
 from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .services.price_service import PriceService
@@ -39,6 +41,7 @@ app.include_router(assets_routes.router)
 app.include_router(expenses_routes.router)
 app.include_router(monthly_routes.router)
 app.include_router(prices_routes.router)
+app.include_router(reports_routes.router)
 app.include_router(statistics_routes.router)
 app.include_router(settings_routes.router)
 

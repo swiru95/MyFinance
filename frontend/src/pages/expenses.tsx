@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtMoney, fmtNum } from "@/lib/api";
+import { api, fmtDay, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { Expense, ExpenseSummary } from "@/lib/types";
 import ExpenseForm from "@/components/ExpenseForm";
@@ -8,7 +8,7 @@ import ExpenseRow from "@/components/ExpenseRow";
 type Filter = "active" | "all";
 
 export default function ExpensesPage() {
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
@@ -104,7 +104,7 @@ export default function ExpensesPage() {
                 <li key={e.id} className="flex justify-between gap-2">
                   <span className="truncate">{e.name}</span>
                   <span className="shrink-0 tabular-nums muted">
-                    {e.ends_on}
+                    {e.ends_on ? fmtDay(e.ends_on, locale) : ""}
                   </span>
                 </li>
               ))}
@@ -143,7 +143,7 @@ export default function ExpensesPage() {
               return (
                 <li key={c.category}>
                   <div className="flex justify-between text-sm">
-                    <span>{c.category}</span>
+                    <span>{td(c.category)}</span>
                     <span className="tabular-nums muted">
                       {fmtNum(pct, 0, locale)}% · {fmtMoney(c.total, base, locale)}
                     </span>

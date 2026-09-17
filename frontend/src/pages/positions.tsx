@@ -6,7 +6,7 @@ import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
 
 export default function PositionsPage() {
-  const { t } = useI18n();
+  const { t, td, locale } = useI18n();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [prices, setPrices] = useState<Prices | null>(null);
@@ -91,10 +91,10 @@ export default function PositionsPage() {
         <section key={group.name} className="space-y-3">
           <div className="flex items-baseline justify-between border-b border-slate-200 pb-1 dark:border-slate-700">
             <h2 className="text-sm font-semibold uppercase tracking-wide subtle">
-              {group.name}
+              {td(group.name)}
             </h2>
             <span className="text-sm font-medium tabular-nums">
-              {fmtMoney(groupTotal(group.assets), base)}
+              {fmtMoney(groupTotal(group.assets), base, locale)}
             </span>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -104,7 +104,7 @@ export default function PositionsPage() {
             <div key={asset.id} className="card flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-base font-medium">
-                  <span className="text-lg">{asset.icon}</span> {asset.name}
+                  <span className="text-lg">{asset.icon}</span> {td(asset.name)}
                 </span>
                 {pos && (
                   <button
@@ -131,7 +131,7 @@ export default function PositionsPage() {
                   onClick={() => setOpenFor(asset.id)}
                   className="btn-primary w-full"
                 >
-                  {t("pos.addNamed", { name: asset.name })}
+                  {t("pos.addNamed", { name: td(asset.name) })}
                 </button>
               )}
             </div>
@@ -147,7 +147,7 @@ export default function PositionsPage() {
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">
                 {assets.find((a) => a.id === openFor)?.icon}{" "}
-                {assets.find((a) => a.id === openFor)?.name}
+                {td(assets.find((a) => a.id === openFor)?.name ?? "")}
               </h2>
               <button onClick={() => setOpenFor(null)} className="subtle">
                 ✕

@@ -31,7 +31,7 @@ export default function PortfolioChart({
   onModeChange,
   currency,
 }: Props) {
-  const { t, locale } = useI18n();
+  const { t, td, locale } = useI18n();
   const theme = useChartTheme();
 
   const data = rows.map((r) => ({
@@ -47,7 +47,7 @@ export default function PortfolioChart({
       ? `${t("chart.other")} (${k.members?.length ?? 0})`
       : mode === "profile"
         ? t(`profile.${k.label}`)
-        : k.label;
+        : td(k.label);
 
   // Filters live in one row above the plot, never inside it.
   const picker = (
@@ -150,7 +150,10 @@ export default function PortfolioChart({
       {keys.find((k) => k.key === "__other__")?.members?.length ? (
         <p className="mt-2 text-xs subtle">
           {t("dash.otherDetail", {
-            names: keys.find((k) => k.key === "__other__")!.members!.join(" · "),
+            names: keys
+              .find((k) => k.key === "__other__")!
+              .members!.map(td)
+              .join(" · "),
           })}
         </p>
       ) : null}
