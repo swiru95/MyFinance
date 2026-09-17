@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: ./backend
+    container_name: myfinance-backend
+    restart: unless-stopped
+    environment:
+      - MYFINANCE_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+    volumes:
+      - myfinance-data:/app/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: myfinance-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  myfinance-data:

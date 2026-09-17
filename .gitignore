@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+# Match any venv directory, not just the two default names - this repo has
+# carried .venv and backend/.venv313 side by side (79 MB of the latter).
+.venv*/
+venv/
+backend/data/
+*.db
+
+# Node
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+
+# Env
+.env
+*.local
+
+# Editing scratch - timestamped copies left alongside the originals by the
+# house convention of backing a file up before changing it.
+*.bak-*
+*.i18nbak-*
