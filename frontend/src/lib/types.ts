@@ -4,6 +4,8 @@ export interface Asset {
   id: number;
   name: string;
   kind: AssetKind;
+  /** User-facing class (Cash, Stocks, Retirement...). Several assets share one. */
+  category: string;
   icon: string;
   units: string;
   created_at: string;
@@ -42,6 +44,7 @@ export interface ValueOverTime {
 export interface AllocationItem {
   asset_id: number;
   name: string;
+  category: string;
   icon: string;
   kind: AssetKind;
   units: string;
@@ -50,10 +53,20 @@ export interface AllocationItem {
   percent: number;
 }
 
+export interface AllocationCategory {
+  category: string;
+  icon: string;
+  value: number;
+  percent: number;
+  /** How many assets rolled up into this class. */
+  assets: number;
+}
+
 export interface Allocation {
   base_currency: string;
   total: number;
   items: AllocationItem[];
+  by_category: AllocationCategory[];
 }
 
 export interface Prices {

@@ -24,6 +24,35 @@ from .services.price_service import PriceService
 Base.metadata.create_all(bind=engine)
 
 
+def _migrate() -> None:
+    """Add columns that create_all() cannot introduce on an existing table.
+
+    SQLAlchemy's create_all only creates missing *tables*, so a column added to
+    a model after a database already exists is silently absent until it is added
+    here. Kept deliberately small - if this grows past a handful of columns it
+    should become a real migration tool.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "assets" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("assets")}
+    if "category" not in columns:
+        with engine.begin() as conn:
+            conn.execute(
+                text("ALTER TABLE assets ADD COLUMN category VARCHAR(60) "
+                     "NOT NULL DEFAULT ''")
+            )
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_assets_category "
+                     "ON assets (category)")
+            )
+
+
+_migrate()
+
+
 def _seed() -> None:
     """Create default asset types on first start."""
     from .database import SessionLocal
@@ -33,15 +62,15 @@ def _seed() -> None:
     try:
         if db.query(Asset).count() == 0:
             defaults = [
-                Asset(name="Cash", kind="currency", icon="💵", units=""),
-                Asset(name="Gold", kind="gold", icon="🥇", units="g"),
-                Asset(name="Stocks", kind="currency", icon="📈", units=""),
-                Asset(name="TFI Funds", kind="currency", icon="🏦", units=""),
-                Asset(name="National Bonds", kind="currency", icon="📜", units=""),
-                Asset(name="Watches", kind="currency", icon="⌚", units=""),
-                Asset(name="Bitcoin", kind="crypto", icon="₿", units="BTC"),
-                Asset(name="Solana", kind="crypto", icon="◎", units="SOL"),
-                Asset(name="Savings", kind="currency", icon="🏧", units=""),
+                Asset(name="Cash", kind="currency", category="Cash", icon="💵", units=""),
+                Asset(name="Gold", kind="gold", category="Gold", icon="🥇", units="g"),
+                Asset(name="Stocks", kind="currency", category="Stocks", icon="📈", units=""),
+                Asset(name="TFI Funds", kind="currency", category="TFI", icon="🏦", units=""),
+                Asset(name="National Bonds", kind="currency", category="Bonds", icon="📜", units=""),
+                Asset(name="Watches", kind="currency", category="Watches", icon="⌚", units=""),
+                Asset(name="Bitcoin", kind="crypto", category="Crypto", icon="₿", units="BTC"),
+                Asset(name="Solana", kind="crypto", category="Crypto", icon="◎", units="SOL"),
+                Asset(name="Savings", kind="currency", category="Savings", icon="🏧", units=""),
             ]
             db.add_all(defaults)
             db.commit()

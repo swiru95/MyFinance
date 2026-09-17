@@ -6,8 +6,17 @@ import {
   Tooltip,
 } from "recharts";
 import { fmtMoney, fmtNum } from "@/lib/api";
-import type { AllocationItem } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
+
+/** One ring segment. Deliberately not tied to AllocationItem so the same chart
+ *  renders a per-asset breakdown and a per-class roll-up. */
+export interface AllocationSlice {
+  key: string | number;
+  label: string;
+  icon: string;
+  value: number;
+  percent: number;
+}
 
 const COLORS = [
   "#4f46e5",
@@ -22,13 +31,13 @@ const COLORS = [
 ];
 
 interface Props {
-  items: AllocationItem[];
+  slices: AllocationSlice[];
   currency: string;
 }
 
-export default function AllocationChart({ items, currency }: Props) {
+export default function AllocationChart({ slices, currency }: Props) {
   const { t, locale } = useI18n();
-  if (items.length === 0) {
+  if (slices.length === 0) {
     return (
       <div className="grid h-64 place-items-center text-sm subtle">
         {t("dash.nothingToAllocate")}
@@ -36,7 +45,7 @@ export default function AllocationChart({ items, currency }: Props) {
     );
   }
 
-  const data = items.map((i) => ({ name: i.name, value: i.value }));
+  const data = slices.map((i) => ({ name: i.label, value: i.value }));
 
   return (
     <div>
@@ -68,15 +77,15 @@ export default function AllocationChart({ items, currency }: Props) {
         </ResponsiveContainer>
       </div>
       <ul className="mt-4 space-y-2">
-        {items.map((i, idx) => (
-          <li key={i.asset_id} className="flex items-center justify-between text-sm">
+        {slices.map((i, idx) => (
+          <li key={i.key} className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-full"
                 style={{ backgroundColor: COLORS[idx % COLORS.length] }}
               />
               <span>
-                {i.icon} {i.name}
+                {i.icon} {i.label}
               </span>
             </span>
             <span className="tabular-nums muted">

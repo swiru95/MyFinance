@@ -92,7 +92,16 @@ export default function Dashboard() {
 
       <div className="card">
         <h2 className="mb-4 text-lg font-semibold">{t("dash.allocation")}</h2>
-        <AllocationChart items={allocation?.items ?? []} currency={currency} />
+        <AllocationChart
+          slices={(allocation?.by_category ?? []).map((g) => ({
+            key: g.category,
+            label: g.category,
+            icon: g.icon,
+            value: g.value,
+            percent: g.percent,
+          }))}
+          currency={currency}
+        />
       </div>
     </div>
   );

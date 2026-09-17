@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, fmtMoney } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { Asset, Position, Prices } from "@/lib/types";
 import PositionForm from "@/components/PositionForm";
@@ -38,6 +38,23 @@ export default function PositionsPage() {
   const positionByAsset = new Map(positions.map((p) => [p.asset_id, p]));
   const base = prices?.base_currency ?? "PLN";
 
+  // Group the asset cards by class, preserving the order the classes first
+  // appear in. An asset with no category forms a group of its own so nothing
+  // is hidden under a nameless heading.
+  const groups: { name: string; assets: Asset[] }[] = [];
+  for (const asset of assets) {
+    const key = asset.category || asset.name;
+    const existing = groups.find((g) => g.name === key);
+    if (existing) existing.assets.push(asset);
+    else groups.push({ name: key, assets: [asset] });
+  }
+
+  const groupTotal = (group: Asset[]) =>
+    group.reduce(
+      (sum, a) => sum + (positionByAsset.get(a.id)?.value_in_base ?? 0),
+      0,
+    );
+
   async function toggleHistory(pos: Position) {
     if (historyFor === pos.id) {
       setHistoryFor(null);
@@ -70,8 +87,18 @@ export default function PositionsPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {assets.map((asset) => {
+      {groups.map((group) => (
+        <section key={group.name} className="space-y-3">
+          <div className="flex items-baseline justify-between border-b border-slate-200 pb-1 dark:border-slate-700">
+            <h2 className="text-sm font-semibold uppercase tracking-wide subtle">
+              {group.name}
+            </h2>
+            <span className="text-sm font-medium tabular-nums">
+              {fmtMoney(groupTotal(group.assets), base)}
+            </span>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {group.assets.map((asset) => {
           const pos = positionByAsset.get(asset.id);
           return (
             <div key={asset.id} className="card flex flex-col gap-3">
@@ -110,7 +137,9 @@ export default function PositionsPage() {
             </div>
           );
         })}
-      </div>
+          </div>
+        </section>
+      ))}
 
       {openFor != null && prices && (
         <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">

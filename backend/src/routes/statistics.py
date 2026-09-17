@@ -54,6 +54,9 @@ def allocation(db: Session = Depends(get_db)):
             {
                 "asset_id": asset.id,
                 "name": asset.name,
+                # Fall back to the asset's own name so an uncategorised asset
+                # still forms a group of one rather than an unlabelled bucket.
+                "category": asset.category or asset.name,
                 "icon": asset.icon,
                 "kind": asset.kind,
                 "units": asset.units,
@@ -63,4 +66,26 @@ def allocation(db: Session = Depends(get_db)):
         )
     for it in items:
         it["percent"] = round(100.0 * it["value"] / total, 2) if total else 0.0
-    return {"base_currency": base, "total": round(total, 2), "items": items}
+
+    # Same numbers rolled up by class. Several assets can share a category
+    # (three retirement accounts, three brokers), and that roll-up is what the
+    # allocation chart is actually asking about.
+    groups: dict[str, dict] = {}
+    for it in items:
+        g = groups.setdefault(
+            it["category"],
+            {"category": it["category"], "icon": it["icon"], "value": 0.0, "assets": 0},
+        )
+        g["value"] += it["value"]
+        g["assets"] += 1
+    by_category = sorted(groups.values(), key=lambda g: g["value"], reverse=True)
+    for g in by_category:
+        g["value"] = round(g["value"], 2)
+        g["percent"] = round(100.0 * g["value"] / total, 2) if total else 0.0
+
+    return {
+        "base_currency": base,
+        "total": round(total, 2),
+        "items": items,
+        "by_category": by_category,
+    }

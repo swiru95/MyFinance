@@ -8,6 +8,7 @@ from ..timeutils import as_utc
 class AssetIn(BaseModel):
     name: str
     kind: str = "currency"
+    category: str = ""
     icon: str = ""
     units: str = ""
 
@@ -18,6 +19,7 @@ class AssetOut(BaseModel):
     id: int
     name: str
     kind: str
+    category: str
     icon: str
     units: str
     created_at: datetime

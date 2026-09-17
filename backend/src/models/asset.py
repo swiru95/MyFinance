@@ -12,7 +12,10 @@ class Asset(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="currency")
-    # kind: currency | gold | crypto
+    # kind: currency | gold | crypto - how the position is *valued*, not what the
+    # user calls it. `category` is the user-facing class (Cash, Stocks,
+    # Retirement, ...) that several differently-named assets can share.
+    category: Mapped[str] = mapped_column(String(60), nullable=False, default="", index=True)
     icon: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     units: Mapped[str] = mapped_column(String(10), nullable=False, default="")
     # units: e.g. "BTC", "SOL", "g"
