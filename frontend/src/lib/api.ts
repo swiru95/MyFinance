@@ -1,4 +1,5 @@
 import type {
+  BreakdownMode,
   Allocation,
   Asset,
   Expense,
@@ -73,7 +74,8 @@ export const api = {
     }),
   deleteMonth: (month: string) =>
     request<void>(`/monthly/${month}`, { method: "DELETE" }),
-  valueOverTime: () => request<ValueOverTime>("/statistics/value-over-time"),
+  valueOverTime: (by: BreakdownMode = "total") =>
+    request<ValueOverTime>(`/statistics/value-over-time?by=${by}`),
   allocation: () => request<Allocation>("/statistics/allocation"),
   prices: () => request<Prices>("/prices"),
   getSettings: () => request<Settings>("/settings"),

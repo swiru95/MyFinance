@@ -20,6 +20,10 @@ class Asset(Base):
     # "late" = art. 481 par. 2 KC (+5.5 pp), "capital" = art. 359 par. 2 KC
     # (+3.5 pp). Empty for every other kind.
     interest_basis: Mapped[str] = mapped_column(String(10), nullable=False, default="")
+    # Risk-and-liquidity band: safe | moderate | risky | illiquid. Defaults
+    # from the category (see services-free helper in profiles.py) but kept per
+    # asset so one holding can be reclassified without moving its class.
+    profile: Mapped[str] = mapped_column(String(12), nullable=False, default="", index=True)
     icon: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     units: Mapped[str] = mapped_column(String(10), nullable=False, default="")
     # units: e.g. "BTC", "SOL", "g"

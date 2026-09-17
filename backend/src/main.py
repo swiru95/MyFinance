@@ -3,7 +3,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .database import Base, engine
 from .models import (  # noqa: F401 (register models)
     asset,
     expense,
@@ -21,73 +20,9 @@ from .routes import settings as settings_routes
 from .services.price_service import PriceService
 
 
-Base.metadata.create_all(bind=engine)
-
-
-def _migrate() -> None:
-    """Add columns that create_all() cannot introduce on an existing table.
-
-    SQLAlchemy's create_all only creates missing *tables*, so a column added to
-    a model after a database already exists is silently absent until it is added
-    here. Kept deliberately small - if this grows past a handful of columns it
-    should become a real migration tool.
-    """
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(engine)
-    tables = inspector.get_table_names()
-    # (table, column, DDL to add it, optional index DDL)
-    wanted = [
-        ("assets", "category",
-         "ALTER TABLE assets ADD COLUMN category VARCHAR(60) NOT NULL DEFAULT ''",
-         "CREATE INDEX IF NOT EXISTS ix_assets_category ON assets (category)"),
-        ("assets", "interest_basis",
-         "ALTER TABLE assets ADD COLUMN interest_basis VARCHAR(10) NOT NULL DEFAULT ''",
-         None),
-        ("positions", "accrues_from",
-         "ALTER TABLE positions ADD COLUMN accrues_from DATE",
-         None),
-    ]
-    for table, column, add_sql, index_sql in wanted:
-        if table not in tables:
-            continue
-        if column in {c["name"] for c in inspector.get_columns(table)}:
-            continue
-        with engine.begin() as conn:
-            conn.execute(text(add_sql))
-            if index_sql:
-                conn.execute(text(index_sql))
-
-
-_migrate()
-
-
-def _seed() -> None:
-    """Create default asset types on first start."""
-    from .database import SessionLocal
-    from .models.asset import Asset
-
-    db = SessionLocal()
-    try:
-        if db.query(Asset).count() == 0:
-            defaults = [
-                Asset(name="Cash", kind="currency", category="Cash", icon="💵", units=""),
-                Asset(name="Gold", kind="gold", category="Gold", icon="🥇", units="g"),
-                Asset(name="Stocks", kind="currency", category="Stocks", icon="📈", units=""),
-                Asset(name="TFI Funds", kind="currency", category="TFI", icon="🏦", units=""),
-                Asset(name="National Bonds", kind="currency", category="Bonds", icon="📜", units=""),
-                Asset(name="Watches", kind="currency", category="Watches", icon="⌚", units=""),
-                Asset(name="Bitcoin", kind="crypto", category="Crypto", icon="₿", units="BTC"),
-                Asset(name="Solana", kind="crypto", category="Crypto", icon="◎", units="SOL"),
-                Asset(name="Savings", kind="currency", category="Savings", icon="🏧", units=""),
-            ]
-            db.add_all(defaults)
-            db.commit()
-    finally:
-        db.close()
-
-
-_seed()
+# NOTE: the schema is deliberately NOT created here. The runtime role has no
+# DDL rights - see src/schema.py, which runs as the owning role from a Helm
+# hook Job before the application starts.
 
 app = FastAPI(title="MyFinance", version="1.0.0")
 

@@ -12,6 +12,8 @@ export interface Asset {
   /** User-facing class (Cash, Stocks, Retirement...). Several assets share one. */
   category: string;
   interest_basis: InterestBasis;
+  /** Risk-and-liquidity band this asset counts towards. */
+  profile: string;
   icon: string;
   units: string;
   created_at: string;
@@ -39,14 +41,29 @@ export interface Summary {
   crypto_prices: { BTC: number; SOL: number };
 }
 
-export interface ValuePoint {
-  timestamp: string;
+/** How the time series is split. "total" is one line; the rest are stacked. */
+export type BreakdownMode = "total" | "asset" | "category" | "profile";
+
+export interface SeriesKey {
+  key: string;
+  label: string;
+  /** Present on the folded "__other__" series: what it absorbed. */
+  members?: string[];
+}
+
+/** One day. Beyond `date` and `total`, each series key is its own field, so
+ *  the row can be handed to the chart without pivoting. */
+export interface ValueRow {
+  date: string;
   total: number;
+  [seriesKey: string]: string | number;
 }
 
 export interface ValueOverTime {
   base_currency: string;
-  points: ValuePoint[];
+  mode: BreakdownMode;
+  keys: SeriesKey[];
+  rows: ValueRow[];
 }
 
 export interface AllocationItem {
@@ -70,11 +87,21 @@ export interface AllocationCategory {
   assets: number;
 }
 
+export interface AllocationProfile {
+  /** safe | moderate | risky | illiquid */
+  profile: string;
+  value: number;
+  percent: number;
+  /** Which asset classes rolled up into this band. */
+  categories: string[];
+}
+
 export interface Allocation {
   base_currency: string;
   total: number;
   items: AllocationItem[];
   by_category: AllocationCategory[];
+  by_profile: AllocationProfile[];
 }
 
 export interface Prices {

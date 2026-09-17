@@ -2,15 +2,17 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, fmtMoney } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { Allocation, Prices, Summary, ValueOverTime } from "@/lib/types";
+import type { Allocation, BreakdownMode, Prices, Summary, ValueOverTime } from "@/lib/types";
 import PortfolioChart from "@/components/PortfolioChart";
 import AllocationChart from "@/components/AllocationChart";
+import PortfolioProfile from "@/components/PortfolioProfile";
 
 export default function Dashboard() {
   const { t, locale } = useI18n();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [valueTime, setValueTime] = useState<ValueOverTime | null>(null);
   const [allocation, setAllocation] = useState<Allocation | null>(null);
+  const [mode, setMode] = useState<BreakdownMode>("total");
   const [prices, setPrices] = useState<Prices | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,15 +20,13 @@ export default function Dashboard() {
     let alive = true;
     async function load() {
       try {
-        const [s, v, a, p] = await Promise.all([
+        const [s, a, p] = await Promise.all([
           api.summary(),
-          api.valueOverTime(),
           api.allocation(),
           api.prices(),
         ]);
         if (!alive) return;
         setSummary(s);
-        setValueTime(v);
         setAllocation(a);
         setPrices(p);
         setError(null);
@@ -41,6 +41,26 @@ export default function Dashboard() {
       clearInterval(id);
     };
   }, []);
+
+  // The time series is the only thing the split affects, so it reloads on its
+  // own rather than pulling the whole dashboard down with it.
+  useEffect(() => {
+    let alive = true;
+    async function loadSeries() {
+      try {
+        const v = await api.valueOverTime(mode);
+        if (alive) setValueTime(v);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : t("common.failedLoad"));
+      }
+    }
+    loadSeries();
+    const id = setInterval(loadSeries, 30000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [mode]);
 
   const currency = summary?.base_currency ?? "PLN";
 
@@ -87,21 +107,43 @@ export default function Dashboard() {
 
       <div className="card">
         <h2 className="mb-4 text-lg font-semibold">{t("dash.valueOverTime")}</h2>
-        <PortfolioChart points={valueTime?.points ?? []} currency={currency} />
+        <PortfolioChart
+          rows={valueTime?.rows ?? []}
+          keys={valueTime?.keys ?? []}
+          mode={mode}
+          onModeChange={setMode}
+          currency={currency}
+        />
       </div>
 
       <div className="card">
-        <h2 className="mb-4 text-lg font-semibold">{t("dash.allocation")}</h2>
-        <AllocationChart
-          slices={(allocation?.by_category ?? []).map((g) => ({
-            key: g.category,
-            label: g.category,
-            icon: g.icon,
-            value: g.value,
-            percent: g.percent,
-          }))}
-          currency={currency}
-        />
+        <h2 className="mb-4 text-lg font-semibold">{t("dash.breakdown")}</h2>
+        <div className="grid gap-8 md:grid-cols-2">
+          <section>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide subtle">
+              {t("dash.allocation")}
+            </h3>
+            <AllocationChart
+              currency={currency}
+              slices={(allocation?.by_category ?? []).map((g) => ({
+                key: g.category,
+                label: g.category,
+                icon: g.icon,
+                value: g.value,
+                percent: g.percent,
+              }))}
+            />
+          </section>
+          <section>
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide subtle">
+              {t("dash.profile")}
+            </h3>
+            <PortfolioProfile
+              bands={allocation?.by_profile ?? []}
+              currency={currency}
+            />
+          </section>
+        </div>
       </div>
     </div>
   );

@@ -75,6 +75,24 @@ const en: Dict = {
   "pos.interestNote":
     "Statutory interest is worked out on the server against the NBP reference rate, so it grows on its own.",
   "pos.needStartDate": "Give the date the interest starts running.",
+  "dash.profile": "Risk profile",
+  "dash.breakdown": "Breakdown",
+  "chart.by": "Split by",
+  "chart.total": "Total",
+  "chart.asset": "Assets",
+  "chart.category": "Classes",
+  "chart.profile": "Risk",
+  "chart.other": "Other",
+  "chart.singleDay":
+    "One day of history so far - the line appears once positions have been updated on a later date.",
+  "dash.otherSlices": "Other ({count})",
+  "dash.otherDetail": "Other covers: {names}",
+  "profile.safe": "Safe",
+  "profile.moderate": "Moderate",
+  "profile.risky": "Risky",
+  "profile.illiquid": "Illiquid",
+  "profile.hint":
+    "Volatility and liquidity are separate axes: the illiquid band is not more risky, it is harder to sell.",
 
   "exp.title": "Expenses",
   "exp.subtitle":
@@ -250,6 +268,24 @@ const pl: Dict = {
   "pos.interestNote":
     "Odsetki ustawowe liczy serwer wg stopy referencyjnej NBP, więc rosną same.",
   "pos.needStartDate": "Podaj datę, od której biegną odsetki.",
+  "dash.profile": "Profil ryzyka",
+  "dash.breakdown": "Struktura portfela",
+  "chart.by": "Podział",
+  "chart.total": "Razem",
+  "chart.asset": "Aktywa",
+  "chart.category": "Klasy",
+  "chart.profile": "Ryzyko",
+  "chart.other": "Pozostałe",
+  "chart.singleDay":
+    "Na razie jeden dzień historii - linia pojawi się, gdy zaktualizujesz pozycje w kolejnym dniu.",
+  "dash.otherSlices": "Pozostałe ({count})",
+  "dash.otherDetail": "Pozostałe obejmuje: {names}",
+  "profile.safe": "Bezpieczne",
+  "profile.moderate": "Umiarkowane",
+  "profile.risky": "Ryzykowne",
+  "profile.illiquid": "Niepłynne",
+  "profile.hint":
+    "Zmienność i płynność to osobne osie: pasmo niepłynne nie jest bardziej ryzykowne, tylko trudniejsze do sprzedania.",
 
   "exp.title": "Wydatki",
   "exp.subtitle":

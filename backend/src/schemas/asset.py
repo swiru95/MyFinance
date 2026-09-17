@@ -10,6 +10,7 @@ class AssetIn(BaseModel):
     kind: str = "currency"
     category: str = ""
     interest_basis: str = ""
+    profile: str = ""
     icon: str = ""
     units: str = ""
 
@@ -22,6 +23,7 @@ class AssetOut(BaseModel):
     kind: str
     category: str
     interest_basis: str
+    profile: str
     icon: str
     units: str
     created_at: datetime
