@@ -17,6 +17,7 @@ export interface AllocationSlice {
   icon: string;
   value: number;
   percent: number;
+  color?: string;
 }
 
 /** How many slices get their own hue before the tail is folded away. One slot
@@ -83,7 +84,7 @@ export default function AllocationChart({ slices, currency, preserveOrder }: Pro
               paddingAngle={2}
             >
               {data.map((_, idx) => (
-                <Cell key={idx} fill={colorAt(idx)} />
+                <Cell key={idx} fill={shown[idx].color ?? colorAt(idx)} />
               ))}
             </Pie>
             <Tooltip
@@ -104,7 +105,7 @@ export default function AllocationChart({ slices, currency, preserveOrder }: Pro
             <span className="flex items-center gap-2">
               <span
                 className="inline-block h-3 w-3 rounded-full"
-                style={{ backgroundColor: colorAt(idx) }}
+                style={{ backgroundColor: shown[idx].color ?? colorAt(idx) }}
               />
               <span>
                 {i.icon} {i.label}

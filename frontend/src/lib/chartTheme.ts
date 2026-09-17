@@ -34,6 +34,45 @@ export const SERIES_DARK = [
 
 export const MAX_SERIES = SERIES_LIGHT.length;
 
+/** Risk profile colours: the band name itself encodes risk semantics, so the
+ *  colour should too. These break from the positional palette
+ *  (SERIES_LIGHT/DARK), which assigns colours by slot index - a band must keep
+ *  its meaning-bearing hue no matter where it sorts.
+ *
+ *  Still drawn from the eight validated slots rather than picked by eye, so the
+ *  CVD work behind that palette carries over. Measured for this set of four:
+ *  worst normal-vision dE 60.9, worst protanopia dE 23.0.
+ *
+ *  Two known trade-offs, both deliberate:
+ *
+ *  - Yellow is the weakest slot against a white card (2.17:1, under the 3:1
+ *    guidance for graphical objects). Accepted because the legend prints every
+ *    band's name, share and amount as text, so the swatch is never the only way
+ *    to read the chart - the same relief the palette comment already relies on.
+ *    Darkening it to pass contrast is worse, not better: at #bf8200 it collapses
+ *    against the illiquid green under protanopia (dE 6.9 vs 23.0 here).
+ *  - Red and green sit together by construction, since risky and illiquid want
+ *    exactly those meanings. Worst deuteranopia dE is 13.5 between them. The
+ *    icons (📈 / 🔒) and the text legend carry the distinction. */
+export const PROFILE_LIGHT: Record<string, string> = {
+  safe: "#2a78d6",       // slot 0, blue
+  moderate: "#eda100",   // slot 3, yellow
+  risky: "#e34948",      // slot 7, red
+  illiquid: "#008300",   // slot 5, green
+};
+
+export const PROFILE_DARK: Record<string, string> = {
+  safe: "#3987e5",       // slot 0, blue
+  moderate: "#c98500",   // slot 3, yellow
+  risky: "#e66767",      // slot 7, red
+  illiquid: "#008300",   // slot 5, green
+};
+
+export function profileColor(profile: string, dark: boolean): string | undefined {
+  const map = dark ? PROFILE_DARK : PROFILE_LIGHT;
+  return map[profile];
+}
+
 export interface ChartTheme {
   dark: boolean;
   series: readonly string[];

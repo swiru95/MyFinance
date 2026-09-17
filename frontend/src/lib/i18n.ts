@@ -50,6 +50,39 @@ const en: Dict = {
   "dash.allocation": "Allocation",
   "dash.noHistory": "No history yet — update a position to start tracking.",
   "dash.nothingToAllocate": "Nothing to allocate yet.",
+  "dash.monthlyCommitted": "Monthly commitment",
+  "dash.fromExpenses": "From your recurring expenses",
+  "dash.runway": "Reserve covers",
+  "dash.runwayMonths": "{months} months",
+  "dash.runwayFrom": "Safe assets ÷ monthly commitment",
+  "dash.runwayNeedExpenses": "Add expenses to see this",
+  "dash.runwayNoSafe": "No safe assets recorded",
+  "dash.runwayTitle": "Reserve cover over time",
+  "dash.runwaySubtitle":
+    "Safe assets divided by that month's commitments. Months, not money, so it gets an axis of its own.",
+  "dash.runwayTarget": "{months}-month target",
+  "dash.runwayEmpty": "Needs recurring expenses and some portfolio history.",
+  "dash.runwayRecorded": "Recorded",
+  "dash.runwayProjected": "Projected",
+  "dash.runwayAssumption":
+    "Projection uses your known future commitments and assumes safe assets grow by your average monthly surplus ({value}).",
+  "dash.runwayNoProjection":
+    "Record a month's income and spending to project this forward.",
+  "dash.runwayCrosses": "Falls below the {months}-month target around {month}.",
+  "dash.runwayReaches": "Reaches the {months}-month target around {month}.",
+  "dash.runwayStaysBelow": "Stays below the {months}-month target over this horizon.",
+  "dash.runwayStaysAbove": "Stays above the {months}-month target over this horizon.",
+  "chart.reserveLine": "{months}-month reserve",
+  "chart.projBase": "Projection",
+  "chart.projLow": "Cautious",
+  "chart.projHigh": "Optimistic",
+  "chart.projNote":
+    "Dashed lines project {years} years at {rate}% a year — your allocation valued at long-run class averages — plus {contribution} a month from your average surplus. Cautious and optimistic halve and increase that rate by half.",
+  "chart.projCrypto":
+    "Crypto is projected at 0%: it is {share}% of this portfolio, and any rate put on it would drive the chart while being a guess.",
+  "chart.projRates": "Assumed rates",
+  "chart.reserveHint":
+    "The dashed line is {months} months of commitments ({value}). Split by risk to see whether your safe band clears it.",
 
   "pos.title": "Positions",
   "pos.subtitle":
@@ -295,6 +328,39 @@ const pl: Dict = {
   "dash.noHistory":
     "Brak historii — zaktualizuj pozycję, aby rozpocząć śledzenie.",
   "dash.nothingToAllocate": "Brak danych do pokazania.",
+  "dash.monthlyCommitted": "Zobowiązania miesięczne",
+  "dash.fromExpenses": "Z Twoich wydatków cyklicznych",
+  "dash.runway": "Rezerwa starczy na",
+  "dash.runwayMonths": "{months} mies.",
+  "dash.runwayFrom": "Aktywa bezpieczne ÷ zobowiązania miesięczne",
+  "dash.runwayNeedExpenses": "Dodaj wydatki, aby zobaczyć",
+  "dash.runwayNoSafe": "Brak aktywów bezpiecznych",
+  "dash.runwayTitle": "Zasięg rezerwy w czasie",
+  "dash.runwaySubtitle":
+    "Aktywa bezpieczne podzielone przez zobowiązania danego miesiąca. To miesiące, nie złotówki, więc mają własną oś.",
+  "dash.runwayTarget": "cel {months} mies.",
+  "dash.runwayEmpty": "Wymaga wydatków cyklicznych i historii portfela.",
+  "dash.runwayRecorded": "Zapisane",
+  "dash.runwayProjected": "Prognoza",
+  "dash.runwayAssumption":
+    "Prognoza korzysta ze znanych przyszłych zobowiązań i zakłada, że aktywa bezpieczne rosną o Twoją średnią miesięczną nadwyżkę ({value}).",
+  "dash.runwayNoProjection":
+    "Zapisz przychód i wydatki za miesiąc, aby zobaczyć prognozę.",
+  "dash.runwayCrosses": "Spada poniżej celu {months} mies. około {month}.",
+  "dash.runwayReaches": "Osiąga cel {months} mies. około {month}.",
+  "dash.runwayStaysBelow": "W tym horyzoncie pozostaje poniżej celu {months} mies.",
+  "dash.runwayStaysAbove": "W tym horyzoncie pozostaje powyżej celu {months} mies.",
+  "chart.reserveLine": "rezerwa {months} mies.",
+  "chart.projBase": "Projekcja",
+  "chart.projLow": "Ostrożnie",
+  "chart.projHigh": "Optymistycznie",
+  "chart.projNote":
+    "Linie przerywane to {years} lata przy {rate}% rocznie — Twoja alokacja wyceniona długoterminowymi średnimi klas — plus {contribution} miesięcznie z Twojej średniej nadwyżki. Wariant ostrożny i optymistyczny to ta stopa razy 0,5 i razy 1,5.",
+  "chart.projCrypto":
+    "Krypto liczone jako 0%: to {share}% tego portfela, a każda przyjęta stopa sterowałaby wykresem, pozostając zgadywaniem.",
+  "chart.projRates": "Przyjęte stopy",
+  "chart.reserveHint":
+    "Linia przerywana to {months} miesięcy zobowiązań ({value}). Przełącz na podział wg ryzyka, aby zobaczyć, czy pasmo bezpieczne ją przekracza.",
 
   "pos.title": "Pozycje",
   "pos.subtitle":
