@@ -26,6 +26,12 @@ const en: Dict = {
   "nav.monthly": "Monthly",
   "nav.settings": "Settings",
 
+  "auth.prompt": "Sign in with your work account to continue.",
+  "auth.signIn": "Sign in with Microsoft",
+  "auth.signOut": "Sign out",
+  "auth.signedInAs": "Signed in as",
+  "auth.expired": "Your session expired. Sign in again to continue.",
+
   "common.add": "Add",
   "common.edit": "Edit",
   "common.delete": "Delete",
@@ -302,6 +308,12 @@ const pl: Dict = {
   "nav.expenses": "Wydatki",
   "nav.monthly": "Miesięcznie",
   "nav.settings": "Ustawienia",
+
+  "auth.prompt": "Zaloguj się kontem służbowym, aby kontynuować.",
+  "auth.signIn": "Zaloguj się przez Microsoft",
+  "auth.signOut": "Wyloguj się",
+  "auth.signedInAs": "Zalogowano jako",
+  "auth.expired": "Sesja wygasła. Zaloguj się ponownie, aby kontynuować.",
 
   "common.add": "Dodaj",
   "common.edit": "Edytuj",

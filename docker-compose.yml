@@ -5,6 +5,14 @@ services:
     restart: unless-stopped
     environment:
       - MYFINANCE_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      # Entra ID SSO. Leave both unset and the API is open and the frontend
+      # skips the sign-in screen entirely - which is what you want locally, and
+      # is why compose does not hardcode them. Export them in your shell to
+      # exercise the real flow; the app registration needs
+      # http://localhost:3000 as an SPA redirect URI for that to work.
+      - MYFINANCE_AUTH_TENANT_ID=${MYFINANCE_AUTH_TENANT_ID:-}
+      - MYFINANCE_AUTH_CLIENT_ID=${MYFINANCE_AUTH_CLIENT_ID:-}
+      - MYFINANCE_AUTH_REQUIRED_ROLE=${MYFINANCE_AUTH_REQUIRED_ROLE:-MyFinance.User}
       # Wallet assessment. Taken from your shell so the key is never written
       # into this file; leave them unset and the Report page reports itself
       # unconfigured instead of failing. See README "Wallet assessment".

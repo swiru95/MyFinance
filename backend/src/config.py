@@ -46,6 +46,30 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{DATA_DIR / 'myfinance.db'}"
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
+    # --- Entra ID SSO (OAuth 2.0 authorization code + PKCE) -----------------
+    # Unset tenant or client id disables authentication entirely, the same way
+    # an unset LLM base URL disables the assessment. That keeps `docker compose
+    # up` and local development working untouched; the Helm chart always sets
+    # both. main.py logs a loud warning on startup when it is off, because the
+    # failure mode of a misconfigured deploy is an open API.
+    auth_tenant_id: str = ""
+    auth_client_id: str = ""
+    # The scope the SPA asks for. The app registration exposes it on its own
+    # Application ID URI, so one registration serves as both the client and the
+    # protected API - see README "Entra ID SSO".
+    auth_api_scope: str = "access_as_user"
+    # App role a caller must hold. Combined with "Assignment required" on the
+    # enterprise application this is the actual gate: a valid tenant token
+    # without the role is rejected. Empty means any authenticated tenant user,
+    # which for a single-person finance app is not what you want.
+    auth_required_role: str = "MyFinance.User"
+    # Signing keys are cached for this long. Microsoft rotates them, so this
+    # cannot be indefinite; an hour is well inside the rotation window and
+    # keeps login off the critical path of every request.
+    auth_jwks_cache_seconds: int = 3600
+    # Clock skew tolerated on exp/nbf.
+    auth_leeway_seconds: int = 60
+
     # --- Wallet assessment (llama-server, OpenAI-compatible API) -------------
     # Unset base URL or key disables the feature rather than failing requests:
     # the Report page says so instead of erroring on every generation.

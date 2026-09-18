@@ -21,13 +21,61 @@ import type {
 
 const BASE = "/api";
 
+/** Supplies an Entra access token, or null when authentication is disabled.
+ *
+ *  Injected by AuthProvider rather than imported, so this module keeps no
+ *  dependency on MSAL and stays usable when there is no tenant configured. */
+type TokenProvider = () => Promise<string | null>;
+
+let getToken: TokenProvider | null = null;
+
+export function setTokenProvider(provider: TokenProvider | null): void {
+  getToken = provider;
+}
+
+/** Notified when the backend rejects a token, so the app can send the user
+ *  back to sign-in instead of every page rendering its own "failed to load".
+ *  MSAL renews silently on its own, so reaching here means the token was
+ *  refused outright - revoked, role unassigned, or the tenant reconfigured. */
+let onAuthError: ((status: number) => void) | null = null;
+
+export function setAuthErrorHandler(
+  handler: ((status: number) => void) | null
+): void {
+  onAuthError = handler;
+}
+
+/** Raised on 401/403 so callers can tell "you are not allowed" apart from
+ *  "the request failed", which read identically as a bare Error. */
+export class AuthError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AuthError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options?.headers as Record<string, string>) ?? {}),
+  };
+  if (getToken) {
+    // MSAL serves this from cache until the token is close to expiring, so
+    // this is not a network round trip on every call.
+    const token = await getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 403) {
+      onAuthError?.(res.status);
+      throw new AuthError(res.status, body || res.statusText);
+    }
     throw new Error(`API ${res.status}: ${body || res.statusText}`);
   }
   if (res.status === 204) {

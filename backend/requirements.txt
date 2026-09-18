@@ -6,3 +6,6 @@ pydantic==2.11.7
 pydantic-settings==2.9.1
 httpx==0.28.1
 python-multipart==0.0.20
+# Entra ID access-token validation. The [crypto] extra pulls in `cryptography`,
+# which PyJWT needs for RS256 - Microsoft's signing keys are RSA.
+pyjwt[crypto]==2.10.1

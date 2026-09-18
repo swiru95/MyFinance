@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useI18n } from "@/lib/i18n";
+import AccountMenu from "./AccountMenu";
 
 const links = [
   { href: "/", key: "nav.dashboard" },
@@ -37,6 +38,7 @@ export default function Header() {
               {t(l.key)}
             </Link>
           ))}
+          <AccountMenu />
         </nav>
       </div>
     </header>
