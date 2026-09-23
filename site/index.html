@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyFinance — self-hosted budget &amp; portfolio tracker</title>
+<meta name="description" content="Track every asset you own in one currency, see what you really spend, and get a private portfolio review from a model on your own hardware. Self-hosted, open source.">
+<meta property="og:title" content="MyFinance — your whole net worth, one honest number">
+<meta property="og:description" content="A self-hosted budget and portfolio tracker for everything you own, from cash and bonds to gold and Bitcoin.">
+<meta property="og:image" content="img/dashboard.webp">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235B54E8'/%3E%3Ctext x='32' y='45' font-family='Arial' font-size='36' font-weight='700' fill='white' text-anchor='middle'%3E%E2%82%A3%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #121629; --ink-2: #1C2140; --ink-line: #2C3150;
+    --paper: #F5F3EE; --card: #FDFCF9; --line: #DDD8CC;
+    --accent: #5B54E8; --accent-soft: #A9A5FF; --amber: #F2A93B;
+    --muted: #4E5468; --muted-dark: #B7BAD3;
+    --head: 'Fraunces', Georgia, serif; --body: 'DM Sans', Arial, sans-serif; --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --wrap: 1180px; --gutter: 24px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 18px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  img { display: block; max-width: 100%; height: auto; }
+  a { color: inherit; }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
+  h1, h2, h3 { font-family: var(--head); font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  h1 { font-size: clamp(44px, 7vw, 84px); line-height: 1.02; }
+  h2 { font-size: clamp(32px, 4.2vw, 52px); line-height: 1.08; }
+  h3 { font-size: 24px; line-height: 1.25; font-family: var(--body); font-weight: 700; letter-spacing: 0; }
+  p { margin: 0; }
+  .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+  .dark .eyebrow { color: var(--accent-soft); }
+  .lead { font-size: 20px; color: var(--muted); max-width: 640px; }
+  .dark { background: var(--ink); color: var(--paper); }
+  .dark .lead, .dark .muted { color: var(--muted-dark); }
+  .muted { color: var(--muted); }
+  section { padding: 112px 0; }
+
+  /* nav */
+  nav { position: sticky; top: 0; z-index: 10; background: rgba(18, 22, 41, 0.86); backdrop-filter: blur(12px); border-bottom: 1px solid var(--ink-line); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--paper); font-weight: 700; font-size: 18px; text-decoration: none; }
+  .brand i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); font-style: normal; font-size: 17px; }
+  .nav-links { display: flex; gap: 28px; }
+  .nav-links a { color: var(--muted-dark); text-decoration: none; font-size: 15px; }
+  .nav-links a:hover { color: var(--paper); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 16px; text-decoration: none; transition: transform .15s, background .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4B44D6; }
+  .btn-ghost { border: 1px solid var(--ink-line); color: var(--paper); }
+  .btn-ghost:hover { background: var(--ink-2); }
+  nav .btn { padding: 8px 14px; font-size: 14px; }
+
+  /* hero */
+  .hero { position: relative; overflow: hidden; padding: 96px 0 0; background: radial-gradient(circle at 80% 30%, #2B2F7A 0%, var(--ink) 55%); }
+  .hero .wrap { display: grid; gap: 56px; }
+  .hero h1 { max-width: 820px; }
+  .hero .lead { margin-top: 24px; font-size: 21px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+  .hero-shot { border-radius: 16px 16px 0 0; border: 1px solid var(--ink-line); border-bottom: 0; box-shadow: 0 40px 120px rgba(0,0,0,.55); overflow: hidden; }
+
+  /* frames */
+  .frame { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(18, 22, 41, 0.14); }
+  .dark .frame { border-color: var(--ink-line); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4); }
+  figcaption { margin-top: 12px; font-size: 15px; color: var(--muted); }
+  .dark figcaption { color: var(--muted-dark); }
+  figure { margin: 0; }
+
+  /* problem */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 48px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+  .card h3 { font-family: var(--head); font-weight: 600; font-size: 26px; margin-bottom: 10px; }
+  .card p { color: var(--muted); }
+
+  /* feature rows */
+  .feature { display: grid; grid-template-columns: 5fr 7fr; gap: 64px; align-items: center; }
+  .feature.flip { grid-template-columns: 7fr 5fr; }
+  .feature.flip .text { order: 2; }
+  .feature .text p + p, .feature .text ul { margin-top: 16px; }
+  .feature + .feature { margin-top: 120px; }
+  .text h2 { margin-bottom: 20px; }
+  .ticks { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 12px; }
+  .ticks li { position: relative; padding-left: 30px; }
+  .ticks li::before { content: ""; position: absolute; left: 0; top: 9px; width: 16px; height: 9px; border-left: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent); transform: rotate(-45deg); }
+  .dark .ticks li::before { border-color: var(--accent-soft); }
+  .units { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 16px; }
+  .units td { padding: 10px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .units td:first-child { font-weight: 700; padding-right: 16px; }
+  .units td:last-child { color: var(--muted); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+  .stack-v { display: grid; gap: 20px; }
+
+  /* bands */
+  .bands { display: grid; gap: 0; margin-top: 24px; }
+  .bands div { display: flex; gap: 16px; padding: 12px 0; border-top: 1px solid var(--ink-line); }
+  .bands b { width: 110px; flex: none; }
+
+  /* statement */
+  .statement { background: var(--accent); color: var(--paper); text-align: left; }
+  .statement .eyebrow { color: #E4E2FF; }
+  .formula { font-family: var(--head); font-size: clamp(34px, 5.4vw, 68px); line-height: 1.1; letter-spacing: -0.02em; font-weight: 600; }
+  .statement p.lead { color: #ECEBFF; margin-top: 28px; max-width: 760px; }
+
+  .dark .card { background: var(--ink-2); border-color: var(--ink-line); }
+  .dark .card h3 { color: var(--paper); }
+  .dark .card p { color: var(--muted-dark); }
+  .dark-cards { margin-top: 64px; }
+  h3.sub { font-family: var(--head); font-weight: 600; font-size: 28px; margin-top: 88px; }
+  .styles { margin-top: 24px; }
+  .styles .card h3 { font-family: var(--head); font-size: 24px; margin-bottom: 8px; color: var(--accent-soft); }
+  .ai-facts h3.sub { margin-top: 72px; font-size: 24px; }
+  .ai-facts { margin-top: 0; }
+
+  /* grid items default to min-width:auto, so a long <pre> line would widen its column past the viewport */
+  .qs > *, .feature > *, .pair > * { min-width: 0; }
+
+  .ai-hook { margin-bottom: 96px; }
+  .ai-hook h2 { font-size: clamp(36px, 5.4vw, 68px); max-width: 960px; }
+  .hook-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 48px; }
+  .hook-stats div { border-top: 2px solid var(--accent-soft); padding-top: 20px; display: grid; gap: 6px; }
+  .hook-stats b { font-family: var(--head); font-size: clamp(48px, 6vw, 72px); line-height: 1; font-weight: 600; }
+  .hook-stats span { color: var(--muted-dark); }
+  @media (max-width: 600px) { .hook-stats { grid-template-columns: 1fr; } }
+
+  /* security grid */
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 48px; }
+  .grid4 .card svg { width: 32px; height: 32px; color: var(--accent); margin-bottom: 14px; }
+  .grid4 .card h3 { font-family: var(--body); font-weight: 700; font-size: 20px; }
+
+  /* quick start */
+  .qs { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+  pre { margin: 24px 0 0; background: var(--ink-2); border: 1px solid var(--ink-line); border-radius: 14px; padding: 22px 24px; overflow-x: auto; font-family: var(--mono); font-size: 16px; line-height: 1.7; color: var(--paper); }
+  pre .c { color: var(--muted-dark); }
+  pre .p { color: var(--amber); }
+  .stack-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+  .stack-table td { padding: 14px 0; border-top: 1px solid var(--ink-line); vertical-align: top; }
+  .stack-table td:first-child { width: 120px; font-weight: 700; color: var(--accent-soft); }
+  .stack-table td:last-child { color: var(--muted-dark); }
+
+  footer { background: var(--ink); color: var(--muted-dark); border-top: 1px solid var(--ink-line); padding: 40px 0; font-size: 15px; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+  .closing { text-align: center; }
+  .closing h2 { font-size: clamp(36px, 5.4vw, 68px); max-width: 900px; margin: 0 auto; }
+  .closing .cta { justify-content: center; }
+
+  @media (max-width: 960px) {
+    section { padding: 80px 0; }
+    .feature, .feature.flip, .qs { grid-template-columns: 1fr; gap: 36px; }
+    .feature.flip .text { order: 0; }
+    .feature + .feature { margin-top: 88px; }
+    .cards { grid-template-columns: 1fr; }
+    .grid4 { grid-template-columns: 1fr 1fr; }
+    .nav-links { display: none; }
+  }
+  @media (max-width: 600px) {
+    :root { --gutter: 16px; }
+    body { font-size: 17px; }
+    .pair, .grid4 { grid-template-columns: 1fr; }
+    .hero { padding-top: 64px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><i>₣</i>MyFinance</a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#effective">Effective spend</a>
+      <a href="#ai">AI analyst</a>
+      <a href="#security">Security</a>
+      <a href="#start">Get started</a>
+    </div>
+    <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero dark" id="top">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Self-hosted · Open source</p>
+      <h1>Your whole net worth. One honest number.</h1>
+      <p class="lead">A budget and portfolio tracker for everything you own, from cash and bonds to gold and Bitcoin. Everything is valued live in a single currency, it shows what you really spend, and a private AI analyst on your own GPU reviews it all.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#start">Run it in one command</a>
+        <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">View on GitHub</a>
+      </div>
+    </div>
+    <div class="hero-shot"><img src="img/dashboard.webp" width="2880" height="1800" alt="MyFinance dashboard: total portfolio, monthly commitment, reserve cover, and live gold and crypto prices"></div>
+  </div>
+</header>
+
+<section id="problem">
+  <div class="wrap">
+    <p class="eyebrow">The problem</p>
+    <h2>Your money lives in a dozen places, so three simple questions go unanswered.</h2>
+    <div class="cards">
+      <div class="card"><h3>What am I worth today?</h3><p>Cash in the bank, ETFs at a broker, coins on an exchange and gold in a safe, all in different units and currencies.</p></div>
+      <div class="card"><h3>Where did the money go?</h3><p>Budgets only catch what you remember to type in. The rest disappears quietly.</p></div>
+      <div class="card"><h3>How much risk am I taking?</h3><p>A market drawdown and an illiquid watch collection are different risks, and a spreadsheet treats them the same.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="padding-top:0">
+  <div class="wrap">
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Positions</p>
+        <h2>Track each asset in its real unit</h2>
+        <p class="muted">Enter gold in grams and crypto in coins. MyFinance fetches live prices and converts everything into your base currency.</p>
+        <table class="units">
+          <tr><td>Cash, savings, bonds</td><td>PLN, EUR, USD or CHF</td></tr>
+          <tr><td>Gold</td><td>grams, at the live price per gram</td></tr>
+          <tr><td>Bitcoin, Solana</td><td>coin quantity, priced live</td></tr>
+          <tr><td>Stocks, funds, pensions</td><td>value in any currency</td></tr>
+          <tr><td>Watches, vehicles</td><td>revalue whenever you like</td></tr>
+        </table>
+        <p class="muted">Every update is timestamped, so your history builds itself.</p>
+      </div>
+      <figure class="frame"><img src="img/positions.webp" width="2880" height="2000" loading="lazy" alt="Positions page listing cash, gold in grams, stocks, funds and bonds, each with Update and History"></figure>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <p class="eyebrow">History</p>
+        <h2>See how the portfolio grew, and what drove it</h2>
+        <p class="muted">One chart, four views: total, per asset, per class and per risk band. Past points keep the prices of their own day, so you see what actually happened rather than today's prices applied to last year.</p>
+        <ul class="ticks">
+          <li>Projection with cautious and optimistic scenarios</li>
+          <li>Six-month reserve line drawn on the chart</li>
+        </ul>
+      </div>
+      <div class="stack-v">
+        <figure class="frame"><img src="img/chart-classes.webp" width="2240" height="924" loading="lazy" alt="Stacked area chart of portfolio value over a year, split by asset class"></figure>
+        <figure class="frame"><img src="img/chart-risk.webp" width="2240" height="876" loading="lazy" alt="Stacked area chart of portfolio value split by risk band"></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dark" id="risk">
+  <div class="wrap">
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Risk profile</p>
+        <h2>Know how exposed you really are</h2>
+        <p class="lead">Allocation tells you what you hold. The risk profile tells you how exposed you are and how quickly you could get your money out.</p>
+        <div class="bands">
+          <div><b>Safe</b><span class="muted">cash, savings, bonds: available tomorrow</span></div>
+          <div><b>Moderate</b><span class="muted">funds, gold, retirement</span></div>
+          <div><b>Risky</b><span class="muted">stocks, crypto: can fall sharply</span></div>
+          <div><b>Illiquid</b><span class="muted">watches, vehicles, receivables: slow to sell</span></div>
+        </div>
+      </div>
+      <figure class="frame"><img src="img/breakdown.webp" width="2240" height="1204" loading="lazy" alt="Allocation and risk-profile donut charts with the percentage for each class and band"></figure>
+    </div>
+    <div class="cards dark-cards">
+      <div class="card"><h3>Two axes, not one</h3><p>Volatility and liquidity are measured separately. A watch collection won't crash, but it can't pay next month's rent either, so it gets its own band instead of inflating "risky".</p></div>
+      <div class="card"><h3>Your safety net comes from it</h3><p>Reserve cover counts only the safe band against your monthly commitments. Split the value chart by risk to see whether that band stays above the six-month line.</p></div>
+      <div class="card"><h3>Each asset has its own band</h3><p>Every asset starts in its class's band but keeps its own, so one holding can be classed differently from the rest. The AI review is told the bands too.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="statement" id="effective">
+  <div class="wrap">
+    <p class="eyebrow">Effective spend</p>
+    <p class="formula">effective spend =<br>income − change in net worth</p>
+    <p class="lead">Everything you earn either ends up in your portfolio or gets spent. MyFinance works out your real spending from your net worth, including everything you forgot to log. It's honest about markets too: a drawdown counts in the month it happens, and the app tells you so.</p>
+  </div>
+</section>
+
+<section id="monthly">
+  <div class="wrap">
+    <div class="feature flip">
+      <div class="text">
+        <p class="eyebrow">Monthly</p>
+        <h2>Monthly budgets you never have to retype</h2>
+        <p class="muted">Record income and spend once a month. Committed spend comes from your recurring expenses, so fixing an expense also corrects every past month it applies to.</p>
+        <ul class="ticks">
+          <li>Savings rate and surplus for every month</li>
+          <li>Typed-in spend next to effective spend</li>
+          <li>Commitments broken down by category</li>
+        </ul>
+      </div>
+      <div class="stack-v">
+        <figure class="frame"><img src="img/monthly-top.webp" width="2880" height="1120" loading="lazy" alt="Monthly page for July 2026 showing income, actual spend, committed spend, surplus and effective spend"></figure>
+        <figure class="frame"><img src="img/monthly-chart.webp" width="2240" height="900" loading="lazy" alt="Chart comparing committed, income, actual and effective spend over two years"></figure>
+      </div>
+    </div>
+
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Expenses &amp; reserve</p>
+        <h2>Plan for what you've already committed to</h2>
+        <ul class="ticks">
+          <li>Rent, leases, subscriptions and one-off bills, in any currency</li>
+          <li>Upcoming payments and contracts ending soon are highlighted</li>
+          <li>Reserve cover projects how many months your safe assets last, including the bills already booked</li>
+        </ul>
+      </div>
+      <div class="stack-v">
+        <figure class="frame"><img src="img/expenses.webp" width="2880" height="2000" loading="lazy" alt="Expenses page with the monthly commitment, a breakdown by category and the recurring expense list"></figure>
+        <figure class="frame"><img src="img/reserve.webp" width="2240" height="636" loading="lazy" alt="Reserve cover over time, with a six-month target line and a dashed projection"></figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dark" id="ai">
+  <div class="wrap">
+    <div class="ai-hook">
+      <p class="eyebrow">AI inside</p>
+      <h2>Your own AI financial analyst, running on your own GPU.</h2>
+      <div class="hook-stats">
+        <div><b>122B</b><span>parameters in the model that writes your review</span></div>
+        <div><b>4</b><span>investing styles to judge your portfolio against</span></div>
+        <div><b>0</b><span>figures sent to a cloud AI provider</span></div>
+      </div>
+    </div>
+    <div class="feature flip">
+      <div class="text">
+        <p class="eyebrow">Wallet assessment</p>
+        <h2>A private portfolio review, on your own hardware</h2>
+        <p class="lead">Tell it what kind of investor you want to be. A language model then checks what you actually hold against that goal and says plainly where the two differ.</p>
+        <ul class="ticks">
+          <li>Qwen3.5 122B writes the review; Bielik 11B translates it into natural Polish</li>
+          <li>The request goes to your own GPU server, not a cloud API</li>
+          <li>Runs in the background, since a large model takes minutes</li>
+          <li>Each report is stored with the figures it was based on, so an old review still makes sense months later</li>
+        </ul>
+      </div>
+      <figure>
+        <div class="frame"><img src="img/report.webp" width="2880" height="2100" loading="lazy" alt="Assessment page with a style picker and a written review: summary, risks and recommendations"></div>
+        <figcaption>Sample report on demo data.</figcaption>
+      </figure>
+    </div>
+
+    <h3 class="sub">Four styles, four yardsticks</h3>
+    <div class="grid4 styles">
+      <div class="card"><h3>Safe</h3><p>Capital preservation first. Expects at least six months of cover and is strict about concentration in stocks, crypto or any single holding.</p></div>
+      <div class="card"><h3>Balanced</h3><p>Real equity exposure plus a three-to-six-month buffer. No single class should dominate, and speculative holdings stay a modest slice.</p></div>
+      <div class="card"><h3>Risky</h3><p>Drawdowns and conviction bets are accepted, but it still insists on enough cash that a bad year never forces a sale at the bottom.</p></div>
+      <div class="card"><h3>Long-term</h3><p>A horizon of ten years or more. Idle cash and fees count as real costs, and each holding has to make sense a decade from now.</p></div>
+    </div>
+
+    <div class="pair ai-facts">
+      <div>
+        <h3 class="sub">What the model sees</h3>
+        <ul class="ticks">
+          <li>Every holding with its value and share, rolled up by class and by risk band</li>
+          <li>Monthly commitments by category</li>
+          <li>Twelve months of income, recorded spend and effective spend, plus your savings rate</li>
+          <li>The same numbers the dashboard shows</li>
+        </ul>
+      </div>
+      <div>
+        <h3 class="sub">What you get back, and the rules it follows</h3>
+        <ul class="ticks">
+          <li>Summary, What stands out, Risks and Recommendations, in that order</li>
+          <li>Every recommendation names a target: a percentage, an amount or months of cover</li>
+          <li>It uses only your figures, never invents a number, and says when something is missing</li>
+          <li>It never recommends specific tickers, funds or products. It's analysis, not financial advice.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <p class="eyebrow">Security</p>
+    <h2>Security built in from the start</h2>
+    <div class="grid4">
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <h3>Entra ID sign-on</h3><p class="muted">Authorization code with PKCE. There's no client secret in the code, the chart or the image.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 11l2 2 4-4"/></svg>
+        <h3>Role-gated access</h3><p class="muted">Only accounts assigned the app role get in, not everyone in the tenant.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>
+        <h3>Mutual TLS</h3><p class="muted">The backend proves its identity with a certificate to PostgreSQL and to the model server.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
+        <h3>Self-hosted</h3><p class="muted">Your financial data stays on your own server or cluster. There's no third-party SaaS.</p>
+      </div>
+    </div>
+    <div class="pair">
+      <figure><div class="frame"><img src="img/dashboard-dark.webp" width="2880" height="1800" loading="lazy" alt="Dashboard in dark mode"></div><figcaption><b>Dark mode</b>, with charts themed to match.</figcaption></figure>
+      <figure><div class="frame"><img src="img/dashboard-pl.webp" width="2880" height="1800" loading="lazy" alt="Dashboard in Polish"></div><figcaption><b>English and Polish</b> throughout. Base currency can be PLN, EUR, USD or CHF.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="dark" id="start">
+  <div class="wrap qs">
+    <div>
+      <p class="eyebrow">Get started</p>
+      <h2>Up and running with one command</h2>
+      <pre><span class="p">$</span> git clone https://github.com/swiru95/MyFinance.git
+<span class="p">$</span> cd MyFinance
+<span class="p">$</span> docker compose up --build
+
+<span class="c"># open http://localhost:3000</span></pre>
+      <p class="lead" style="margin-top:24px">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away.</p>
+    </div>
+    <table class="stack-table">
+      <tr><td>Frontend</td><td>Next.js 14, TypeScript, Tailwind, Recharts</td></tr>
+      <tr><td>Backend</td><td>Python, FastAPI, SQLAlchemy</td></tr>
+      <tr><td>Database</td><td>SQLite, or PostgreSQL over mutual TLS</td></tr>
+      <tr><td>Deploy</td><td>Docker Compose, or a Helm chart on Kubernetes with images on GHCR</td></tr>
+      <tr><td>Prices</td><td>Public FX, gold and crypto APIs, with offline fallbacks</td></tr>
+      <tr><td>Models</td><td>Any OpenAI-compatible server, such as llama-server</td></tr>
+    </table>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="wrap">
+    <h2>Know what you own. Know what you really spend.</h2>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/swiru95/MyFinance">Get MyFinance on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>MyFinance · self-hosted budget &amp; portfolio tracker</span>
+    <span>Screenshots show demo data.</span>
+  </div>
+</footer>
+
+</body>
+</html>
