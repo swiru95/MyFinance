@@ -56,6 +56,19 @@ def test_invalid_tax_form_is_422(client):
     assert r.status_code == 422
 
 
+def test_invalid_ryczalt_health_tier_is_422(client):
+    r = client.post(
+        "/api/tax/b2b",
+        json={
+            "year": 2026,
+            "revenue_monthly": 10_000,
+            "costs_monthly": 0,
+            "options": {"tax_form": "ryczalt", "ryczalt_health_tier": 4},
+        },
+    )
+    assert r.status_code == 422
+
+
 def test_maly_zus_plus_without_custom_base_is_422(client):
     r = client.post(
         "/api/tax/b2b",

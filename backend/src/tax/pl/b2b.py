@@ -39,6 +39,12 @@ class B2bOptions:
     vat: str = "standard"  # standard | exempt | reverse_charge
     vat_rate: float = 0.23
     costs_vat_rate: float = 0.23
+    # ryczalt only. None = auto (today's behaviour: tier from full-year
+    # revenue - social, same figure the annual return would use). Most
+    # people instead pay all year at a chosen tier (typically last year's)
+    # and settle the gap with the annual return - see
+    # `ryczalt_health_reconciliation` on B2bYear.
+    ryczalt_health_tier: int | None = None
 
 
 def jdg_social_monthly(
@@ -138,6 +144,14 @@ class B2bYear:
     effective_rate: float | None
     pension_account_contributions: float
     warnings: list[str]
+    # Ryczalt only (else None). The tier a chosen-tier schedule would have
+    # paid is fixed all year; the tier the *actual* full-year revenue implies
+    # may differ, and the annual return settles the gap. Positive =
+    # underpaid, more to pay with the return; negative = overpaid. This is
+    # the health-contribution side only - it does not recompute the PIT
+    # effect of the 50%-of-health deduction against the actual tier.
+    ryczalt_health_reconciliation: float | None = None
+    ryczalt_health_tier_actual: int | None = None
 
     def to_dict(self) -> dict:
         return round_floats(dataclasses.asdict(self))
@@ -169,11 +183,20 @@ def b2b_schedule(
     ]
 
     ryczalt_tier = ryczalt_health = None
+    ryczalt_tier_actual = ryczalt_health_actual = None
     if opts.tax_form == "ryczalt":
         full_year_base = sum(revenue_by_month) - sum(
             s["total"] for s in social_by_month
         )
-        ryczalt_tier, ryczalt_health = _pick_ryczalt_tier(p, full_year_base)
+        # The tier implied by the real full-year figure - always computed,
+        # since it is both the auto default and what the annual return
+        # reconciles a chosen tier against.
+        ryczalt_tier_actual, ryczalt_health_actual = _pick_ryczalt_tier(p, full_year_base)
+        if opts.ryczalt_health_tier is None:
+            ryczalt_tier, ryczalt_health = ryczalt_tier_actual, ryczalt_health_actual
+        else:
+            ryczalt_tier = opts.ryczalt_health_tier
+            ryczalt_health = p.ryczalt_health_tiers[ryczalt_tier - 1]
 
     months: list[B2bMonth] = []
     ytd_income = 0.0  # skala/liniowy taxable income
@@ -286,6 +309,16 @@ def b2b_schedule(
     ):
         warnings.append("ryczalt_rate_unusual")
 
+    ryczalt_health_reconciliation = None
+    if opts.tax_form == "ryczalt":
+        # Compare like with like: what the implied tier would have cost over
+        # the same active months the schedule actually paid for, against
+        # what was actually paid (a chosen tier, or the auto/implied one -
+        # in which case this is 0.00 by construction).
+        active_months = sum(1 for a in active_by_month if a)
+        implied_total = money(ryczalt_health_actual * active_months)
+        ryczalt_health_reconciliation = money(implied_total - totals.get("health", 0.0))
+
     return B2bYear(
         params_year=p.year,
         tax_form=opts.tax_form,
@@ -294,4 +327,6 @@ def b2b_schedule(
         effective_rate=effective_rate,
         pension_account_contributions=pension_account_contributions,
         warnings=warnings,
+        ryczalt_health_reconciliation=ryczalt_health_reconciliation,
+        ryczalt_health_tier_actual=ryczalt_tier_actual,
     )

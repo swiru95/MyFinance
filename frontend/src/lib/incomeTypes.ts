@@ -46,6 +46,10 @@ export interface B2bOptionsIn {
   vat: VatMode;
   vat_rate: number;
   costs_vat_rate: number;
+  /** ryczalt only. null = auto (tier from this year's revenue). 1/2/3 pays
+   *  that tier every active month; the gap to the tier the actual revenue
+   *  implies is settled in the annual return. */
+  ryczalt_health_tier: number | null;
 }
 
 export const DEFAULT_B2B_OPTIONS: B2bOptionsIn = {
@@ -57,6 +61,7 @@ export const DEFAULT_B2B_OPTIONS: B2bOptionsIn = {
   vat: "standard",
   vat_rate: 0.23,
   costs_vat_rate: 0.23,
+  ryczalt_health_tier: null,
 };
 
 // ---- income source params (schemas/income.py) ------------------------------
@@ -195,6 +200,9 @@ export interface SourceYear {
   // b2b
   tax_form?: TaxForm;
   warnings?: string[];
+  // ryczalt only, else null/absent - see B2bOptionsIn.ryczalt_health_tier.
+  ryczalt_health_reconciliation?: number | null;
+  ryczalt_health_tier_actual?: number | null;
 }
 
 export interface IncomeSource {
@@ -364,6 +372,9 @@ export interface B2bPreviewResult {
   effective_rate: number | null;
   pension_account_contributions: number;
   warnings: string[];
+  // Ryczalt only, else null - see B2bOptionsIn.ryczalt_health_tier.
+  ryczalt_health_reconciliation: number | null;
+  ryczalt_health_tier_actual: number | null;
   disclaimer_key: string;
 }
 

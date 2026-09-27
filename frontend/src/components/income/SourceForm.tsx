@@ -76,6 +76,9 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
   const [costsMonthly, setCostsMonthly] = useState(bp ? String(bp.costs_monthly) : "0");
   const [taxForm, setTaxForm] = useState<TaxForm>(bp?.tax_form ?? "liniowy");
   const [ryczaltRate, setRyczaltRate] = useState<number>(bp?.ryczalt_rate ?? 0.12);
+  const [ryczaltHealthTier, setRyczaltHealthTier] = useState<number | null>(
+    bp?.ryczalt_health_tier ?? null
+  );
   const [zusStage, setZusStage] = useState<ZusStage>(bp?.zus_stage ?? "full");
   const [customBase, setCustomBase] = useState(
     bp?.custom_base != null ? String(bp.custom_base) : ""
@@ -99,6 +102,23 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
       .then((p) => setMzpRange({ min: p.jdg_preferential_base, max: p.jdg_full_base }))
       .catch(() => setMzpRange(null));
   }, [kind, zusStage, startsOn]);
+
+  // Tier amounts/thresholds for the health-tier select's option labels -
+  // same on-demand fetch pattern as mzpRange above.
+  const [ryczaltTierInfo, setRyczaltTierInfo] = useState<{
+    tiers: [number, number, number];
+    thresholds: [number, number];
+  } | null>(null);
+  useEffect(() => {
+    if (kind !== "b2b" || taxForm !== "ryczalt") return;
+    const year = Number(startsOn.slice(0, 4)) || new Date().getFullYear();
+    taxApi
+      .params(year)
+      .then((p) =>
+        setRyczaltTierInfo({ tiers: p.ryczalt_health_tiers, thresholds: p.ryczalt_tier_thresholds })
+      )
+      .catch(() => setRyczaltTierInfo(null));
+  }, [kind, taxForm, startsOn]);
 
   // Hint for the "from the calendar" checkbox: this month's statutory
   // working days/hours, so switching it on isn't a leap into the unknown.
@@ -145,6 +165,7 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
         costs_monthly: parseFloat(costsMonthly) || 0,
         tax_form: taxForm,
         ryczalt_rate: ryczaltRate,
+        ryczalt_health_tier: taxForm === "ryczalt" ? ryczaltHealthTier : null,
         zus_stage: zusStage,
         custom_base: zusStage === "maly_zus_plus" ? parseFloat(customBase) || 0 : null,
         sickness,
@@ -513,6 +534,47 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
               </div>
             )}
           </div>
+
+          {taxForm === "ryczalt" && (
+            <div>
+              <label className="label" htmlFor="inc-ryczalt-health-tier">
+                {t("inc.form.ryczaltHealthTier")}
+              </label>
+              <select
+                id="inc-ryczalt-health-tier"
+                className="input"
+                value={ryczaltHealthTier ?? "auto"}
+                onChange={(e) =>
+                  setRyczaltHealthTier(e.target.value === "auto" ? null : Number(e.target.value))
+                }
+              >
+                <option value="auto">{t("inc.form.ryczaltHealthTierAuto")}</option>
+                {ryczaltTierInfo &&
+                  ([1, 2, 3] as const).map((tier) => (
+                    <option key={tier} value={tier}>
+                      {t("inc.form.ryczaltHealthTierOption", {
+                        tier: String(tier),
+                        amount: fmtMoney(ryczaltTierInfo.tiers[tier - 1], "PLN", locale),
+                        range:
+                          tier === 1
+                            ? t("inc.form.ryczaltHealthTierRangeTier1", {
+                                max: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
+                              })
+                            : tier === 2
+                              ? t("inc.form.ryczaltHealthTierRangeTier2", {
+                                  min: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
+                                  max: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
+                                })
+                              : t("inc.form.ryczaltHealthTierRangeTier3", {
+                                  min: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
+                                }),
+                      })}
+                    </option>
+                  ))}
+              </select>
+              <p className="mt-1 text-xs muted">{t("inc.form.ryczaltHealthTierHint")}</p>
+            </div>
+          )}
 
           <div>
             <label className="label" htmlFor="inc-zus-stage">{t("inc.form.zusStage")}</label>

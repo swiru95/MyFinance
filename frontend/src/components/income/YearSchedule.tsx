@@ -492,6 +492,24 @@ export default function YearSchedule({
                   </p>
                 </div>
               )}
+              {source.kind === "b2b" &&
+                data.ryczalt_health_reconciliation != null &&
+                data.ryczalt_health_reconciliation !== 0 && (
+                  <div>
+                    <p className="text-xs muted">{t("inc.schedule.healthSettlementTitle")}</p>
+                    <p className="font-semibold tabular-nums">
+                      {data.ryczalt_health_reconciliation > 0
+                        ? t("inc.schedule.healthSettlementPay", {
+                            amount: fmtMoney(data.ryczalt_health_reconciliation, "PLN", locale),
+                            tier: String(data.ryczalt_health_tier_actual ?? ""),
+                          })
+                        : t("inc.schedule.healthSettlementRefund", {
+                            amount: fmtMoney(-data.ryczalt_health_reconciliation, "PLN", locale),
+                            tier: String(data.ryczalt_health_tier_actual ?? ""),
+                          })}
+                    </p>
+                  </div>
+                )}
             </div>
             {source.kind === "other" && (
               <p className="mt-2 text-xs subtle">{t("inc.schedule.otherNote")}</p>
