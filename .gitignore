@@ -35,3 +35,8 @@ tsconfig.tsbuildinfo
 *.db-shm
 *.blob
 data/
+
+# Screenshots from browser checks land in the repo root when a tool is given
+# a bare filename. Only the README's own image belongs there.
+/*.png
+!/dashboard.png
