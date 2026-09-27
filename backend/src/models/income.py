@@ -55,6 +55,10 @@ class IncomeEntry(Base):
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     # uop: gross; b2b: invoice net revenue; other: net.
     amount: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False)
+    # Days/hours actually worked this month, for a day/hour-billed b2b
+    # source - reference only; `amount` above is always the frozen revenue
+    # figure (rate x units, resolved once at write time by the route).
+    units: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     # b2b net business costs for the month.
     costs: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False, default=0)
     # The real net from a payslip/bank statement, when known; wins over

@@ -157,7 +157,7 @@ export function signOutRedirect(): void {
  *
  *  Silent first; a redirect only when Entra says interaction is genuinely
  *  required, which is what happens once the refresh token has aged out. */
-export async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(forceRefresh = false): Promise<string | null> {
   if (!msal || scopes.length === 0) {
     return null;
   }
@@ -166,7 +166,7 @@ export async function getAccessToken(): Promise<string | null> {
     return null;
   }
   try {
-    const result = await msal.acquireTokenSilent(request());
+    const result = await msal.acquireTokenSilent({ ...request(), forceRefresh });
     return result.accessToken;
   } catch (err) {
     if (err instanceof InteractionRequiredAuthError) {

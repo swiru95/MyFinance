@@ -63,9 +63,16 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
     bp?.invoice_monthly != null ? String(bp.invoice_monthly) : ""
   );
   const [rate, setRate] = useState(bp?.rate != null ? String(bp.rate) : "");
+  // Existing source with a fixed units_per_month keeps its own number by
+  // default; every new source, and any existing one already left at "from
+  // the calendar" (units_per_month null), starts with the calendar on.
+  const [useCalendarUnits, setUseCalendarUnits] = useState(
+    !bp || bp.units_per_month == null
+  );
   const [unitsPerMonth, setUnitsPerMonth] = useState(
     bp?.units_per_month != null ? String(bp.units_per_month) : ""
   );
+  const [calendarHint, setCalendarHint] = useState<string | null>(null);
   const [costsMonthly, setCostsMonthly] = useState(bp ? String(bp.costs_monthly) : "0");
   const [taxForm, setTaxForm] = useState<TaxForm>(bp?.tax_form ?? "liniowy");
   const [ryczaltRate, setRyczaltRate] = useState<number>(bp?.ryczalt_rate ?? 0.12);
@@ -92,6 +99,31 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
       .then((p) => setMzpRange({ min: p.jdg_preferential_base, max: p.jdg_full_base }))
       .catch(() => setMzpRange(null));
   }, [kind, zusStage, startsOn]);
+
+  // Hint for the "from the calendar" checkbox: this month's statutory
+  // working days/hours, so switching it on isn't a leap into the unknown.
+  useEffect(() => {
+    if (kind !== "b2b" || billing === "monthly" || !useCalendarUnits) {
+      setCalendarHint(null);
+      return;
+    }
+    const now = new Date();
+    taxApi
+      .calendar(now.getFullYear())
+      .then((cal) => {
+        const month = cal[now.getMonth()];
+        if (!month) return;
+        const label = now.toLocaleDateString(locale, { month: "long", year: "numeric" });
+        setCalendarHint(
+          t("inc.form.calendarHint", {
+            days: String(month.working_days),
+            hours: String(month.working_hours),
+            month: label,
+          })
+        );
+      })
+      .catch(() => setCalendarHint(null));
+  }, [kind, billing, useCalendarUnits, locale, t]);
 
   const isOther = kind === "other";
 
@@ -123,7 +155,7 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
         params.invoice_monthly = parseFloat(invoiceMonthly) || 0;
       } else {
         params.rate = parseFloat(rate) || 0;
-        params.units_per_month = parseFloat(unitsPerMonth) || 0;
+        params.units_per_month = useCalendarUnits ? null : parseFloat(unitsPerMonth) || 0;
       }
       return params;
     }
@@ -143,7 +175,10 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
         setError(t("inc.form.amountPositive"));
         return;
       }
-      if (billing !== "monthly" && (!(parseFloat(rate) >= 0) || !(parseFloat(unitsPerMonth) >= 0))) {
+      if (
+        billing !== "monthly" &&
+        (!(parseFloat(rate) >= 0) || (!useCalendarUnits && !(parseFloat(unitsPerMonth) >= 0)))
+      ) {
         setError(t("inc.form.amountPositive"));
         return;
       }
@@ -416,8 +451,20 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
                   min="0"
                   value={unitsPerMonth}
                   onChange={(e) => setUnitsPerMonth(e.target.value)}
-                  required
+                  disabled={useCalendarUnits}
+                  required={!useCalendarUnits}
                 />
+                <label className="mt-1 flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={useCalendarUnits}
+                    onChange={(e) => setUseCalendarUnits(e.target.checked)}
+                  />
+                  {t("inc.form.useCalendar")}
+                </label>
+                {useCalendarUnits && calendarHint && (
+                  <p className="mt-1 text-xs subtle">{calendarHint}</p>
+                )}
               </div>
             </div>
           )}

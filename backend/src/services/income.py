@@ -16,6 +16,8 @@ from ..models.income import IncomeEntry, IncomeSource
 from ..schemas.income import PARAM_MODELS
 from ..services.price_service import PriceService
 from ..tax.pl.b2b import b2b_schedule
+from ..tax.pl.calendar import working_days as calendar_working_days
+from ..tax.pl.calendar import working_hours as calendar_working_hours
 from ..tax.pl.params import EARLIEST_YEAR, money
 from ..tax.pl.uop import uop_schedule
 
@@ -62,6 +64,9 @@ def source_year(
     by_month = {e.month: e for e in entries}
     kind = src.kind
     params_model = PARAM_MODELS[kind].model_validate(src.params)
+    # Only a daily/hourly b2b source has a working-time calendar behind it;
+    # every other kind/billing leaves units/units_source as None throughout.
+    is_day_hour_b2b = kind == "b2b" and params_model.billing in ("daily", "hourly")
 
     months_str: list[str] = []
     amounts_raw: list[float] = []
@@ -69,6 +74,10 @@ def source_year(
     actives: list[bool] = []
     has_entries: list[bool] = []
     overrides: list[float | None] = []
+    units_list: list[float | None] = []
+    units_source_list: list[str | None] = []
+    calendar_days_list: list[int | None] = []
+    calendar_hours_list: list[int | None] = []
 
     for i in range(12):
         month_num = i + 1
@@ -77,21 +86,41 @@ def source_year(
         entry = by_month.get(month_str)
         has_entry = entry is not None
 
+        cal_days = cal_hours = None
+        if is_day_hour_b2b:
+            # Reference figures shown alongside the month regardless of
+            # active/entry state - "what the calendar says this month is".
+            cal_days = calendar_working_days(year, month_num)
+            cal_hours = calendar_working_hours(year, month_num)
+        calendar_units = (
+            cal_days if params_model.billing == "daily" else cal_hours
+        ) if is_day_hour_b2b else None
+
+        units: float | None = None
+        units_source: str | None = None
+
         if has_entry:
             amount = float(entry.amount)
             costs = float(entry.costs)
             override_net = (
                 float(entry.override_net) if entry.override_net is not None else None
             )
+            if is_day_hour_b2b and entry.units is not None:
+                units, units_source = float(entry.units), "entry"
         elif active:
             if kind == "uop":
                 amount = params_model.gross_monthly
             elif kind == "b2b":
-                amount = params_model.default_revenue_monthly()
+                amount = params_model.default_revenue_monthly(calendar_units)
             else:
                 amount = params_model.net_monthly
             costs = params_model.costs_monthly if kind == "b2b" else 0.0
             override_net = None
+            if is_day_hour_b2b:
+                if params_model.units_per_month is not None:
+                    units, units_source = params_model.units_per_month, "fixed"
+                else:
+                    units, units_source = calendar_units, "calendar"
         else:
             amount, costs, override_net = 0.0, 0.0, None
 
@@ -101,6 +130,10 @@ def source_year(
         actives.append(active)
         has_entries.append(has_entry)
         overrides.append(override_net)
+        units_list.append(units)
+        units_source_list.append(units_source)
+        calendar_days_list.append(cal_days)
+        calendar_hours_list.append(cal_hours)
 
     amounts_pln = [_convert(ps, a, src.currency, "PLN") for a in amounts_raw]
     costs_pln = [_convert(ps, c, src.currency, "PLN") for c in costs_raw]
@@ -146,6 +179,13 @@ def source_year(
         if kind == "b2b" and breakdown is not None:
             row["set_aside"] = breakdown["set_aside"]
             row["vat_due"] = breakdown["vat_due"]
+        # Present on every month regardless of kind, None unless this is a
+        # day/hour-billed b2b source - a uniform shape the frontend can rely
+        # on without branching on `kind` first.
+        row["units"] = units_list[i]
+        row["units_source"] = units_source_list[i]
+        row["working_days"] = calendar_days_list[i]
+        row["working_hours"] = calendar_hours_list[i]
         months.append(row)
 
         total_amount += amounts_raw[i]

@@ -25,7 +25,6 @@ const en: Dict = {
   "nav.dashboard": "Dashboard",
   "nav.positions": "Positions",
   "nav.expenses": "Expenses",
-  "nav.monthly": "Monthly",
   "nav.income": "Income",
   "nav.tax": "Tax",
   "nav.fire": "FIRE",
@@ -189,9 +188,13 @@ const en: Dict = {
   "exp.perMonth": "/mo",
   "exp.uncategorised": "Uncategorised",
 
-  "mon.title": "Monthly",
-  "mon.subtitle":
-    "Record what you earned and spent each month. Committed spend is computed from your recurring expenses, so you never retype it.",
+  "exp.monthly.title": "Month by month",
+  "exp.monthly.subtitle":
+    "Record what you actually spent each month. Committed spend is computed from your recurring expenses, so you never retype it.",
+  "exp.monthly.incomeLabel": "Income",
+  "exp.monthly.incomeHint": "Total income for the month, including other income.",
+  "exp.monthly.incomeLink": "Manage on Income →",
+
   "mon.month": "Month",
   "mon.notFilled": " — not filled in",
   "mon.income": "Income",
@@ -234,6 +237,12 @@ const en: Dict = {
   "mon.now": "now",
   "mon.savedTooltip": "Saved",
   "mon.other": "Other",
+
+  "oi.title": "Other income (not from a source)",
+  "oi.subtitle":
+    "For anything not from a tracked source — a gift, a refund, a one-off. A recurring amount belongs in a source instead.",
+  "oi.recordedTitle": "Months with other income",
+  "oi.recordedEmpty": "None recorded yet.",
 
   "set.title": "Settings",
   "set.subtitle": "Choose how the app looks and which currency it reports in.",
@@ -313,7 +322,6 @@ const pl: Dict = {
   "nav.dashboard": "Pulpit",
   "nav.positions": "Pozycje",
   "nav.expenses": "Wydatki",
-  "nav.monthly": "Miesięcznie",
   "nav.income": "Dochody",
   "nav.tax": "Podatki",
   "nav.fire": "FIRE",
@@ -479,9 +487,13 @@ const pl: Dict = {
   "exp.perMonth": "/mies.",
   "exp.uncategorised": "Bez kategorii",
 
-  "mon.title": "Miesięcznie",
-  "mon.subtitle":
-    "Zapisuj, ile zarobiłeś i wydałeś w danym miesiącu. Zobowiązania są liczone automatycznie z wydatków cyklicznych.",
+  "exp.monthly.title": "Miesiąc po miesiącu",
+  "exp.monthly.subtitle":
+    "Zapisuj, ile faktycznie wydałeś w danym miesiącu. Zobowiązania są liczone automatycznie z wydatków cyklicznych.",
+  "exp.monthly.incomeLabel": "Przychód",
+  "exp.monthly.incomeHint": "Łączny przychód za miesiąc, wraz z innymi dochodami.",
+  "exp.monthly.incomeLink": "Zarządzaj w Dochodach →",
+
   "mon.month": "Miesiąc",
   "mon.notFilled": " — nieuzupełniony",
   "mon.income": "Przychód",
@@ -525,6 +537,12 @@ const pl: Dict = {
   "mon.now": "teraz",
   "mon.savedTooltip": "Zaoszczędzono",
   "mon.other": "Inne",
+
+  "oi.title": "Inne dochody (spoza źródeł)",
+  "oi.subtitle":
+    "Na wszystko, co nie pochodzi ze śledzonego źródła — prezent, zwrot, jednorazowy wpływ. Powtarzającą się kwotę lepiej dodać jako źródło.",
+  "oi.recordedTitle": "Miesiące z innymi dochodami",
+  "oi.recordedEmpty": "Nic jeszcze nie zapisano.",
 
   "set.title": "Ustawienia",
   "set.subtitle": "Wybierz wygląd aplikacji i walutę raportowania.",

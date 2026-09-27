@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.income import IncomeEntry, IncomeSource
 from ..schemas.income import (
+    PARAM_MODELS,
     IncomeEntryIn,
     IncomeEntryOut,
     IncomeSourceIn,
@@ -132,6 +133,24 @@ def _require_rules(year: int) -> None:
         )
 
 
+def _resolve_entry_amount(src: IncomeSource, payload: IncomeEntryIn) -> float:
+    """The revenue/gross/net to freeze onto the entry.
+
+    An explicit amount always wins. Otherwise, only a daily/hourly b2b
+    source can fall back to `rate x units` - every other kind/billing has no
+    calendar behind it, so `amount` stays required for it (422).
+    """
+    if payload.amount is not None:
+        return payload.amount
+    if src.kind == "b2b":
+        params_model = PARAM_MODELS["b2b"].model_validate(src.params)
+        if params_model.billing in ("daily", "hourly") and payload.units is not None:
+            return money(float(params_model.rate or 0.0) * payload.units)
+    raise HTTPException(
+        422, "amount is required unless units is given for a daily/hourly b2b source"
+    )
+
+
 @router.put("/sources/{source_id}/entries/{month}", response_model=IncomeEntryOut)
 def upsert_entry(
     source_id: int, month: str, payload: IncomeEntryIn, db: Session = Depends(get_db)
@@ -140,16 +159,18 @@ def upsert_entry(
     src = db.query(IncomeSource).filter(IncomeSource.id == source_id).first()
     if not src:
         raise HTTPException(404, "Income source not found")
+    data = payload.model_dump()
+    data["amount"] = _resolve_entry_amount(src, payload)
     entry = (
         db.query(IncomeEntry)
         .filter(IncomeEntry.source_id == source_id, IncomeEntry.month == month)
         .first()
     )
     if entry is None:
-        entry = IncomeEntry(source_id=source_id, month=month, **payload.model_dump())
+        entry = IncomeEntry(source_id=source_id, month=month, **data)
         db.add(entry)
     else:
-        for field, value in payload.model_dump().items():
+        for field, value in data.items():
             setattr(entry, field, value)
     db.commit()
     db.refresh(entry)

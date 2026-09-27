@@ -1,16 +1,24 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { fmtMoney } from "@/lib/api";
+import { fmtMoney, fmtNum } from "@/lib/api";
 import { incomeApi } from "@/lib/incomeApi";
 import { monthLabel } from "@/lib/chartTheme";
 import { useI18n } from "@/lib/i18n";
 import type {
+  B2bIncomeParams,
   B2bMonthBreakdown,
   IncomeSource,
   SourceMonthRow,
   SourceYear,
+  UnitsSource,
   UopMonthBreakdown,
 } from "@/lib/incomeTypes";
 import BreakdownDetails from "./BreakdownDetails";
+
+const UNITS_SOURCE_KEY: Record<UnitsSource, string> = {
+  calendar: "inc.schedule.unitsCalendar",
+  fixed: "inc.schedule.unitsFixed",
+  entry: "inc.schedule.unitsEntry",
+};
 
 interface Props {
   sources: IncomeSource[];
@@ -36,7 +44,17 @@ function MonthEntryModal({
   onSaved: () => void;
 }) {
   const { t, locale } = useI18n();
+  const bp = source.kind === "b2b" ? (source.params as B2bIncomeParams) : null;
+  // A day/hour-billed source's revenue is derived, not typed in directly -
+  // asking for units (prefilled with what's actually driving this month:
+  // calendar, fixed, or a previous entry) and showing the resulting revenue
+  // live keeps the source of truth the same one the schedule already shows.
+  const isDayHour = bp != null && bp.billing !== "monthly";
+  // Clearing an entry only "uses the calendar" when the source itself has
+  // no fixed units_per_month - otherwise it reverts to that fixed number.
+  const revertsToCalendar = isDayHour && bp?.units_per_month == null;
   const [amount, setAmount] = useState(String(row.amount ?? 0));
+  const [units, setUnits] = useState(row.units != null ? String(row.units) : "");
   const [costs, setCosts] = useState(
     row.breakdown && "costs" in row.breakdown ? String((row.breakdown as B2bMonthBreakdown).costs) : "0"
   );
@@ -47,13 +65,15 @@ function MonthEntryModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const previewRevenue = isDayHour ? (bp?.rate ?? 0) * (parseFloat(units) || 0) : null;
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
       await incomeApi.upsertEntry(source.id, row.month, {
-        amount: parseFloat(amount) || 0,
+        ...(isDayHour ? { units: parseFloat(units) || 0 } : { amount: parseFloat(amount) || 0 }),
         costs: source.kind === "b2b" ? parseFloat(costs) || 0 : 0,
         override_net: overrideNet.trim() === "" ? null : parseFloat(overrideNet),
         notes,
@@ -68,7 +88,10 @@ function MonthEntryModal({
 
   async function clear() {
     if (!row.has_entry) return;
-    if (!confirm(t("inc.entry.confirmClear", { month: monthLabel(row.month, locale) }))) return;
+    const confirmMsg = revertsToCalendar
+      ? t("inc.entry.confirmUseCalendar", { month: monthLabel(row.month, locale) })
+      : t("inc.entry.confirmClear", { month: monthLabel(row.month, locale) });
+    if (!confirm(confirmMsg)) return;
     setBusy(true);
     setError(null);
     try {
@@ -91,18 +114,40 @@ function MonthEntryModal({
           <button onClick={onClose} className="subtle">✕</button>
         </div>
         <form onSubmit={save} className="space-y-4">
-          <div>
-            <label className="label" htmlFor="entry-amount">{t("inc.entry.amount")}</label>
-            <input
-              id="entry-amount"
-              className="input"
-              type="number"
-              step="0.01"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </div>
+          {isDayHour ? (
+            <div>
+              <label className="label" htmlFor="entry-units">
+                {bp?.billing === "daily" ? t("inc.schedule.unitsDays") : t("inc.schedule.unitsHours")}
+              </label>
+              <input
+                id="entry-units"
+                className="input"
+                type="number"
+                step="0.5"
+                min="0"
+                value={units}
+                onChange={(e) => setUnits(e.target.value)}
+              />
+              <p className="mt-1 text-xs subtle">
+                {t("inc.entry.revenuePreview", {
+                  amount: fmtMoney(previewRevenue ?? 0, source.currency, locale),
+                })}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="label" htmlFor="entry-amount">{t("inc.entry.amount")}</label>
+              <input
+                id="entry-amount"
+                className="input"
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </div>
+          )}
           {source.kind === "b2b" && (
             <div>
               <label className="label" htmlFor="entry-costs">{t("inc.entry.costs")}</label>
@@ -143,7 +188,7 @@ function MonthEntryModal({
           <div className="flex gap-2">
             {row.has_entry && (
               <button type="button" onClick={clear} className="btn-ghost text-red-600" disabled={busy}>
-                {t("inc.entry.clear")}
+                {revertsToCalendar ? t("inc.entry.useCalendar") : t("inc.entry.clear")}
               </button>
             )}
             <button type="button" onClick={onClose} className="btn-ghost flex-1">
@@ -204,6 +249,10 @@ export default function YearSchedule({
     onChanged();
   }
 
+  const bp = source?.kind === "b2b" ? (source.params as B2bIncomeParams) : null;
+  const isDayHourSource = bp != null && bp.billing !== "monthly";
+  const totalCols = !source ? 0 : (source.kind === "other" ? 2 : 6) + (isDayHourSource ? 1 : 0);
+
   const totals = (data?.totals ?? {}) as Record<string, number>;
   const yearsAvailable = (() => {
     const now = new Date().getFullYear();
@@ -255,6 +304,11 @@ export default function YearSchedule({
                 <tr>
                   <th className="px-3 py-2">{t("inc.schedule.month")}</th>
                   <th className="px-3 py-2 text-right">{t("inc.schedule.amount")}</th>
+                  {isDayHourSource && (
+                    <th className="px-3 py-2 text-right">
+                      {bp?.billing === "daily" ? t("inc.schedule.unitsDays") : t("inc.schedule.unitsHours")}
+                    </th>
+                  )}
                   {source.kind !== "other" && (
                     <>
                       <th className="px-3 py-2 text-right">{t("inc.schedule.social")}</th>
@@ -294,6 +348,16 @@ export default function YearSchedule({
                         <td className="px-3 py-2 text-right tabular-nums">
                           {fmtMoney(row.amount, source.currency, locale)}
                         </td>
+                        {isDayHourSource && (
+                          <td className="px-3 py-2 text-right tabular-nums">
+                            {row.units != null ? fmtNum(row.units, 1, locale) : "—"}
+                            {row.units_source && (
+                              <span className="ml-1 text-[10px] subtle">
+                                ({t(UNITS_SOURCE_KEY[row.units_source])})
+                              </span>
+                            )}
+                          </td>
+                        )}
                         {source.kind === "uop" && (
                           <>
                             <td className="px-3 py-2 text-right tabular-nums">
@@ -344,7 +408,7 @@ export default function YearSchedule({
                       </tr>
                       {expanded === row.month && breakdown && (
                         <tr>
-                          <td colSpan={source.kind === "other" ? 2 : 6} className="bg-slate-50 px-3 py-2 dark:bg-slate-800/40">
+                          <td colSpan={totalCols} className="bg-slate-50 px-3 py-2 dark:bg-slate-800/40">
                             <BreakdownDetails breakdown={breakdown} currency="PLN" />
                           </td>
                         </tr>

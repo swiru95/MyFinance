@@ -19,6 +19,7 @@ from ..schemas.tax import (
     UopPreviewIn,
 )
 from ..tax.pl.b2b import b2b_schedule, jdg_social_monthly
+from ..tax.pl.calendar import year_calendar
 from ..tax.pl.compare import compare_uop_b2b
 from ..tax.pl.params import get_params
 from ..tax.pl.reverse import reverse_b2b, reverse_uop
@@ -54,6 +55,14 @@ def tax_params(year: int) -> dict:
     }
 
 
+@router.get("/calendar/{year}")
+def calendar(year: int) -> list[dict]:
+    """The statutory working-time calendar (wymiar czasu pracy) for `year` -
+    what a day/hour-billed b2b source defaults to, and the education view's
+    working-time row."""
+    return year_calendar(year)
+
+
 @router.post("/uop")
 def preview_uop(payload: UopPreviewIn) -> dict:
     result = uop_schedule(payload.year, payload.gross_list(), payload.options.to_options())
@@ -70,6 +79,11 @@ def preview_b2b(payload: B2bPreviewIn) -> dict:
 
 @router.post("/compare")
 def preview_compare(payload: ComparePreviewIn) -> dict:
+    working_days = payload.working_days
+    if working_days is None:
+        # No override given - default to the statutory calendar total for
+        # the year being compared, not a hardcoded guess like 250.
+        working_days = sum(m["working_days"] for m in year_calendar(payload.year))
     result = compare_uop_b2b(
         payload.year,
         payload.uop_gross_monthly,
@@ -78,7 +92,7 @@ def preview_compare(payload: ComparePreviewIn) -> dict:
         payload.b2b_costs_monthly,
         payload.b2b_options.to_options(),
         paid_leave_days=payload.paid_leave_days,
-        working_days=payload.working_days,
+        working_days=working_days,
         b2b_billed_per_day=payload.b2b_billed_per_day,
     )
     return {**result, **_DISCLAIMER}

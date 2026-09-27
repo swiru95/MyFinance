@@ -4,6 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import type { Expense, ExpenseSummary } from "@/lib/types";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseRow from "@/components/ExpenseRow";
+import MonthlySection from "@/components/expenses/MonthlySection";
 
 type Filter = "active" | "all";
 
@@ -224,6 +225,8 @@ export default function ExpensesPage() {
           )}
         </div>
       )}
+
+      <MonthlySection />
 
       {formOpen && (
         <div className="fixed inset-0 z-20 grid place-items-center overflow-y-auto bg-black/40 p-4">

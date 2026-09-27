@@ -8,7 +8,6 @@ const links = [
   { href: "/positions", key: "nav.positions" },
   { href: "/expenses", key: "nav.expenses" },
   { href: "/income", key: "nav.income" },
-  { href: "/monthly", key: "nav.monthly" },
   { href: "/fire", key: "nav.fire" },
   { href: "/tax", key: "nav.tax" },
   { href: "/report", key: "nav.report" },

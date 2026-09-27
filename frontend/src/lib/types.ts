@@ -208,6 +208,16 @@ export interface MonthlyInput {
   notes: string;
 }
 
+/** Every field optional - PATCH /api/monthly/{month} touches only what is
+ *  sent, so Expenses (actual_spent/notes/currency) and Income
+ *  (income/currency) can edit the same row without overwriting each other. */
+export interface MonthlyPatch {
+  income?: number;
+  actual_spent?: number;
+  currency?: string;
+  notes?: string;
+}
+
 export interface TimelinePoint {
   month: string;
   committed: number;

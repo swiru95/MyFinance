@@ -69,6 +69,9 @@ export interface B2bIncomeParams extends B2bOptionsIn {
   billing: Billing;
   invoice_monthly: number | null;
   rate: number | null;
+  /** null = from the working-time calendar (daily -> working_days, hourly ->
+   *  working_hours) for daily/hourly billing; a number is a fixed monthly
+   *  count that always wins over the calendar. */
   units_per_month: number | null;
   costs_monthly: number;
 }
@@ -152,6 +155,8 @@ export interface B2bYearTotals
 
 // ---- source_year (services/income.py) -------------------------------------
 
+export type UnitsSource = "calendar" | "fixed" | "entry";
+
 export interface SourceMonthRow {
   month: string; // YYYY-MM
   active: boolean;
@@ -164,6 +169,11 @@ export interface SourceMonthRow {
   employer_cost?: number; // uop only
   set_aside?: number; // b2b only
   vat_due?: number; // b2b only
+  // Day/hour-billed b2b sources only; null for every other kind/billing.
+  units: number | null;
+  units_source: UnitsSource | null;
+  working_days: number | null;
+  working_hours: number | null;
 }
 
 /** The `dict` GET /api/income/sources/{id}/year/{year} returns, and the
@@ -202,7 +212,10 @@ export interface IncomeSource {
 }
 
 export interface IncomeEntryInput {
-  amount: number;
+  // Optional for a daily/hourly b2b source given `units` instead - the
+  // server resolves rate x units into `amount` and freezes it there.
+  amount?: number | null;
+  units?: number | null;
   costs: number;
   override_net: number | null;
   notes: string;
@@ -211,6 +224,7 @@ export interface IncomeEntryInput {
 export interface IncomeEntry {
   month: string;
   amount: number;
+  units: number | null;
   costs: number;
   override_net: number | null;
   notes: string;
@@ -363,7 +377,8 @@ export interface ComparePreviewInput {
   b2b_costs_monthly: number;
   b2b_options: B2bOptionsIn;
   paid_leave_days: number;
-  working_days: number;
+  // Omit or null -> the working-time calendar's total for `year`.
+  working_days?: number | null;
   b2b_billed_per_day: boolean;
 }
 
@@ -386,6 +401,22 @@ export interface CompareResult {
   difference_net_annual: number;
   disclaimer_key: string;
 }
+
+// ---- /api/tax/calendar/{year} (tax/pl/calendar.py's year_calendar) ---------
+
+export interface CalendarHoliday {
+  date: string; // YYYY-MM-DD
+  name: string;
+}
+
+export interface CalendarMonth {
+  month: number; // 1-12
+  working_days: number;
+  working_hours: number;
+  holidays: CalendarHoliday[];
+}
+
+export type YearCalendar = CalendarMonth[];
 
 // ---- /api/tax/reverse --------------------------------------------------------
 

@@ -24,14 +24,20 @@ export default function Comparator() {
   const [customBase, setCustomBase] = useState("");
   const [sickness, setSickness] = useState(false);
   const [paidLeaveDays, setPaidLeaveDays] = useState("26");
-  const [workingDays, setWorkingDays] = useState("250");
+  // Placeholder until the calendar total loads on mount below - not a
+  // hardcoded guess (mirrors POST /api/tax/compare's own calendar default).
+  const [workingDays, setWorkingDays] = useState("");
   const [billedPerDay, setBilledPerDay] = useState(true);
 
   const [result, setResult] = useState<CompareResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function calculate(e?: React.FormEvent) {
+  // `workingDaysOverride` sidesteps the state-update race on first mount:
+  // the calendar total is only known once its fetch resolves, and reading
+  // `workingDays` from the closure right after `setWorkingDays` would still
+  // see the pre-fetch value until the next render.
+  async function calculate(e?: React.FormEvent, workingDaysOverride?: string) {
     e?.preventDefault();
     setBusy(true);
     setError(null);
@@ -51,7 +57,7 @@ export default function Comparator() {
           sickness,
         },
         paid_leave_days: parseInt(paidLeaveDays, 10) || 0,
-        working_days: parseInt(workingDays, 10) || 1,
+        working_days: parseInt(workingDaysOverride ?? workingDays, 10) || 1,
         b2b_billed_per_day: billedPerDay,
       });
       setResult(res);
@@ -62,8 +68,20 @@ export default function Comparator() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { calculate(); }, []);
+  useEffect(() => {
+    (async () => {
+      let days = "250";
+      try {
+        const cal = await taxApi.calendar(year);
+        days = String(cal.reduce((sum, m) => sum + m.working_days, 0));
+      } catch {
+        // keep the fallback - the form still works with a typed-in value.
+      }
+      setWorkingDays(days);
+      calculate(undefined, days);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="card space-y-4">
