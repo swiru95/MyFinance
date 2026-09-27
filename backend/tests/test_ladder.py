@@ -251,3 +251,51 @@ def test_ladder_feedback_round_trips_through_settings(client, db):
 
     rungs = build_ladder(db)
     assert _rung(rungs, "ppk_on")["feedback"]["state"] == "dismissed"
+
+
+# --- Feature toggles: rungs that need a disabled feature -------------------
+
+def _set_features(client, **flags):
+    payload = {"portfolio": True, "fire": True, "tax": True, "insights": True}
+    payload.update(flags)
+    r = client.put("/api/settings", json={"base_currency": "PLN", "features": payload})
+    assert r.status_code == 200, r.text
+    return r.json()["features"]
+
+
+def test_rungs_unknown_or_not_applicable_with_portfolio_off(client, db):
+    _expense(client, 1000)
+    _set_features(client, portfolio=False, fire=False)
+
+    rungs = build_ladder(db)
+    # Read entirely off safe assets - nothing to check without portfolio.
+    assert _rung(rungs, "starter_buffer")["status"] == "unknown"
+    assert _rung(rungs, "emergency_fund")["status"] == "unknown"
+    # Read entirely off position flows into IKZE/IKE assets.
+    assert _rung(rungs, "ikze_used")["status"] == "not_applicable"
+    assert _rung(rungs, "ike_used")["status"] == "not_applicable"
+    # Fire is forced off whenever portfolio is off (see test_settings.py).
+    assert _rung(rungs, "fire_configured")["status"] == "not_applicable"
+    assert _rung(rungs, "savings_rate_on_track")["status"] == "not_applicable"
+
+
+def test_data_fresh_keeps_checking_recorded_months_with_portfolio_off(client, db):
+    """Only the asset-staleness half of data_fresh needs portfolio - the
+    recorded-months half still runs, so the rung is not simply blanked out."""
+    _asset(client, name="Old Gold", kind="gold", category="Gold", profile="moderate")
+    _set_features(client, portfolio=False, fire=False)
+
+    rungs = build_ladder(db)
+    rung = _rung(rungs, "data_fresh")
+    assert rung["figures"]["stale_assets"] == []
+    assert rung["status"] in ("todo", "in_progress", "done")
+
+
+def test_fire_rungs_not_applicable_with_fire_off_portfolio_on(client, db):
+    _set_features(client, portfolio=True, fire=False)
+
+    rungs = build_ladder(db)
+    assert _rung(rungs, "fire_configured")["status"] == "not_applicable"
+    assert _rung(rungs, "savings_rate_on_track")["status"] == "not_applicable"
+    # Portfolio-only rungs stay live rather than also going not_applicable.
+    assert _rung(rungs, "starter_buffer")["status"] != "unknown"

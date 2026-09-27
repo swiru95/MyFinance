@@ -17,8 +17,8 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .database import engine, SessionLocal
-from .schema import main as schema_main
+from .database import Base, engine, SessionLocal
+from .schema import backfill_profiles, migrate, seed, seed_features
 from .models.asset import Asset
 from .models.expense import Expense
 from .models.monthly import MonthlyRecord
@@ -552,9 +552,16 @@ def main() -> int:
     # Check safety (database type)
     _check_safety()
 
-    # Create/migrate schema
+    # Create/migrate schema. Feature-flag seeding is deliberately deferred to
+    # after the demo data is written (see below): seed_features() only ever
+    # sets its default once, and running it here - before any position or
+    # income row exists - would permanently lock this wallet to "new,
+    # everything off" despite being fully populated a few lines later.
     print("demo_seed: initializing schema")
-    schema_main()
+    Base.metadata.create_all(bind=engine)
+    migrate()
+    seed()
+    backfill_profiles()
 
     db = SessionLocal()
     try:
@@ -584,7 +591,6 @@ def main() -> int:
 
         db.commit()
         print(f"demo_seed: wrote to {settings.database_url}")
-        return 0
 
     except Exception as e:
         db.rollback()
@@ -594,6 +600,10 @@ def main() -> int:
         return 1
     finally:
         db.close()
+
+    print("demo_seed: seeding feature defaults")
+    seed_features()
+    return 0
 
 
 if __name__ == "__main__":

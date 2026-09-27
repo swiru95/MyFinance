@@ -160,7 +160,7 @@ def _wrapper_flows_ytd(db: Session, today: date, wrapper: str) -> float:
 def build_ladder(db: Session) -> list[dict]:
     from ..routes.expenses import expense_summary
     from ..routes.fire import get_fire
-    from ..routes.helpers import today_in
+    from ..routes.helpers import get_features, today_in
     from ..routes.income import income_summary
     from ..routes.monthly import analytics as monthly_analytics
     from ..routes.statistics import allocation as allocation_route
@@ -168,6 +168,7 @@ def build_ladder(db: Session) -> list[dict]:
 
     today = today_in(db)
     month = month_key(today)
+    features = get_features(db)
 
     alloc = allocation_route(db=db)
     expenses_summary = expense_summary(db=db)
@@ -180,20 +181,29 @@ def build_ladder(db: Session) -> list[dict]:
     rungs: list[dict] = []
 
     # 1. starter_buffer - one month of committed spend in safe/cash assets.
-    if safe_total >= committed:
-        status = "done"
-    elif safe_total > 0:
-        status = "in_progress"
+    # Needs portfolio for the safe-asset figure; with it off there is nothing
+    # to check against, so the rung reads "unknown" rather than guessing from
+    # a safe_total that reflects assets nobody is tracking any more.
+    if not features.portfolio:
+        rungs.append(_rung(
+            "starter_buffer", "unknown", "insights.ladder.starter_buffer.why",
+            {"note": "portfolio tracking is off - assets are not tracked"},
+        ))
     else:
-        status = "todo"
-    rungs.append(_rung(
-        "starter_buffer", status, "insights.ladder.starter_buffer.why",
-        {
-            "safe_assets": round(safe_total, 2),
-            "target": round(committed, 2),
-            "business_contributions_total": round(business_contributions_total, 2),
-        },
-    ))
+        if safe_total >= committed:
+            status = "done"
+        elif safe_total > 0:
+            status = "in_progress"
+        else:
+            status = "todo"
+        rungs.append(_rung(
+            "starter_buffer", status, "insights.ladder.starter_buffer.why",
+            {
+                "safe_assets": round(safe_total, 2),
+                "target": round(committed, 2),
+                "business_contributions_total": round(business_contributions_total, 2),
+            },
+        ))
 
     # 2. envelope_covered - B2B only: safe assets cover the outstanding
     # ZUS/PIT/VAT set-aside.
@@ -211,24 +221,31 @@ def build_ladder(db: Session) -> list[dict]:
         ))
 
     # 3. emergency_fund - safe assets vs target months of committed spend.
-    target_months, target_source = _emergency_target_months(db, bool(b2b_active))
-    required = target_months * committed
-    if safe_total >= required:
-        status = "done"
-    elif safe_total > 0:
-        status = "in_progress"
+    # Same portfolio dependency as starter_buffer, for the same reason.
+    if not features.portfolio:
+        rungs.append(_rung(
+            "emergency_fund", "unknown", "insights.ladder.emergency_fund.why",
+            {"note": "portfolio tracking is off - assets are not tracked"},
+        ))
     else:
-        status = "todo"
-    rungs.append(_rung(
-        "emergency_fund", status, "insights.ladder.emergency_fund.why",
-        {
-            "safe_assets": round(safe_total, 2),
-            "target_months": target_months,
-            "target_source": target_source,
-            "required": round(required, 2),
-            "business_contributions_total": round(business_contributions_total, 2),
-        },
-    ))
+        target_months, target_source = _emergency_target_months(db, bool(b2b_active))
+        required = target_months * committed
+        if safe_total >= required:
+            status = "done"
+        elif safe_total > 0:
+            status = "in_progress"
+        else:
+            status = "todo"
+        rungs.append(_rung(
+            "emergency_fund", status, "insights.ladder.emergency_fund.why",
+            {
+                "safe_assets": round(safe_total, 2),
+                "target_months": target_months,
+                "target_source": target_source,
+                "required": round(required, 2),
+                "business_contributions_total": round(business_contributions_total, 2),
+            },
+        ))
 
     # 4. ppk_on - an active UoP source contributing to PPK.
     if not uop_active:
@@ -252,6 +269,11 @@ def build_ladder(db: Session) -> list[dict]:
     marginal_rate, rate_source = _marginal_rate(db, today)
     for wrapper in ("ikze", "ike"):
         key = f"{wrapper}_used"
+        # Both wrappers are read entirely off position flows into IKZE/IKE
+        # assets - with portfolio off there are no flows to read.
+        if not features.portfolio:
+            rungs.append(_rung(key, "not_applicable", f"insights.ladder.{key}.why", {}))
+            continue
         flows = _wrapper_flows_ytd(db, today, wrapper)
         limit = (
             (params.ikze_limit_jdg if b2b_active else params.ikze_limit)
@@ -273,38 +295,50 @@ def build_ladder(db: Session) -> list[dict]:
             )
         rungs.append(_rung(key, status, f"insights.ladder.{key}.why", figures))
 
-    # 7. fire_configured - the two figures every FIRE computation needs.
-    fire_payload = get_fire(db=db)
-    fire_settings = fire_payload["settings"]
-    configured = fire_settings.birth_year is not None and fire_settings.target_fi_age is not None
-    rungs.append(_rung(
-        "fire_configured", "done" if configured else "todo",
-        "insights.ladder.fire_configured.why",
-        {
-            "birth_year": fire_settings.birth_year,
-            "target_fi_age": fire_settings.target_fi_age,
-        },
-    ))
-
-    # 8. savings_rate_on_track - current savings rate vs what FIRE needs.
-    result = fire_payload.get("result")
-    required_block = result.get("required") if result else None
-    if not configured or required_block is None:
+    # 7/8. fire_configured, savings_rate_on_track - both read the FIRE
+    # projection, so both go "not_applicable" together when the feature (and
+    # therefore portfolio, its dependency) is off.
+    if not features.fire:
         rungs.append(_rung(
-            "savings_rate_on_track", "unknown", "insights.ladder.savings_rate_on_track.why",
-            {},
+            "fire_configured", "not_applicable", "insights.ladder.fire_configured.why", {},
+        ))
+        rungs.append(_rung(
+            "savings_rate_on_track", "not_applicable",
+            "insights.ladder.savings_rate_on_track.why", {},
         ))
     else:
-        current_rate = result.get("current_savings_rate")
-        required_rate = required_block.get("savings_rate")
-        if current_rate is None or required_rate is None:
-            status = "unknown"
-        else:
-            status = "done" if current_rate >= required_rate else "todo"
+        fire_payload = get_fire(db=db)
+        fire_settings = fire_payload["settings"]
+        configured = (
+            fire_settings.birth_year is not None and fire_settings.target_fi_age is not None
+        )
         rungs.append(_rung(
-            "savings_rate_on_track", status, "insights.ladder.savings_rate_on_track.why",
-            {"current_savings_rate": current_rate, "required_savings_rate": required_rate},
+            "fire_configured", "done" if configured else "todo",
+            "insights.ladder.fire_configured.why",
+            {
+                "birth_year": fire_settings.birth_year,
+                "target_fi_age": fire_settings.target_fi_age,
+            },
         ))
+
+        result = fire_payload.get("result")
+        required_block = result.get("required") if result else None
+        if not configured or required_block is None:
+            rungs.append(_rung(
+                "savings_rate_on_track", "unknown",
+                "insights.ladder.savings_rate_on_track.why", {},
+            ))
+        else:
+            current_rate = result.get("current_savings_rate")
+            required_rate = required_block.get("savings_rate")
+            if current_rate is None or required_rate is None:
+                status = "unknown"
+            else:
+                status = "done" if current_rate >= required_rate else "todo"
+            rungs.append(_rung(
+                "savings_rate_on_track", status, "insights.ladder.savings_rate_on_track.why",
+                {"current_savings_rate": current_rate, "required_savings_rate": required_rate},
+            ))
 
     # 9. data_fresh - every non-illiquid asset snapshotted recently, and the
     # last two completed months have typed spending.
@@ -312,13 +346,22 @@ def build_ladder(db: Session) -> list[dict]:
     from ..models.monthly import MonthlyRecord
     from ..profiles import for_category
 
-    relevant = [a for a in db.query(Asset).all() if (a.profile or for_category(a.category)) != "illiquid"]
-    latest = _latest_positions(db)
-    cutoff = today - timedelta(days=45)
-    stale = [
-        a.name for a in relevant
-        if a.id not in latest or latest[a.id].timestamp.date() < cutoff
-    ]
+    # The staleness half needs portfolio (it is asset snapshots); the
+    # recorded-months half does not, so only that half runs with it off
+    # rather than marking the whole rung not_applicable.
+    if features.portfolio:
+        relevant = [
+            a for a in db.query(Asset).all()
+            if (a.profile or for_category(a.category)) != "illiquid"
+        ]
+        latest = _latest_positions(db)
+        cutoff = today - timedelta(days=45)
+        stale = [
+            a.name for a in relevant
+            if a.id not in latest or latest[a.id].timestamp.date() < cutoff
+        ]
+    else:
+        relevant, stale = [], []
     completed_months = [shift_month(month, -1), shift_month(month, -2)]
     recorded_months = {
         r.month for r in db.query(MonthlyRecord).filter(MonthlyRecord.month.in_(completed_months)).all()

@@ -1,12 +1,19 @@
 import { useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
 import Comparator from "@/components/tax/Comparator";
 import ReverseCalculator from "@/components/tax/ReverseCalculator";
 import ParamsTable from "@/components/tax/ParamsTable";
+import FeatureOffCard from "@/components/FeatureOffCard";
 
 export default function TaxPage() {
   const { t } = useI18n();
+  const { tax } = useFeatures();
   const [year] = useState(new Date().getFullYear());
+
+  if (!tax) {
+    return <FeatureOffCard descriptionKey="feat.off.tax" />;
+  }
 
   return (
     <div className="space-y-6">

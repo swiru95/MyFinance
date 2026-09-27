@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { MonthlyAnalytics, MonthlyRecord } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
 import BudgetTimelineChart from "@/components/BudgetTimelineChart";
 import SavingsRateChart from "@/components/SavingsRateChart";
 import CategoryTrendChart from "@/components/CategoryTrendChart";
@@ -21,6 +22,7 @@ const currentMonthKey = () => {
  *  redirect that keeps old links working. */
 export default function MonthlySection() {
   const { t } = useI18n();
+  const { portfolio } = useFeatures();
   const [months, setMonths] = useState<MonthlyRecord[]>([]);
   const [analytics, setAnalytics] = useState<MonthlyAnalytics | null>(null);
   const [selected, setSelected] = useState<string>(currentMonthKey());
@@ -69,17 +71,23 @@ export default function MonthlySection() {
           base={base}
           onSaved={refresh}
         />
-        <MonthStatTiles record={record} analytics={analytics} base={base} />
+        <MonthStatTiles
+          record={record}
+          analytics={analytics}
+          base={base}
+          showEffective={portfolio}
+        />
       </div>
 
       <div className="card">
         <h3 className="text-lg font-semibold">{t("mon.chartTitle")}</h3>
         <p className="mb-3 text-sm muted">{t("mon.chartSubtitle")}</p>
-        <p className="mb-3 text-xs subtle">{t("mon.effectiveNote")}</p>
+        {portfolio && <p className="mb-3 text-xs subtle">{t("mon.effectiveNote")}</p>}
         <BudgetTimelineChart
           points={analytics?.timeline ?? []}
           currency={base}
           currentMonth={currentMonthKey()}
+          showEffective={portfolio}
         />
       </div>
 

@@ -50,12 +50,30 @@ def offline_prices(monkeypatch):
 
 @pytest.fixture
 def db():
-    """A fresh schema per test, dropped afterwards."""
+    """A fresh schema per test, dropped afterwards.
+
+    Advanced features start all-on here (unlike a real new database, which
+    schema.seed_features() leaves all-off) - almost every test in this suite
+    predates feature toggles and exercises portfolio/FIRE/tax/insights
+    behaviour without ever touching Settings, so defaulting the test harness
+    to "everything on" (the same state schema.seed_features() gives an
+    upgrading, already-populated database) keeps them meaningful. Tests of
+    the toggles themselves (test_settings.py, the off-branches in
+    test_ladder.py) turn features off explicitly through the API.
+    """
+    import json
+
     from src import schema  # noqa: F401  (registers every model on Base)
     from src.database import Base, SessionLocal, engine
+    from src.models.settings import Setting
 
     Base.metadata.create_all(bind=engine)
     session = SessionLocal()
+    session.add(Setting(
+        key="features",
+        value=json.dumps({"portfolio": True, "fire": True, "tax": True, "insights": True}),
+    ))
+    session.commit()
     try:
         yield session
     finally:
