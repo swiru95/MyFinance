@@ -6,9 +6,13 @@ interface Props {
   record: MonthlyRecord | null;
   analytics: MonthlyAnalytics | null;
   base: string;
+  /** Effective spend is derived from portfolio history (income minus the
+   *  change in what is held) - without portfolio there is nothing to derive
+   *  it from, so its tile is skipped rather than shown stuck on "—". */
+  showEffective: boolean;
 }
 
-export default function MonthStatTiles({ record, analytics, base }: Props) {
+export default function MonthStatTiles({ record, analytics, base, showEffective }: Props) {
   const { t, locale } = useI18n();
   const surplus = record?.surplus ?? 0;
   const surplusTone =
@@ -52,25 +56,27 @@ export default function MonthStatTiles({ record, analytics, base }: Props) {
               : t("mon.matches")}
         </p>
       </div>
-      <div className="card">
-        <p className="text-sm muted">{t("mon.effective")}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">
-          {record?.effective_spent != null
-            ? fmtMoney(record.effective_spent, base, locale)
-            : "—"}
-        </p>
-        <p className="mt-1 text-xs subtle">
-          {record?.effective_spent != null && record.wallet_change != null
-            ? t("mon.walletChange", {
-                value: `${record.wallet_change >= 0 ? "+" : ""}${fmtMoney(
-                  record.wallet_change,
-                  base,
-                  locale,
-                )}`,
-              })
-            : t("mon.effectiveUnavailable")}
-        </p>
-      </div>
+      {showEffective && (
+        <div className="card">
+          <p className="text-sm muted">{t("mon.effective")}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">
+            {record?.effective_spent != null
+              ? fmtMoney(record.effective_spent, base, locale)
+              : "—"}
+          </p>
+          <p className="mt-1 text-xs subtle">
+            {record?.effective_spent != null && record.wallet_change != null
+              ? t("mon.walletChange", {
+                  value: `${record.wallet_change >= 0 ? "+" : ""}${fmtMoney(
+                    record.wallet_change,
+                    base,
+                    locale,
+                  )}`,
+                })
+              : t("mon.effectiveUnavailable")}
+          </p>
+        </div>
+      )}
       <div className="card">
         <p className="text-sm muted">{t("mon.avgSavings")}</p>
         <p className="mt-1 text-2xl font-semibold tabular-nums">

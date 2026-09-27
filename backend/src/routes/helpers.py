@@ -24,6 +24,21 @@ def get_timezone(db: Session) -> str:
     return value if value in TIMEZONES else DEFAULT_TIMEZONE
 
 
+def get_features(db: Session) -> "FeatureFlags":
+    """This wallet's advanced-feature switches, all-false if the row is
+    missing (schema.py seeds it on every real startup - this is only the
+    fallback for a database that predates that seeding, or a test that never
+    ran it)."""
+    import json
+
+    from ..schemas.settings import FeatureFlags
+
+    s = db.query(Setting).filter(Setting.key == "features").first()
+    if not s or not s.value:
+        return FeatureFlags()
+    return FeatureFlags.model_validate(json.loads(s.value))
+
+
 def today_in(db: Session) -> date:
     """Current date in the configured zone.
 

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
+import { useSettings } from "@/components/SettingsProvider";
 import type {
   Allocation,
   BreakdownMode,
@@ -22,9 +24,11 @@ import TaxAdvantagedTile from "@/components/fire/TaxAdvantagedTile";
 import { fireApi } from "@/lib/fireApi";
 import type { FireResponse } from "@/lib/fireTypes";
 import NextStepTile from "@/components/insights/NextStepTile";
+import BaseSummary from "@/components/dashboard/BaseSummary";
 
 export default function Dashboard() {
   const { t, td, locale } = useI18n();
+  const { portfolio, fire: fireEnabled, insights } = useFeatures();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [valueTime, setValueTime] = useState<ValueOverTime | null>(null);
   const [allocation, setAllocation] = useState<Allocation | null>(null);
@@ -43,23 +47,33 @@ export default function Dashboard() {
     let alive = true;
     async function load() {
       try {
-        const [s, a, p, e, ps, an, f] = await Promise.all([
-          api.summary(),
-          api.allocation(),
-          api.prices(),
-          api.expenseSummary(),
-          api.valueOverTime("profile"),
-          api.monthlyAnalytics(11, 12),
-          fireApi.get(),
-        ]);
+        // Committed spend needs no assets, so it loads unconditionally (it
+        // also feeds the runway/reserve math below, used only once portfolio
+        // is on). Everything asset- or FIRE-derived is skipped outright when
+        // its feature is off, rather than fetched and then hidden.
+        const e = await api.expenseSummary();
         if (!alive) return;
-        setSummary(s);
-        setAllocation(a);
-        setPrices(p);
         setExpenses(e);
-        setProfileSeries(ps);
-        setAnalytics(an);
-        setFire(f);
+
+        if (portfolio) {
+          const [s, a, p, ps, an] = await Promise.all([
+            api.summary(),
+            api.allocation(),
+            api.prices(),
+            api.valueOverTime("profile"),
+            api.monthlyAnalytics(11, 12),
+          ]);
+          if (!alive) return;
+          setSummary(s);
+          setAllocation(a);
+          setPrices(p);
+          setProfileSeries(ps);
+          setAnalytics(an);
+        }
+        if (fireEnabled) {
+          const f = await fireApi.get();
+          if (alive) setFire(f);
+        }
         setError(null);
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : t("common.failedLoad"));
@@ -71,11 +85,12 @@ export default function Dashboard() {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [portfolio, fireEnabled]);
 
   // The time series is the only thing the split affects, so it reloads on its
   // own rather than pulling the whole dashboard down with it.
   useEffect(() => {
+    if (!portfolio) return;
     let alive = true;
     async function loadSeries() {
       try {
@@ -91,9 +106,10 @@ export default function Dashboard() {
       alive = false;
       clearInterval(id);
     };
-  }, [mode]);
+  }, [mode, portfolio]);
 
-  const currency = summary?.base_currency ?? "PLN";
+  const { baseCurrency } = useSettings();
+  const currency = summary?.base_currency ?? baseCurrency;
 
   // The holistic bit: commitments and holdings are the same unit, so they can
   // be divided into each other. "Safe" is the band meant to be reachable in a
@@ -246,9 +262,11 @@ export default function Dashboard() {
             {t("dash.baseCurrency")}: <span className="font-medium">{currency}</span>
           </p>
         </div>
-        <Link href="/positions" className="btn-primary">
-          {t("dash.addPosition")}
-        </Link>
+        {portfolio && (
+          <Link href="/positions" className="btn-primary">
+            {t("dash.addPosition")}
+          </Link>
+        )}
       </div>
 
       {error && (
@@ -257,61 +275,56 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="card">
-          <p className="text-sm muted">{t("dash.total")}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">
-            {summary ? fmtMoney(summary.total_value, currency, locale) : "—"}
-          </p>
-        </div>
-        <div className="card">
-          <p className="text-sm muted">{t("dash.monthlyCommitted")}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">
-            {expenses ? fmtMoney(monthlyCommitted, currency, locale) : "—"}
-          </p>
-          <p className="mt-1 text-xs subtle">{t("dash.fromExpenses")}</p>
-          {expenses && expenses.business_contributions_total > 0 && (
-            <p className="mt-0.5 text-xs subtle">
-              {t("dash.monthlyCommittedInclBusiness", {
-                amount: fmtMoney(expenses.business_contributions_total, currency, locale),
-              })}
-            </p>
-          )}
-        </div>
-        <div className="card">
-          <p className="text-sm muted">{t("dash.runway")}</p>
-          <p className="mt-1 text-3xl font-semibold tabular-nums">
-            {runwayMonths != null && safeValue > 0
-              ? t("dash.runwayMonths", {
-                  months: fmtNum(runwayMonths, 1, locale),
-                })
-              : "—"}
-          </p>
-          <p className="mt-1 text-xs subtle">
-            {monthlyCommitted <= 0
-              ? t("dash.runwayNeedExpenses")
-              : safeValue <= 0
-                ? t("dash.runwayNoSafe")
-                : t("dash.runwayFrom")}
-          </p>
-        </div>
-        <div className="card">
-          <p className="text-sm muted">{t("dash.goldPerGram")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {prices ? fmtMoney(prices.gold_per_gram, currency, locale) : "—"}
-          </p>
-        </div>
-        <div className="card">
-          <p className="text-sm muted">{t("dash.btcSol")}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">
-            {prices ? `${fmtMoney(prices.crypto.BTC, currency, locale)} · ${fmtMoney(prices.crypto.SOL, currency, locale)}` : "—"}
-          </p>
-        </div>
-        <FireTile data={fire} />
-        <NextStepTile />
-        <TaxAdvantagedTile allocation={allocation} currency={currency} />
-      </div>
+      <BaseSummary />
 
+      {(portfolio || fireEnabled || insights) && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {portfolio && (
+            <>
+              <div className="card">
+                <p className="text-sm muted">{t("dash.total")}</p>
+                <p className="mt-1 text-3xl font-semibold tabular-nums">
+                  {summary ? fmtMoney(summary.total_value, currency, locale) : "—"}
+                </p>
+              </div>
+              <div className="card">
+                <p className="text-sm muted">{t("dash.runway")}</p>
+                <p className="mt-1 text-3xl font-semibold tabular-nums">
+                  {runwayMonths != null && safeValue > 0
+                    ? t("dash.runwayMonths", {
+                        months: fmtNum(runwayMonths, 1, locale),
+                      })
+                    : "—"}
+                </p>
+                <p className="mt-1 text-xs subtle">
+                  {monthlyCommitted <= 0
+                    ? t("dash.runwayNeedExpenses")
+                    : safeValue <= 0
+                      ? t("dash.runwayNoSafe")
+                      : t("dash.runwayFrom")}
+                </p>
+              </div>
+              <div className="card">
+                <p className="text-sm muted">{t("dash.goldPerGram")}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {prices ? fmtMoney(prices.gold_per_gram, currency, locale) : "—"}
+                </p>
+              </div>
+              <div className="card">
+                <p className="text-sm muted">{t("dash.btcSol")}</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums">
+                  {prices ? `${fmtMoney(prices.crypto.BTC, currency, locale)} · ${fmtMoney(prices.crypto.SOL, currency, locale)}` : "—"}
+                </p>
+              </div>
+            </>
+          )}
+          {fireEnabled && <FireTile data={fire} />}
+          {insights && <NextStepTile />}
+          {portfolio && <TaxAdvantagedTile allocation={allocation} currency={currency} />}
+        </div>
+      )}
+
+      {portfolio && (
       <div className="card">
         <h2 className="mb-4 text-lg font-semibold">{t("dash.valueOverTime")}</h2>
         <PortfolioChart
@@ -354,8 +367,9 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )}
 
-      {reserve && (
+      {portfolio && reserve && (
         <div className="card">
           <h2 className="text-lg font-semibold">{t("dash.runwayTitle")}</h2>
           <p className="mb-3 text-sm muted">{t("dash.runwaySubtitle")}</p>
@@ -392,6 +406,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {portfolio && (
       <div className="card">
         <h2 className="mb-4 text-lg font-semibold">{t("dash.breakdown")}</h2>
         <div className="grid gap-8 md:grid-cols-2">
@@ -421,6 +436,7 @@ export default function Dashboard() {
           </section>
         </div>
       </div>
+      )}
     </div>
   );
 }

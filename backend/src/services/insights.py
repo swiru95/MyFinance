@@ -345,12 +345,13 @@ def build_profile_snapshot(db: Session) -> dict:
     from ..models.income import IncomeSource
     from ..routes.expenses import expense_summary
     from ..routes.fire import get_fire
-    from ..routes.helpers import today_in
+    from ..routes.helpers import get_base_currency, get_features, today_in
     from ..routes.statistics import allocation as allocation_route
     from ..services.income import is_active_in_month
     from .budget import month_key
 
     answers = load_profile_answers(db)
+    features = get_features(db)
     today = today_in(db)
     month = month_key(today)
 
@@ -363,22 +364,42 @@ def build_profile_snapshot(db: Session) -> dict:
     else:
         income_stability = "none"
 
-    alloc = allocation_route(db=db)
     committed = expense_summary(db=db).monthly_total
-    safe_total = next((b["value"] for b in alloc["by_profile"] if b["profile"] == "safe"), 0.0)
-    runway_months = round(safe_total / committed, 1) if committed else None
 
-    fire_payload = get_fire(db=db)
-    result = fire_payload.get("result")
-    fi_progress = result.get("progress") if result else None
+    # Portfolio off => no allocation to profile against; skip that whole side
+    # rather than showing a "revealed risk" read off assets nobody tracks.
+    if features.portfolio:
+        alloc = allocation_route(db=db)
+        base_currency = alloc["base_currency"]
+        safe_total = next(
+            (b["value"] for b in alloc["by_profile"] if b["profile"] == "safe"), 0.0
+        )
+        runway_months = round(safe_total / committed, 1) if committed else None
+        crypto = next((c for c in alloc["by_category"] if c["category"] == "Crypto"), None)
+        crypto_share_pct = crypto["percent"] if crypto else 0.0
+        wrapper_value = sum(i["value"] for i in alloc["items"] if i.get("wrapper"))
+        wrapper_share_pct = (
+            round(100.0 * wrapper_value / alloc["total"], 2) if alloc["total"] else 0.0
+        )
+        revealed_risk_inputs = {
+            "by_band": alloc["by_profile"],
+            "crypto_share_pct": crypto_share_pct,
+            "wrapper_share_pct": wrapper_share_pct,
+        }
+    else:
+        base_currency = get_base_currency(db)
+        runway_months = None
+        revealed_risk_inputs = None
 
-    crypto = next((c for c in alloc["by_category"] if c["category"] == "Crypto"), None)
-    crypto_share_pct = crypto["percent"] if crypto else 0.0
-    wrapper_value = sum(i["value"] for i in alloc["items"] if i.get("wrapper"))
-    wrapper_share_pct = round(100.0 * wrapper_value / alloc["total"], 2) if alloc["total"] else 0.0
+    # Fire off => no FI progress to report.
+    fi_progress = None
+    if features.fire:
+        fire_payload = get_fire(db=db)
+        result = fire_payload.get("result")
+        fi_progress = result.get("progress") if result else None
 
     return {
-        "base_currency": alloc["base_currency"],
+        "base_currency": base_currency,
         "answers": answers.model_dump(),
         "risk_capacity_inputs": {
             "income_stability": income_stability,
@@ -386,11 +407,7 @@ def build_profile_snapshot(db: Session) -> dict:
             "fi_progress_pct": round(fi_progress * 100, 1) if fi_progress is not None else None,
             "dependents": answers.dependents,
         },
-        "revealed_risk_inputs": {
-            "by_band": alloc["by_profile"],
-            "crypto_share_pct": crypto_share_pct,
-            "wrapper_share_pct": wrapper_share_pct,
-        },
+        "revealed_risk_inputs": revealed_risk_inputs,
     }
 
 
@@ -418,10 +435,13 @@ def render_profile_snapshot(snap: dict) -> str:
 
     out.append("## Revealed risk - current allocation")
     rev = snap["revealed_risk_inputs"]
-    for b in rev["by_band"]:
-        out.append(f"- {b['profile']}: {b['percent']:.1f}%")
-    out.append(f"- Crypto share: {rev['crypto_share_pct']:.1f}%")
-    out.append(f"- Tax-advantaged wrapper share: {rev['wrapper_share_pct']:.1f}%")
+    if rev is None:
+        out.append("- Portfolio tracking is off - no allocation to read.")
+    else:
+        for b in rev["by_band"]:
+            out.append(f"- {b['profile']}: {b['percent']:.1f}%")
+        out.append(f"- Crypto share: {rev['crypto_share_pct']:.1f}%")
+        out.append(f"- Tax-advantaged wrapper share: {rev['wrapper_share_pct']:.1f}%")
     return "\n".join(out)
 
 
@@ -466,13 +486,13 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
     from ..models.position import Position
     from ..routes import monthly as monthly_routes
     from ..routes.fire import get_fire
-    from ..routes.helpers import today_in
+    from ..routes.helpers import get_features, today_in
     from .budget import wallet_window
 
     today = today_in(db)
+    features = get_features(db)
     month_out = monthly_routes.get_month(period, db=db)
     hist = monthly_routes.analytics(months_back=12, months_ahead=0, db=db)
-    fire_payload = get_fire(db=db)
     rungs = ladder.build_ladder(db)
 
     effective_hist = [
@@ -480,21 +500,28 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
     ]
     median_effective = statistics.median(effective_hist) if effective_hist else None
 
-    window = wallet_window(period, today)
+    # Portfolio off => no flows/market-movement split to report.
     flows = 0.0
     market_change = None
-    if window is not None and month_out.wallet_change is not None:
-        start, end = window
-        positions = db.query(Position).all()
-        flows = sum(
-            float(p.flow_in_base) for p in positions
-            if p.flow_in_base is not None and start < p.timestamp.date() <= end
-        )
-        market_change = round(month_out.wallet_change - flows, 2)
+    if features.portfolio:
+        window = wallet_window(period, today)
+        if window is not None and month_out.wallet_change is not None:
+            start, end = window
+            positions = db.query(Position).all()
+            flows = sum(
+                float(p.flow_in_base) for p in positions
+                if p.flow_in_base is not None and start < p.timestamp.date() <= end
+            )
+            market_change = round(month_out.wallet_change - flows, 2)
 
-    result = fire_payload.get("result")
-    fi_progress = result.get("progress") if result else None
-    years_to_fi = result.get("simulate", {}).get("years") if result else None
+    # Fire off => no FI progress to report.
+    fi_progress = None
+    years_to_fi = None
+    if features.fire:
+        fire_payload = get_fire(db=db)
+        result = fire_payload.get("result")
+        fi_progress = result.get("progress") if result else None
+        years_to_fi = result.get("simulate", {}).get("years") if result else None
 
     spend_figure = (
         month_out.effective_spent if month_out.effective_spent is not None else month_out.actual_spent
@@ -547,6 +574,11 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
         "years_to_fi": years_to_fi,
         "ladder": [{"key": r["key"], "status": r["status"], "figures": r["figures"]} for r in rungs],
         "anomalies": anomalies,
+        # Tells render_digest_snapshot whether to write the portfolio/FIRE
+        # sections at all, rather than let them print "not recorded" for
+        # figures nobody chose to track.
+        "portfolio_enabled": features.portfolio,
+        "fire_enabled": features.fire,
     }
 
 
@@ -576,18 +608,24 @@ def render_digest_snapshot(snap: dict) -> str:
     out.append("")
 
     out.append("## Portfolio change")
-    out.append(f"Total change: {money(snap['wallet_change'])}")
-    out.append(f"From flows (money moved in/out): {money(snap['flows'])}")
-    out.append(f"From market movement: {money(snap['market_change'])}")
+    if not snap.get("portfolio_enabled", True):
+        out.append("Portfolio tracking is off - this person does not record assets.")
+    else:
+        out.append(f"Total change: {money(snap['wallet_change'])}")
+        out.append(f"From flows (money moved in/out): {money(snap['flows'])}")
+        out.append(f"From market movement: {money(snap['market_change'])}")
     out.append("")
 
     out.append("## FIRE progress")
-    out.append(
-        f"Progress to FI target: {snap['fi_progress_pct']}%"
-        if snap["fi_progress_pct"] is not None else "FIRE is not configured."
-    )
-    if snap["years_to_fi"] is not None:
-        out.append(f"Years to FI at current pace: {snap['years_to_fi']}")
+    if not snap.get("fire_enabled", True):
+        out.append("FIRE tracking is off for this person.")
+    else:
+        out.append(
+            f"Progress to FI target: {snap['fi_progress_pct']}%"
+            if snap["fi_progress_pct"] is not None else "FIRE is not configured."
+        )
+        if snap["years_to_fi"] is not None:
+            out.append(f"Years to FI at current pace: {snap['years_to_fi']}")
     out.append("")
 
     out.append("## Ladder status")

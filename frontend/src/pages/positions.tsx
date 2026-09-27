@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtMoney, request } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
 import type { Prices } from "@/lib/types";
 import type { AssetWithWrapper, PositionWithFlow } from "@/lib/fireTypes";
 import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
 import AssetForm from "@/components/fire/AssetForm";
+import FeatureOffCard from "@/components/FeatureOffCard";
 import {
   WRAPPER_STYLES,
   wrapperAccessKey,
@@ -15,6 +17,7 @@ import {
 
 export default function PositionsPage() {
   const { t, td, locale } = useI18n();
+  const { portfolio } = useFeatures();
   // The API always returns `wrapper` / `flow_in_base` (see AssetOut /
   // PositionOut on the backend); lib/types.ts just does not declare them, so
   // the fetched rows are cast rather than re-fetched through a second call.
@@ -45,8 +48,8 @@ export default function PositionsPage() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (portfolio) refresh();
+  }, [refresh, portfolio]);
 
   const positionByAsset = new Map(positions.map((p) => [p.asset_id, p]));
   const base = prices?.base_currency ?? "PLN";
@@ -93,6 +96,10 @@ export default function PositionsPage() {
   function openEditAsset(asset: AssetWithWrapper) {
     setEditingAsset(asset);
     setAssetFormOpen(true);
+  }
+
+  if (!portfolio) {
+    return <FeatureOffCard descriptionKey="feat.off.positions" />;
   }
 
   return (

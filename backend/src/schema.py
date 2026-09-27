@@ -9,6 +9,7 @@ Safe to run repeatedly: every step checks before it acts.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -122,6 +123,49 @@ def seed() -> None:
         db.close()
 
 
+def seed_features() -> None:
+    """Decide the advanced-feature defaults for this database, once.
+
+    A brand-new database starts with everything off - the app should read as
+    Dashboard/Income/Expenses/Settings only until the person opts in. A
+    database that already holds positions, income sources, saved FIRE
+    settings or a report predates this feature and must not lose anything on
+    upgrade, so it gets everything on instead. Only ever runs when the
+    `features` key is absent - a person's own later choice, made through
+    Settings, is never overwritten by a later schema run.
+    """
+    from .database import SessionLocal
+    from .models.income import IncomeSource
+    from .models.position import Position
+    from .models.report import Report
+    from .models.settings import Setting
+
+    db = SessionLocal()
+    try:
+        if db.query(Setting).filter(Setting.key == "features").first():
+            return
+        has_existing_data = (
+            db.query(Position.id).first() is not None
+            or db.query(IncomeSource.id).first() is not None
+            or db.query(Setting).filter(Setting.key == "fire").first() is not None
+            or db.query(Report.id).first() is not None
+        )
+        value = {
+            "portfolio": has_existing_data,
+            "fire": has_existing_data,
+            "tax": has_existing_data,
+            "insights": has_existing_data,
+        }
+        db.add(Setting(key="features", value=json.dumps(value)))
+        db.commit()
+        if has_existing_data:
+            print("  + existing data found: advanced features start on")
+        else:
+            print("  + new database: advanced features start off")
+    finally:
+        db.close()
+
+
 def grant_runtime_role(role: str) -> None:
     """Give the application role exactly what it needs and nothing more.
 
@@ -153,6 +197,7 @@ def main() -> int:
     Base.metadata.create_all(bind=engine)
     migrate()
     seed()
+    seed_features()
     backfill_profiles()
     if engine.url.drivername.startswith("postgresql"):
         grant_runtime_role(os.environ.get("MYFINANCE_APP_ROLE", ""))

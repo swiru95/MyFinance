@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
 import { insightsApi } from "@/lib/insightsApi";
 import type { InsightStatus, SuggestedStyle } from "@/lib/insightsTypes";
 import type { ReportStyle } from "@/lib/types";
@@ -7,6 +8,7 @@ import NextStepsTab from "@/components/insights/NextStepsTab";
 import DigestTab from "@/components/insights/DigestTab";
 import ProfileTab from "@/components/insights/ProfileTab";
 import WalletAssessmentTab from "@/components/insights/WalletAssessmentTab";
+import FeatureOffCard from "@/components/FeatureOffCard";
 
 type TabKey = "next_steps" | "digest" | "profile" | "assessment";
 
@@ -25,20 +27,26 @@ const TABS: { key: TabKey; labelKey: string }[] = [
  *  set it without the two tabs importing each other. */
 export default function ReportPage() {
   const { t } = useI18n();
+  const { insights } = useFeatures();
   const [tab, setTab] = useState<TabKey>("next_steps");
   const [status, setStatus] = useState<InsightStatus | null>(null);
   const [style, setStyle] = useState<ReportStyle>("balanced");
 
   useEffect(() => {
+    if (!insights) return;
     insightsApi
       .status()
       .then(setStatus)
       .catch(() => setStatus(null));
-  }, []);
+  }, [insights]);
 
   function useSuggestedStyle(suggested: SuggestedStyle) {
     setStyle(suggested);
     setTab("assessment");
+  }
+
+  if (!insights) {
+    return <FeatureOffCard descriptionKey="feat.off.insights" />;
   }
 
   return (

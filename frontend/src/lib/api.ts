@@ -5,6 +5,7 @@ import type {
   Expense,
   ExpenseInput,
   ExpenseSummary,
+  FeatureFlags,
   MonthlyAnalytics,
   MonthlyInput,
   MonthlyPatch,
@@ -135,6 +136,7 @@ export const api = {
   deleteExpense: (id: number) =>
     request<void>(`/expenses/${id}`, { method: "DELETE" }),
   months: () => request<MonthlyRecord[]>("/monthly"),
+  getMonth: (month: string) => request<MonthlyRecord>(`/monthly/${month}`),
   monthlyAnalytics: (back = 11, ahead = 12) =>
     request<MonthlyAnalytics>(
       `/monthly/analytics?months_back=${back}&months_ahead=${ahead}`
@@ -169,10 +171,10 @@ export const api = {
   deleteReport: (id: number) =>
     request<void>(`/reports/${id}`, { method: "DELETE" }),
   getSettings: () => request<Settings>("/settings"),
-  setSettings: (base_currency: string, timezone?: string) =>
+  setSettings: (base_currency: string, timezone?: string, features?: FeatureFlags) =>
     request<Settings>("/settings", {
       method: "PUT",
-      body: JSON.stringify({ base_currency, timezone }),
+      body: JSON.stringify({ base_currency, timezone, features }),
     }),
 };
 

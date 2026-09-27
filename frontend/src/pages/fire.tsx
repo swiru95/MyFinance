@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useFeatures } from "@/lib/features";
 import { fireApi } from "@/lib/fireApi";
 import { fireNeedsSetup } from "@/lib/fireTypes";
 import type { FireResponse, FireSettings } from "@/lib/fireTypes";
@@ -13,9 +14,11 @@ import SavingsRateCurveChart from "@/components/fire/SavingsRateCurveChart";
 import LeversCard from "@/components/fire/LeversCard";
 import BridgeCheckCard from "@/components/fire/BridgeCheckCard";
 import InputsPanel from "@/components/fire/InputsPanel";
+import FeatureOffCard from "@/components/FeatureOffCard";
 
 export default function FirePage() {
   const { t } = useI18n();
+  const { fire: fireEnabled } = useFeatures();
   const [data, setData] = useState<FireResponse | null>(null);
   const [base, setBase] = useState("PLN");
   const [error, setError] = useState<string | null>(null);
@@ -33,12 +36,16 @@ export default function FirePage() {
   }, [t]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (fireEnabled) refresh();
+  }, [refresh, fireEnabled]);
 
   async function saveSettings(next: FireSettings) {
     await fireApi.saveSettings(next);
     await refresh();
+  }
+
+  if (!fireEnabled) {
+    return <FeatureOffCard descriptionKey="feat.off.fire" />;
   }
 
   return (

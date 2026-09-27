@@ -124,12 +124,24 @@ export interface Prices {
   fx: Record<string, number>;
 }
 
+/** Advanced features, off by default for a new wallet and switchable in
+ *  Settings. `fire` requires `portfolio` (see FeatureFlags on the backend) -
+ *  the frontend mirrors that by turning portfolio on whenever fire is
+ *  switched on, and fire off whenever portfolio is switched off. */
+export interface FeatureFlags {
+  portfolio: boolean;
+  fire: boolean;
+  tax: boolean;
+  insights: boolean;
+}
+
 export interface Settings {
   base_currency: string;
   allowed_currencies: string[];
   timezone: string;
   allowed_timezones: string[];
   default_timezone: string;
+  features: FeatureFlags;
 }
 
 export type ExpensePeriod = "monthly" | "quarterly" | "yearly" | "once";

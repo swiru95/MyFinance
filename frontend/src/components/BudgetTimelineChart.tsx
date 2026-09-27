@@ -19,6 +19,9 @@ interface Props {
   points: TimelinePoint[];
   currency: string;
   currentMonth: string;
+  /** Effective spend is derived from portfolio history - drawn only when
+   *  portfolio is on, the same gate as MonthStatTiles' effective tile. */
+  showEffective: boolean;
 }
 
 /**
@@ -30,6 +33,7 @@ export default function BudgetTimelineChart({
   points,
   currency,
   currentMonth,
+  showEffective,
 }: Props) {
   const theme = useChartTheme();
   const { t, locale } = useI18n();
@@ -124,17 +128,19 @@ export default function BudgetTimelineChart({
           {/* Dashed because this one is derived from the portfolio rather than
               recorded by hand - the dash says "computed" without a legend note,
               and survives greyscale where the hue alone would not. */}
-          <Line
-            type="monotone"
-            dataKey="effective"
-            name={t("mon.legendEffective")}
-            stroke={effective}
-            strokeWidth={2}
-            strokeDasharray="5 3"
-            dot={{ r: 3, strokeWidth: 0, fill: effective }}
-            activeDot={{ r: 5, stroke: theme.surface, strokeWidth: 2 }}
-            connectNulls
-          />
+          {showEffective && (
+            <Line
+              type="monotone"
+              dataKey="effective"
+              name={t("mon.legendEffective")}
+              stroke={effective}
+              strokeWidth={2}
+              strokeDasharray="5 3"
+              dot={{ r: 3, strokeWidth: 0, fill: effective }}
+              activeDot={{ r: 5, stroke: theme.surface, strokeWidth: 2 }}
+              connectNulls
+            />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
