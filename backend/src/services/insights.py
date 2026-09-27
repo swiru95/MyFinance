@@ -9,6 +9,7 @@ before the row is marked done; nothing here ever computes a figure itself.
 """
 from __future__ import annotations
 
+import copy
 import json
 import statistics
 
@@ -152,6 +153,133 @@ Rules you must follow:
 - Be direct about what is flagged, if anything is.
 - This is analysis of their own figures, not regulated financial advice - \
 you should not add a disclaimer, the application shows one already."""
+
+_LOCALIZE_SYSTEM = """You are a professional financial translator. Translate \
+every string value in the JSON object you are given from English to \
+natural Polish financial language.
+
+Rules you must follow:
+- Keep the same JSON keys and the same array lengths as given - never add, \
+remove or rename a key, and never add or drop an array item.
+- Leave any number, percentage, date or currency amount inside a string \
+exactly as it is.
+- Keep Markdown formatting (headings, bullets, bold) exactly as it is - \
+translate only the prose around it.
+- Output only the JSON object. Do not add commentary, notes or a preamble."""
+
+
+# --- Polish localisation of `data` ------------------------------------
+
+# profile/next_steps render prose straight out of `data` (pills aside, which
+# stay on the enum values and are translated client-side by i18n) - unlike
+# digest and the wallet report, that prose never passes through
+# assessment.translate_to_polish. This mirrors that translation step, but
+# scoped to only the prose fields, in one call, so enums/keys/numbers can
+# never be touched by the model doing the translating.
+
+def _profile_translatable(data: dict) -> dict:
+    return {
+        "summary_md": data["summary_md"],
+        "priorities": list(data["priorities"]),
+        "mismatches": [
+            {
+                "about": m["about"],
+                "stated": m["stated"],
+                "actual": m["actual"],
+                "why_it_matters": m["why_it_matters"],
+            }
+            for m in data["mismatches"]
+        ],
+    }
+
+
+def _merge_profile_translation(data: dict, translated: dict) -> dict:
+    merged = copy.deepcopy(data)
+    merged["summary_md"] = translated["summary_md"]
+    merged["priorities"] = list(translated["priorities"])
+    for m, tm in zip(merged["mismatches"], translated["mismatches"]):
+        m["about"] = tm["about"]
+        m["stated"] = tm["stated"]
+        m["actual"] = tm["actual"]
+        m["why_it_matters"] = tm["why_it_matters"]
+    return merged
+
+
+def _next_steps_translatable(data: dict) -> dict:
+    return {"steps": [{"title": s["title"], "why_md": s["why_md"]} for s in data["steps"]]}
+
+
+def _merge_next_steps_translation(data: dict, translated: dict) -> dict:
+    merged = copy.deepcopy(data)
+    for s, ts in zip(merged["steps"], translated["steps"]):
+        s["title"] = ts["title"]
+        s["why_md"] = ts["why_md"]
+    return merged
+
+
+_LOCALIZABLE = {
+    "profile": (_profile_translatable, _merge_profile_translation),
+    "next_steps": (_next_steps_translatable, _merge_next_steps_translation),
+}
+
+
+def _json_schema_for(value) -> dict:
+    """A json_schema fragment shaped like `value`, for the translation
+    request's response_format - built from the payload itself so it always
+    matches, rather than hand-maintaining a schema per kind."""
+    if isinstance(value, list):
+        items = _json_schema_for(value[0]) if value else {"type": "string"}
+        return {"type": "array", "items": items}
+    if isinstance(value, dict):
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {k: _json_schema_for(v) for k, v in value.items()},
+            "required": list(value.keys()),
+        }
+    return {"type": "string"}
+
+
+def _validate_translation_shape(original, translated) -> bool:
+    """Same keys, same array lengths, every leaf a string - checked
+    recursively rather than trusting response_format, because not every
+    model behind the router enforces the schema it was given."""
+    if isinstance(original, dict):
+        return (
+            isinstance(translated, dict)
+            and set(translated.keys()) == set(original.keys())
+            and all(_validate_translation_shape(v, translated[k]) for k, v in original.items())
+        )
+    if isinstance(original, list):
+        return (
+            isinstance(translated, list)
+            and len(translated) == len(original)
+            and all(_validate_translation_shape(o, t) for o, t in zip(original, translated))
+        )
+    return isinstance(translated, str)
+
+
+def localize_data(data: dict, kind: str) -> tuple[dict | None, str | None]:
+    """Translate only `data`'s prose fields to Polish in one call, leaving
+    enums, keys and numbers untouched. Returns (data_localized, failure
+    reason) - never raises, because the English `data` and `content` have
+    already made the job usable and a translation problem should degrade to
+    a UI note rather than fail the whole insight."""
+    extract, merge = _LOCALIZABLE[kind]
+    payload = extract(data)
+    schema = {"name": "localized_prose", "schema": _json_schema_for(payload)}
+    try:
+        text = _complete_json(
+            settings.llm_translate_model, _LOCALIZE_SYSTEM, json.dumps(payload), schema,
+        )
+        translated = _first_json_object(text)
+    except (llm.LLMUnavailable, ValueError) as exc:
+        return None, f"could not translate the structured result: {exc}"
+
+    if not _validate_translation_shape(payload, translated):
+        return None, "translation returned an unexpected shape"
+
+    return merge(data, translated), None
 
 
 # --- Questionnaire --------------------------------------------------------
@@ -598,6 +726,19 @@ def generate(db: Session, insight) -> None:
             polish, translator = assessment.translate_to_polish(content_en)
             insight.content = polish
             insight.translator = translator
+
+            if insight.kind in _LOCALIZABLE:
+                # profile/next_steps render `data` as prose directly (not
+                # through `content`), so it needs its own translation pass.
+                # A failure here must not fail a job whose Markdown content
+                # already translated fine - it only means the tab falls back
+                # to English data with a note, so record it on `error`
+                # (still empty at this point for a job reaching "done")
+                # rather than raising.
+                localized, reason = localize_data(data, insight.kind)
+                insight.data_localized = localized
+                if reason:
+                    insight.error = f"Data translation unavailable: {reason}"
         else:
             insight.content = content_en
 

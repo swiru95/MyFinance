@@ -6,6 +6,12 @@ import type { AssetWithWrapper, PositionWithFlow } from "@/lib/fireTypes";
 import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
 import AssetForm from "@/components/fire/AssetForm";
+import {
+  WRAPPER_STYLES,
+  wrapperAccessKey,
+  wrapperLabelKey,
+  type WrapperKey,
+} from "@/lib/wrappers";
 
 export default function PositionsPage() {
   const { t, td, locale } = useI18n();
@@ -122,8 +128,17 @@ export default function PositionsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {group.assets.map((asset) => {
           const pos = positionByAsset.get(asset.id);
+          // Unwrapped assets keep the plain card; a wrapper adds a coloured
+          // frame plus a badge naming it and its access rule, one colour per
+          // wrapper (see lib/wrappers.ts) so the same wrapper reads the same
+          // way on /positions, the dashboard tile and the FIRE inputs.
+          const wrapperKey = (asset.wrapper || null) as WrapperKey | null;
+          const style = wrapperKey ? WRAPPER_STYLES[wrapperKey] : null;
           return (
-            <div key={asset.id} className="card flex flex-col gap-3">
+            <div
+              key={asset.id}
+              className={`card flex flex-col gap-3 ${style ? style.ring : ""}`}
+            >
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-base font-medium">
                   <span className="text-lg">{asset.icon}</span> {td(asset.name)}
@@ -145,6 +160,16 @@ export default function PositionsPage() {
                   </button>
                 </span>
               </div>
+
+              {wrapperKey && style && (
+                <span
+                  className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${style.badge}`}
+                  title={t(wrapperAccessKey(wrapperKey))}
+                >
+                  {t(wrapperLabelKey(wrapperKey))}
+                  <span className="opacity-70">· {t(wrapperAccessKey(wrapperKey))}</span>
+                </span>
+              )}
 
               {pos ? (
                 <PositionCard

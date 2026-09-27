@@ -135,8 +135,18 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
   const unavailable = status != null && !status.configured;
   const data =
     insight?.status === "done" && insight.data
-      ? (insight.data as unknown as ProfileData)
+      ? ((insight.language === "pl"
+          ? (insight.data_localized ?? insight.data)
+          : insight.data) as unknown as ProfileData)
       : null;
+  // data_localized is only ever set for a "pl" job (see
+  // services/insights.py:localize_data); null there means the translation
+  // call failed, so the card below is silently showing English prose.
+  const translationUnavailable =
+    insight?.status === "done" &&
+    insight.language === "pl" &&
+    insight.data != null &&
+    insight.data_localized == null;
 
   return (
     <div className="space-y-6">
@@ -396,6 +406,9 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
 
       {!pending && data ? (
         <div className="card space-y-4">
+          {translationUnavailable && (
+            <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
+          )}
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium dark:bg-slate-800">
               {t("ins.profile.stated")}: {t(`ins.profile.level.${data.stated_tolerance}`)}

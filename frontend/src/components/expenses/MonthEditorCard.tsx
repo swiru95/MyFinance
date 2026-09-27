@@ -134,6 +134,7 @@ export default function MonthEditorCard({
             onChange={(e) => setSpent(e.target.value)}
             placeholder="0.00"
           />
+          <p className="mt-1 text-xs subtle">{t("mon.actualSpentHint")}</p>
         </div>
         <div>
           <label className="label" htmlFor="m-currency">{t("common.currency")}</label>

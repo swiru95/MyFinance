@@ -119,7 +119,7 @@ export const en: Record<string, string> = {
   "fire.bridge.ok": "Covered ✓",
   "fire.bridge.notOk": "Shortfall before 60",
   "fire.bridge.wrapperHint":
-    "IKE, PPK and OIPE money is penalised before age 60, and IKZE before 65 — none of it counts as accessible until then.",
+    "IKE, PPK and OIPE money is penalised before age 60, and IKZE before 65 — none of it counts as accessible until then. OKI has no age lock, so it counts as accessible immediately.",
   "fire.bridge.unavailable":
     "Set a target FI age, or reach FI, to see this.",
 
@@ -180,6 +180,22 @@ export const en: Record<string, string> = {
   "fire.wrapper.ikze": "IKZE",
   "fire.wrapper.ppk": "PPK",
   "fire.wrapper.oipe": "OIPE",
+  "fire.wrapper.oki": "OKI",
+  "fire.wrapper.oki.hint":
+    "Osobiste Konto Inwestycyjne — from 2027; no Belka tax on up to 100 000 PLN of assets; withdraw any time.",
+  "fire.wrapper.access.60": "Locked until 60",
+  "fire.wrapper.access.65": "Locked until 65",
+  "fire.wrapper.access.any": "Withdraw any time",
+
+  "fire.inputs.accessibleHint": "Includes OKI — tax-advantaged, but not locked.",
+
+  "fire.taxAdvantaged.title": "Tax-advantaged",
+  "fire.taxAdvantaged.ofPortfolio": "of portfolio",
+  "fire.taxAdvantaged.locked": "locked",
+  "fire.taxAdvantaged.accessible": "accessible",
+  "fire.taxAdvantaged.okiLimit": "{value} of the {limit} exemption limit",
+  "fire.taxAdvantaged.okiFrom2027": "from 2027",
+  "fire.taxAdvantaged.empty": "Nothing tax-advantaged yet — wrap a position on",
 };
 
 export const pl: Record<string, string> = {
@@ -299,7 +315,7 @@ export const pl: Record<string, string> = {
   "fire.bridge.ok": "Pokryte ✓",
   "fire.bridge.notOk": "Brak pokrycia przed 60. rokiem życia",
   "fire.bridge.wrapperHint":
-    "Środki na IKE, PPK i OIPE są karane przed 60. rokiem życia, a na IKZE przed 65. — do tego czasu nie liczą się jako dostępne.",
+    "Środki na IKE, PPK i OIPE są karane przed 60. rokiem życia, a na IKZE przed 65. — do tego czasu nie liczą się jako dostępne. OKI nie ma blokady wiekowej, więc liczy się jako dostępne od razu.",
   "fire.bridge.unavailable":
     "Ustaw docelowy wiek FI albo osiągnij FI, aby to zobaczyć.",
 
@@ -361,4 +377,20 @@ export const pl: Record<string, string> = {
   "fire.wrapper.ikze": "IKZE",
   "fire.wrapper.ppk": "PPK",
   "fire.wrapper.oipe": "OIPE",
+  "fire.wrapper.oki": "OKI",
+  "fire.wrapper.oki.hint":
+    "Osobiste Konto Inwestycyjne — dostępne od 2027; bez podatku Belki od aktywów do 100 000 PLN; wypłata w każdej chwili.",
+  "fire.wrapper.access.60": "Zablokowane do 60. roku życia",
+  "fire.wrapper.access.65": "Zablokowane do 65. roku życia",
+  "fire.wrapper.access.any": "Wypłata w każdej chwili",
+
+  "fire.inputs.accessibleHint": "W tym OKI — z ulgą podatkową, ale bez blokady.",
+
+  "fire.taxAdvantaged.title": "Na optymalizacji podatkowej",
+  "fire.taxAdvantaged.ofPortfolio": "portfela",
+  "fire.taxAdvantaged.locked": "zablokowane",
+  "fire.taxAdvantaged.accessible": "dostępne",
+  "fire.taxAdvantaged.okiLimit": "{value} z limitu zwolnienia {limit}",
+  "fire.taxAdvantaged.okiFrom2027": "od 2027",
+  "fire.taxAdvantaged.empty": "Nic jeszcze nie jest na optymalizacji podatkowej — oznacz pozycję opakowaniem na",
 };

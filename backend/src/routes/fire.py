@@ -105,7 +105,8 @@ def get_fire(db: Session = Depends(get_db)):
     current_age = today.year - settings.birth_year
 
     alloc = statistics_routes.allocation(db=db)
-    committed = expense_summary(db=db).monthly_total
+    expenses_summary = expense_summary(db=db)
+    committed = expenses_summary.monthly_total
     months = monthly_routes.analytics(months_back=11, months_ahead=0, db=db)
 
     # Illiquid holdings (a watch, a vehicle) cannot fund withdrawals, so they
@@ -122,9 +123,14 @@ def get_fire(db: Session = Depends(get_db)):
         else:
             liquid_items.append(item)
 
-    wrapped = sum(item["value"] for item in liquid_items if item.get("wrapper"))
+    # Wrapper alone does not mean locked: OKI is tax-advantaged but carries no
+    # age lock (see tax/pl/wrappers.py), so "wrapped" here means specifically
+    # a wrapper with an access age, not just any non-empty wrapper string.
+    wrapped = sum(
+        item["value"] for item in liquid_items if item.get("wrapper") in fire.ACCESS_AGE
+    )
     accessible_raw = sum(
-        item["value"] for item in liquid_items if not item.get("wrapper")
+        item["value"] for item in liquid_items if item.get("wrapper") not in fire.ACCESS_AGE
     )
     reserve = settings.emergency_months * committed
     accessible = max(accessible_raw - reserve, 0.0)
@@ -137,7 +143,11 @@ def get_fire(db: Session = Depends(get_db)):
         monthly_spend = months.avg_actual
         spend_source = "recorded"
     else:
-        monthly_spend = committed
+        # Personal only, not the full committed (incl. JDG ZUS/health): once
+        # FI is reached the JDG is assumed closed, so its fixed contributions
+        # stop - and include_health_cost/health_cost_monthly below already
+        # add back voluntary NFZ health for the post-JDG years.
+        monthly_spend = expenses_summary.monthly_total_personal
         spend_source = "committed"
 
     monthly_net_income = months.avg_income or 0.0

@@ -24,10 +24,16 @@ export default function InputsPanel({ inputs, base }: Props) {
       <h2 className="text-lg font-semibold">{t("fire.inputs.title")}</h2>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
         <Row label={t("fire.inputs.fiAssets")} value={fmtMoney(inputs.fi_assets, base, locale)} />
-        <Row
-          label={t("fire.inputs.accessible")}
-          value={fmtMoney(inputs.accessible_assets, base, locale)}
-        />
+        <div>
+          <dt className="muted">{t("fire.inputs.accessible")}</dt>
+          <dd className="font-medium tabular-nums">
+            {fmtMoney(inputs.accessible_assets, base, locale)}
+          </dd>
+          {/* OKI has no age lock (see tax/pl/wrappers.py), so it is folded
+              into accessible_assets, not wrapped_assets - worth spelling
+              out here since "accessible" otherwise reads as "unwrapped". */}
+          <dd className="text-xs subtle">{t("fire.inputs.accessibleHint")}</dd>
+        </div>
         <Row label={t("fire.inputs.wrapped")} value={fmtMoney(inputs.wrapped_assets, base, locale)} />
         <Row
           label={t("fire.inputs.excludedIlliquid")}

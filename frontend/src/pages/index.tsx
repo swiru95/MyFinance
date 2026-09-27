@@ -18,6 +18,7 @@ import { monthLabel } from "@/lib/chartTheme";
 import { blendedRate, compound, SCENARIOS } from "@/lib/projection";
 import RunwayChart from "@/components/RunwayChart";
 import FireTile from "@/components/fire/FireTile";
+import TaxAdvantagedTile from "@/components/fire/TaxAdvantagedTile";
 import { fireApi } from "@/lib/fireApi";
 import type { FireResponse } from "@/lib/fireTypes";
 import NextStepTile from "@/components/insights/NextStepTile";
@@ -269,6 +270,13 @@ export default function Dashboard() {
             {expenses ? fmtMoney(monthlyCommitted, currency, locale) : "—"}
           </p>
           <p className="mt-1 text-xs subtle">{t("dash.fromExpenses")}</p>
+          {expenses && expenses.business_contributions_total > 0 && (
+            <p className="mt-0.5 text-xs subtle">
+              {t("dash.monthlyCommittedInclBusiness", {
+                amount: fmtMoney(expenses.business_contributions_total, currency, locale),
+              })}
+            </p>
+          )}
         </div>
         <div className="card">
           <p className="text-sm muted">{t("dash.runway")}</p>
@@ -301,6 +309,7 @@ export default function Dashboard() {
         </div>
         <FireTile data={fire} />
         <NextStepTile />
+        <TaxAdvantagedTile allocation={allocation} currency={currency} />
       </div>
 
       <div className="card">

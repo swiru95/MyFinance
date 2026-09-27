@@ -170,7 +170,9 @@ def build_ladder(db: Session) -> list[dict]:
     month = month_key(today)
 
     alloc = allocation_route(db=db)
-    committed = expense_summary(db=db).monthly_total
+    expenses_summary = expense_summary(db=db)
+    committed = expenses_summary.monthly_total
+    business_contributions_total = expenses_summary.business_contributions_total
     safe_total = _safe_total(alloc)
     b2b_active = _active_sources(db, month, "b2b")
     uop_active = _active_sources(db, month, "uop")
@@ -186,7 +188,11 @@ def build_ladder(db: Session) -> list[dict]:
         status = "todo"
     rungs.append(_rung(
         "starter_buffer", status, "insights.ladder.starter_buffer.why",
-        {"safe_assets": round(safe_total, 2), "target": round(committed, 2)},
+        {
+            "safe_assets": round(safe_total, 2),
+            "target": round(committed, 2),
+            "business_contributions_total": round(business_contributions_total, 2),
+        },
     ))
 
     # 2. envelope_covered - B2B only: safe assets cover the outstanding
@@ -220,6 +226,7 @@ def build_ladder(db: Session) -> list[dict]:
             "target_months": target_months,
             "target_source": target_source,
             "required": round(required, 2),
+            "business_contributions_total": round(business_contributions_total, 2),
         },
     ))
 

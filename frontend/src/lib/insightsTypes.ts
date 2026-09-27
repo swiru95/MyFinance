@@ -28,6 +28,12 @@ export interface Insight {
   content: string;
   content_en: string;
   data: Record<string, unknown> | null;
+  /** `data` with only its prose fields translated to Polish - set only for
+   *  a "pl" profile/next_steps job, and only when the translation call
+   *  succeeded; null otherwise (including every "en" job), in which case
+   *  the tab falls back to `data` and shows a note. See
+   *  services/insights.py:localize_data. */
+  data_localized: Record<string, unknown> | null;
   snapshot: Record<string, unknown> | null;
   /** Numbers in `content` that could not be matched against `snapshot`. */
   ungrounded: string[];
