@@ -3,6 +3,7 @@ import * as featuresStrings from "./strings/features";
 import * as fireStrings from "./strings/fire";
 import * as incomeStrings from "./strings/income";
 import * as insightsStrings from "./strings/insights";
+import * as glossaryStrings from "./strings/glossary";
 
 export type Language = "en" | "pl";
 
@@ -25,12 +26,13 @@ type Dict = Record<string, string>;
 const en: Dict = {
   "app.name": "MyFinance",
   "nav.dashboard": "Dashboard",
-  "nav.positions": "Positions",
+  "nav.positions": "Assets",
   "nav.expenses": "Expenses",
   "nav.income": "Income",
-  "nav.tax": "Tax",
-  "nav.fire": "FIRE",
+  "nav.tax": "Calculators",
+  "nav.fire": "Retirement",
   "nav.settings": "Settings",
+  "nav.menu": "Menu",
 
   "auth.prompt": "Sign in with your work account to continue.",
   "auth.signIn": "Sign in with Microsoft",
@@ -62,15 +64,15 @@ const en: Dict = {
   "dash.allocation": "Allocation",
   "dash.noHistory": "No history yet — update a position to start tracking.",
   "dash.nothingToAllocate": "Nothing to allocate yet.",
-  "dash.monthlyCommitted": "Monthly commitment",
+  "dash.monthlyCommitted": "Fixed monthly costs",
   "dash.fromExpenses": "From your recurring expenses",
   "dash.monthlyCommittedInclBusiness": "incl. {amount} JDG ZUS + health",
-  "dash.runway": "Reserve covers",
+  "dash.runway": "Your cushion lasts",
   "dash.runwayMonths": "{months} months",
   "dash.runwayFrom": "Safe assets ÷ monthly commitment",
   "dash.runwayNeedExpenses": "Add expenses to see this",
   "dash.runwayNoSafe": "No safe assets recorded",
-  "dash.runwayTitle": "Reserve cover over time",
+  "dash.runwayTitle": "Your cushion over time",
   "dash.runwaySubtitle":
     "Safe assets divided by that month's commitments. Months, not money, so it gets an axis of its own.",
   "dash.runwayTarget": "{months}-month target",
@@ -97,7 +99,7 @@ const en: Dict = {
   "chart.reserveHint":
     "The dashed line is {months} months of commitments ({value}). Split by risk to see whether your safe band clears it.",
 
-  "pos.title": "Positions",
+  "pos.title": "Assets",
   "pos.subtitle":
     "Update a position anytime — each change is timestamped and shown on the chart.",
   "pos.history": "History",
@@ -146,7 +148,7 @@ const en: Dict = {
   "exp.add": "+ Add expense",
   "exp.new": "New expense",
   "exp.editTitle": "Edit expense",
-  "exp.monthlyCommitment": "Monthly commitment",
+  "exp.monthlyCommitment": "Fixed monthly costs",
   "exp.activeOngoing": "{active} active · {ongoing} ongoing",
   "exp.endingSoon": "Ending within 90 days",
   "exp.nothingEnding": "Nothing ending soon.",
@@ -283,12 +285,12 @@ const en: Dict = {
 
   "nav.report": "Report",
 
-  "mon.effective": "Effective spend",
-  "mon.effectiveHint": "Income minus the change in your portfolio",
+  "mon.effective": "What really left your accounts",
+  "mon.effectiveHint": "Income minus how your portfolio changed - market moves count too",
   "mon.walletChange": "Portfolio change: {value}",
   "mon.effectiveUnavailable": "Needs income and portfolio history for this month",
   "mon.effectiveNote":
-    "Effective spend is income minus what the portfolio actually gained, so a market drawdown counts towards it just as real spending does.",
+    "\"What really left your accounts\" is income minus what the portfolio actually gained, so a market drawdown counts towards it just as real spending does.",
   "mon.tblEffective": "Effective",
   "mon.legendEffective": "Effective spend",
 
@@ -333,12 +335,13 @@ const en: Dict = {
 const pl: Dict = {
   "app.name": "MyFinance",
   "nav.dashboard": "Pulpit",
-  "nav.positions": "Pozycje",
+  "nav.positions": "Aktywa",
   "nav.expenses": "Wydatki",
-  "nav.income": "Dochody",
-  "nav.tax": "Podatki",
-  "nav.fire": "FIRE",
+  "nav.income": "Przychody",
+  "nav.tax": "Kalkulatory",
+  "nav.fire": "Emerytura",
   "nav.settings": "Ustawienia",
+  "nav.menu": "Menu",
 
   "auth.prompt": "Zaloguj się kontem służbowym, aby kontynuować.",
   "auth.signIn": "Zaloguj się przez Microsoft",
@@ -371,15 +374,15 @@ const pl: Dict = {
   "dash.noHistory":
     "Brak historii — zaktualizuj pozycję, aby rozpocząć śledzenie.",
   "dash.nothingToAllocate": "Brak danych do pokazania.",
-  "dash.monthlyCommitted": "Zobowiązania miesięczne",
+  "dash.monthlyCommitted": "Stałe koszty miesięczne",
   "dash.fromExpenses": "Z Twoich wydatków cyklicznych",
   "dash.monthlyCommittedInclBusiness": "w tym {amount} ZUS i zdrowotna z JDG",
-  "dash.runway": "Rezerwa starczy na",
+  "dash.runway": "Poduszka wystarczy na",
   "dash.runwayMonths": "{months} mies.",
   "dash.runwayFrom": "Aktywa bezpieczne ÷ zobowiązania miesięczne",
   "dash.runwayNeedExpenses": "Dodaj wydatki, aby zobaczyć",
   "dash.runwayNoSafe": "Brak aktywów bezpiecznych",
-  "dash.runwayTitle": "Zasięg rezerwy w czasie",
+  "dash.runwayTitle": "Twoja poduszka w czasie",
   "dash.runwaySubtitle":
     "Aktywa bezpieczne podzielone przez zobowiązania danego miesiąca. To miesiące, nie złotówki, więc mają własną oś.",
   "dash.runwayTarget": "cel {months} mies.",
@@ -406,7 +409,7 @@ const pl: Dict = {
   "chart.reserveHint":
     "Linia przerywana to {months} miesięcy zobowiązań ({value}). Przełącz na podział wg ryzyka, aby zobaczyć, czy pasmo bezpieczne ją przekracza.",
 
-  "pos.title": "Pozycje",
+  "pos.title": "Aktywa",
   "pos.subtitle":
     "Pozycję możesz zaktualizować w dowolnej chwili — każda zmiana ma znacznik czasu i trafia na wykres.",
   "pos.history": "Historia",
@@ -455,7 +458,7 @@ const pl: Dict = {
   "exp.add": "+ Dodaj wydatek",
   "exp.new": "Nowy wydatek",
   "exp.editTitle": "Edytuj wydatek",
-  "exp.monthlyCommitment": "Zobowiązania miesięczne",
+  "exp.monthlyCommitment": "Stałe koszty miesięczne",
   "exp.activeOngoing": "{active} aktywnych · {ongoing} bezterminowych",
   "exp.endingSoon": "Kończy się w ciągu 90 dni",
   "exp.nothingEnding": "Nic się wkrótce nie kończy.",
@@ -594,13 +597,13 @@ const pl: Dict = {
 
   "nav.report": "Raport",
 
-  "mon.effective": "Wydatki efektywne",
-  "mon.effectiveHint": "Przychód minus zmiana wartości portfela",
+  "mon.effective": "Ile naprawdę ubyło",
+  "mon.effectiveHint": "Przychód minus zmiana wartości portfela - ruchy rynku też się liczą",
   "mon.walletChange": "Zmiana portfela: {value}",
   "mon.effectiveUnavailable":
     "Wymaga przychodu i historii portfela za ten miesiąc",
   "mon.effectiveNote":
-    "Wydatki efektywne to przychód minus faktyczny przyrost portfela, więc spadek na rynku liczy się tak samo jak realny wydatek.",
+    "„Ile naprawdę ubyło” to przychód minus faktyczny przyrost portfela, więc spadek na rynku liczy się tak samo jak realny wydatek.",
   "mon.tblEffective": "Efektywne",
   "mon.legendEffective": "Wydatki efektywne",
 
@@ -649,11 +652,11 @@ const pl: Dict = {
 const DICTS: Record<Language, Dict> = {
   en: {
     ...en, ...incomeStrings.en, ...fireStrings.en, ...insightsStrings.en,
-    ...featuresStrings.en,
+    ...featuresStrings.en, ...glossaryStrings.en,
   },
   pl: {
     ...pl, ...incomeStrings.pl, ...fireStrings.pl, ...insightsStrings.pl,
-    ...featuresStrings.pl,
+    ...featuresStrings.pl, ...glossaryStrings.pl,
   },
 };
 

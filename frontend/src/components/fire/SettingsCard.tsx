@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { FireSettings } from "@/lib/fireTypes";
+import InfoTip from "@/components/InfoTip";
 
 interface Props {
   settings: FireSettings;
@@ -137,6 +138,7 @@ export default function SettingsCard({
             <div>
               <label className="label" htmlFor="fs-swr">
                 {t("fire.settings.swr")} (%)
+                <InfoTip text={t("gloss.swr")} label={t("fire.settings.swr")} />
               </label>
               <input
                 id="fs-swr"
@@ -172,6 +174,7 @@ export default function SettingsCard({
             <div>
               <label className="label" htmlFor="fs-real-return">
                 {t("fire.settings.realReturnOverride")} (%)
+                <InfoTip text={t("gloss.realReturn")} label={t("fire.settings.realReturnOverride")} />
               </label>
               <input
                 id="fs-real-return"
@@ -259,6 +262,7 @@ export default function SettingsCard({
             <div>
               <label className="label" htmlFor="fs-gain-share">
                 {t("fire.settings.gainShare")} (%)
+                <InfoTip text={t("gloss.belka")} label={t("fire.settings.gainShare")} />
               </label>
               <input
                 id="fs-gain-share"

@@ -217,7 +217,7 @@ export const en: Record<string, string> = {
   "inc.field.total": "Total",
 
   // ---- /tax: page ----
-  "tax.title": "Tax calculators",
+  "tax.title": "Calculators",
   "tax.subtitle":
     "Compare umowa o pracę and B2B, work backwards from a target net, and see this year's Polish tax parameters. Nothing here is saved.",
   "tax.disclaimer":
@@ -296,7 +296,7 @@ export const pl: Record<string, string> = {
   "mon.fromSourcesEmpty": "Brak dochodu ze źródeł w tym miesiącu.",
 
   // ---- /income ----
-  "inc.title": "Dochody",
+  "inc.title": "Przychody",
   "inc.subtitle":
     "Cykliczne źródła dochodu, harmonogram na ten rok i część konta, która jeszcze nie jest Twoja.",
   "inc.addSource": "+ Dodaj źródło",
@@ -493,7 +493,7 @@ export const pl: Record<string, string> = {
   "inc.field.total": "Razem",
 
   // ---- /tax ----
-  "tax.title": "Kalkulatory podatkowe",
+  "tax.title": "Kalkulatory",
   "tax.subtitle":
     "Porównaj umowę o pracę i B2B, policz wstecz od docelowego netto i zobacz tegoroczne parametry podatkowe. Nic tu się nie zapisuje.",
   "tax.disclaimer":

@@ -8,9 +8,11 @@ import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
 import AssetForm from "@/components/fire/AssetForm";
 import FeatureOffCard from "@/components/FeatureOffCard";
+import InfoTip from "@/components/InfoTip";
 import {
   WRAPPER_STYLES,
   wrapperAccessKey,
+  wrapperGlossaryKey,
   wrapperLabelKey,
   type WrapperKey,
 } from "@/lib/wrappers";
@@ -171,10 +173,13 @@ export default function PositionsPage() {
               {wrapperKey && style && (
                 <span
                   className={`inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${style.badge}`}
-                  title={t(wrapperAccessKey(wrapperKey))}
                 >
                   {t(wrapperLabelKey(wrapperKey))}
                   <span className="opacity-70">· {t(wrapperAccessKey(wrapperKey))}</span>
+                  <InfoTip
+                    text={t(wrapperGlossaryKey(wrapperKey))}
+                    label={t(wrapperLabelKey(wrapperKey))}
+                  />
                 </span>
               )}
 

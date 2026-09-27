@@ -3,6 +3,7 @@ import { fmtMoney } from "@/lib/api";
 import { incomeApi, taxApi } from "@/lib/incomeApi";
 import { INPUT_CURRENCIES } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
+import InfoTip from "@/components/InfoTip";
 import type {
   B2bIncomeParams,
   Billing,
@@ -337,7 +338,10 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="inc-kup">{t("inc.form.kup")}</label>
+              <label className="label" htmlFor="inc-kup">
+                {t("inc.form.kup")}
+                <InfoTip text={t("gloss.kup")} label={t("inc.form.kup")} />
+              </label>
               <select id="inc-kup" className="input" value={kup} onChange={(e) => setKup(e.target.value as Kup)}>
                 <option value="standard">{t("inc.form.kupStandard")}</option>
                 <option value="commuting">{t("inc.form.kupCommuting")}</option>
@@ -361,6 +365,7 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={pit2} onChange={(e) => setPit2(e.target.checked)} />
               {t("inc.form.pit2")}
+              <InfoTip text={t("gloss.pit2")} label={t("inc.form.pit2")} />
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -373,7 +378,10 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="inc-ppk-emp">{t("inc.form.ppkEmployee")}</label>
+              <label className="label" htmlFor="inc-ppk-emp">
+                {t("inc.form.ppkEmployee")}
+                <InfoTip text={t("gloss.ppk")} label={t("inc.form.ppkEmployee")} />
+              </label>
               <input
                 id="inc-ppk-emp"
                 className="input"
@@ -506,7 +514,10 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label" htmlFor="inc-taxform">{t("inc.form.taxForm")}</label>
+              <label className="label" htmlFor="inc-taxform">
+                {t("inc.form.taxForm")}
+                <InfoTip text={t("gloss.taxForm")} label={t("inc.form.taxForm")} />
+              </label>
               <select
                 id="inc-taxform"
                 className="input"
@@ -577,7 +588,10 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
           )}
 
           <div>
-            <label className="label" htmlFor="inc-zus-stage">{t("inc.form.zusStage")}</label>
+            <label className="label" htmlFor="inc-zus-stage">
+              {t("inc.form.zusStage")}
+              <InfoTip text={t("gloss.zusStage")} label={t("inc.form.zusStage")} />
+            </label>
             <select
               id="inc-zus-stage"
               className="input"

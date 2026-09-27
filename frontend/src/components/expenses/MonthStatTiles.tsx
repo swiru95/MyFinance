@@ -1,6 +1,7 @@
 import { fmtMoney, fmtNum } from "@/lib/api";
 import type { MonthlyAnalytics, MonthlyRecord } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
+import InfoTip from "@/components/InfoTip";
 
 interface Props {
   record: MonthlyRecord | null;
@@ -25,13 +26,6 @@ export default function MonthStatTiles({ record, analytics, base, showEffective 
 
   return (
     <div className="grid auto-rows-min content-start gap-4 sm:grid-cols-2 lg:col-span-2">
-      <div className="card">
-        <p className="text-sm muted">{t("mon.committedThis")}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">
-          {record ? fmtMoney(record.committed, base, locale) : "—"}
-        </p>
-        <p className="mt-1 text-xs subtle">{t("mon.fromRecurring")}</p>
-      </div>
       <div className="card">
         <p className="text-sm muted">{t("mon.surplus")}</p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${surplusTone}`}>
@@ -58,12 +52,16 @@ export default function MonthStatTiles({ record, analytics, base, showEffective 
       </div>
       {showEffective && (
         <div className="card">
-          <p className="text-sm muted">{t("mon.effective")}</p>
+          <p className="flex items-center text-sm muted">
+            {t("mon.effective")}
+            <InfoTip text={t("gloss.effectiveSpend")} label={t("mon.effective")} />
+          </p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {record?.effective_spent != null
               ? fmtMoney(record.effective_spent, base, locale)
               : "—"}
           </p>
+          <p className="mt-1 text-xs subtle">{t("mon.effectiveHint")}</p>
           <p className="mt-1 text-xs subtle">
             {record?.effective_spent != null && record.wallet_change != null
               ? t("mon.walletChange", {
@@ -78,7 +76,10 @@ export default function MonthStatTiles({ record, analytics, base, showEffective 
         </div>
       )}
       <div className="card">
-        <p className="text-sm muted">{t("mon.avgSavings")}</p>
+        <p className="flex items-center text-sm muted">
+          {t("mon.avgSavings")}
+          <InfoTip text={t("gloss.savingsRate")} label={t("mon.avgSavings")} />
+        </p>
         <p className="mt-1 text-2xl font-semibold tabular-nums">
           {analytics?.avg_savings_rate != null
             ? `${fmtNum(analytics.avg_savings_rate, 1, locale)}%`

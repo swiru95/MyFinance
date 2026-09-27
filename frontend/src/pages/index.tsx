@@ -25,6 +25,7 @@ import { fireApi } from "@/lib/fireApi";
 import type { FireResponse } from "@/lib/fireTypes";
 import NextStepTile from "@/components/insights/NextStepTile";
 import BaseSummary from "@/components/dashboard/BaseSummary";
+import InfoTip from "@/components/InfoTip";
 
 export default function Dashboard() {
   const { t, td, locale } = useI18n();
@@ -288,7 +289,10 @@ export default function Dashboard() {
                 </p>
               </div>
               <div className="card">
-                <p className="text-sm muted">{t("dash.runway")}</p>
+                <p className="flex items-center text-sm muted">
+                  {t("dash.runway")}
+                  <InfoTip text={t("gloss.cushion")} label={t("dash.runway")} />
+                </p>
                 <p className="mt-1 text-3xl font-semibold tabular-nums">
                   {runwayMonths != null && safeValue > 0
                     ? t("dash.runwayMonths", {
