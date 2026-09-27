@@ -74,3 +74,9 @@ export function wrapperAccessKey(wrapper: WrapperKey): string {
 export function isLocked(wrapper: WrapperKey): boolean {
   return wrapper !== "oki";
 }
+
+/** i18n key for the wrapper's one-line glossary explanation, shown in the
+ *  <InfoTip> on its Positions badge (lib/strings/glossary.ts). */
+export function wrapperGlossaryKey(wrapper: WrapperKey): string {
+  return `gloss.wrapper.${wrapper}`;
+}

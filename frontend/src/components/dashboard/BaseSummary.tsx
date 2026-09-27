@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { ExpenseSummary, MonthlyRecord } from "@/lib/types";
+import InfoTip from "@/components/InfoTip";
 
 const currentMonthKey = () => {
   const now = new Date();
@@ -58,7 +59,10 @@ export default function BaseSummary() {
           <p className="mt-1 text-xs subtle">{t("dash.base.incomeHint")}</p>
         </div>
         <div className="card">
-          <p className="text-sm muted">{t("dash.monthlyCommitted")}</p>
+          <p className="flex items-center text-sm muted">
+            {t("dash.monthlyCommitted")}
+            <InfoTip text={t("gloss.fixedMonthlyCosts")} label={t("dash.monthlyCommitted")} />
+          </p>
           <p className="mt-1 text-2xl font-semibold tabular-nums">
             {expenses ? fmtMoney(expenses.monthly_total, currency, locale) : "—"}
           </p>

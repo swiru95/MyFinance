@@ -10,14 +10,14 @@ export const en: Record<string, string> = {
   "set.features.title": "Features",
   "set.features.subtitle":
     "Turn on the parts of the app that fit how you manage money. Everything starts off for a new wallet.",
-  "set.features.portfolio.label": "Portfolio",
+  "set.features.portfolio.label": "Assets",
   "set.features.portfolio.desc":
     "Track what you own (savings, investments, gold, crypto) and how it changes over time.",
-  "set.features.fire.label": "FIRE",
+  "set.features.fire.label": "Retirement",
   "set.features.fire.desc":
     "See how far you are from financial independence and how much to save.",
-  "set.features.fire.dependency": "Turning FIRE on also turns on Portfolio.",
-  "set.features.tax.label": "Tax",
+  "set.features.fire.dependency": "Turning Retirement on also turns on Assets.",
+  "set.features.tax.label": "Calculators",
   "set.features.tax.desc":
     "Calculators: employment vs B2B, what gross you need for a given net.",
   "set.features.insights.label": "Insights",
@@ -27,11 +27,11 @@ export const en: Record<string, string> = {
   "feat.off.title": "This feature is turned off",
   "feat.off.goSettings": "Go to Settings",
   "feat.off.positions":
-    "Turn on Portfolio in Settings to track what you own and see it here.",
+    "Turn on Assets in Settings to track what you own and see it here.",
   "feat.off.fire":
-    "Turn on FIRE in Settings to see how far you are from financial independence.",
+    "Turn on Retirement in Settings to see how far you are from financial independence.",
   "feat.off.tax":
-    "Turn on Tax in Settings to use the employment vs B2B calculators.",
+    "Turn on Calculators in Settings to use the employment vs B2B calculators.",
   "feat.off.insights":
     "Turn on Insights in Settings to get AI-written summaries and next steps.",
 
@@ -45,14 +45,14 @@ export const pl: Record<string, string> = {
   "set.features.title": "Funkcje",
   "set.features.subtitle":
     "Włącz te części aplikacji, które pasują do sposobu, w jaki zarządzasz pieniędzmi. W nowym portfelu wszystko jest domyślnie wyłączone.",
-  "set.features.portfolio.label": "Portfel",
+  "set.features.portfolio.label": "Aktywa",
   "set.features.portfolio.desc":
     "Śledź to, co posiadasz (oszczędności, inwestycje, złoto, kryptowaluty) i jak to się zmienia w czasie.",
-  "set.features.fire.label": "FIRE",
+  "set.features.fire.label": "Emerytura",
   "set.features.fire.desc":
     "Sprawdź, jak daleko Ci do niezależności finansowej i ile trzeba oszczędzać.",
-  "set.features.fire.dependency": "Włączenie FIRE włącza też Portfel.",
-  "set.features.tax.label": "Podatki",
+  "set.features.fire.dependency": "Włączenie Emerytury włącza też Aktywa.",
+  "set.features.tax.label": "Kalkulatory",
   "set.features.tax.desc":
     "Kalkulatory: etat a B2B, jaki brutto potrzebny do danego netto.",
   "set.features.insights.label": "Insights",
@@ -62,11 +62,11 @@ export const pl: Record<string, string> = {
   "feat.off.title": "Ta funkcja jest wyłączona",
   "feat.off.goSettings": "Przejdź do ustawień",
   "feat.off.positions":
-    "Włącz Portfel w Ustawieniach, aby śledzić to, co posiadasz, i zobaczyć to tutaj.",
+    "Włącz Aktywa w Ustawieniach, aby śledzić to, co posiadasz, i zobaczyć to tutaj.",
   "feat.off.fire":
-    "Włącz FIRE w Ustawieniach, aby zobaczyć, jak daleko Ci do niezależności finansowej.",
+    "Włącz Emeryturę w Ustawieniach, aby zobaczyć, jak daleko Ci do niezależności finansowej.",
   "feat.off.tax":
-    "Włącz Podatki w Ustawieniach, aby korzystać z kalkulatorów etat / B2B.",
+    "Włącz Kalkulatory w Ustawieniach, aby korzystać z kalkulatorów etat / B2B.",
   "feat.off.insights":
     "Włącz Insights w Ustawieniach, aby otrzymywać podsumowania i kolejne kroki pisane przez AI.",
 

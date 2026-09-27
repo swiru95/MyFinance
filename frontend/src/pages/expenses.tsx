@@ -6,6 +6,7 @@ import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseRow from "@/components/ExpenseRow";
 import MonthlySection from "@/components/expenses/MonthlySection";
 import BusinessContributions from "@/components/expenses/BusinessContributions";
+import InfoTip from "@/components/InfoTip";
 
 type Filter = "active" | "all";
 
@@ -85,7 +86,10 @@ export default function ExpensesPage() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="card">
-          <p className="text-sm muted">{t("exp.monthlyCommitment")}</p>
+          <p className="flex items-center text-sm muted">
+            {t("exp.monthlyCommitment")}
+            <InfoTip text={t("gloss.fixedMonthlyCosts")} label={t("exp.monthlyCommitment")} />
+          </p>
           <p className="mt-1 text-3xl font-semibold tabular-nums">
             {summary ? fmtMoney(summary.monthly_total, base, locale) : "—"}
           </p>

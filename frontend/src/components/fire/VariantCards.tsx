@@ -1,6 +1,16 @@
 import { fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { FireInputs, FireResult } from "@/lib/fireTypes";
+import InfoTip from "@/components/InfoTip";
+
+/** Which glossary entry explains each variant, for the InfoTip next to its
+ *  name - lean/fat share one entry since they are the same concept priced
+ *  two ways, "regular" needs none (it is just today's spending). */
+const VARIANT_GLOSSARY: Partial<Record<string, string>> = {
+  lean: "gloss.leanFatFire",
+  fat: "gloss.leanFatFire",
+  barista: "gloss.baristaFire",
+};
 
 const VARIANTS = ["lean", "regular", "fat", "barista"] as const;
 
@@ -19,7 +29,12 @@ export default function VariantCards({ result, inputs, base }: Props) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {VARIANTS.map((v) => (
           <div key={v} className="card">
-            <p className="text-sm font-semibold">{t(`fire.variant.${v}.name`)}</p>
+            <p className="flex items-center text-sm font-semibold">
+              {t(`fire.variant.${v}.name`)}
+              {VARIANT_GLOSSARY[v] && (
+                <InfoTip text={t(VARIANT_GLOSSARY[v]!)} label={t(`fire.variant.${v}.name`)} />
+              )}
+            </p>
             <p className="mt-1 text-xl font-semibold tabular-nums">
               {fmtMoney(result.targets[v], base, locale)}
             </p>
@@ -39,7 +54,10 @@ export default function VariantCards({ result, inputs, base }: Props) {
         ))}
 
         <div className="card">
-          <p className="text-sm font-semibold">{t("fire.variant.coast.name")}</p>
+          <p className="flex items-center text-sm font-semibold">
+            {t("fire.variant.coast.name")}
+            <InfoTip text={t("gloss.coastFire")} label={t("fire.variant.coast.name")} />
+          </p>
           <p className="mt-1 text-xl font-semibold tabular-nums">
             {fmtMoney(result.coast.number, base, locale)}
           </p>

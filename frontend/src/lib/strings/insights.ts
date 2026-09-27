@@ -143,7 +143,7 @@ export const en: Record<string, string> = {
   "ins.digest.empty": "No digest yet — pick a month and generate one.",
   "ins.digest.snapshot": "Snapshot figures",
   "ins.digest.groundingWarning":
-    "Some numbers in this text could not be matched to your data — treat them with caution.",
+    "Some numbers in this text could not be checked against your data — treat them with care.",
   "ins.digest.history": "Earlier digests",
   "ins.digest.noHistory": "Nothing generated yet.",
   "ins.digest.confirmDelete": "Delete this digest?",
@@ -334,7 +334,7 @@ export const pl: Record<string, string> = {
   "ins.digest.empty": "Brak podsumowania — wybierz miesiąc i wygeneruj.",
   "ins.digest.snapshot": "Dane źródłowe",
   "ins.digest.groundingWarning":
-    "Niektórych liczb w tym tekście nie udało się dopasować do Twoich danych — zachowaj ostrożność.",
+    "Niektórych liczb w tym tekście nie udało się zweryfikować na podstawie Twoich danych — podejdź do nich ostrożnie.",
   "ins.digest.history": "Wcześniejsze podsumowania",
   "ins.digest.noHistory": "Nic jeszcze nie wygenerowano.",
   "ins.digest.confirmDelete": "Usunąć to podsumowanie?",

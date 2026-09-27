@@ -2,6 +2,7 @@ import { fmtDay, fmtMoney } from "@/lib/api";
 import { monthLabel } from "@/lib/chartTheme";
 import { useI18n } from "@/lib/i18n";
 import type { IncomeSummary } from "@/lib/incomeTypes";
+import InfoTip from "@/components/InfoTip";
 
 interface Props {
   summary: IncomeSummary;
@@ -24,7 +25,10 @@ export default function TaxEnvelope({ summary }: Props) {
   return (
     <div className="card space-y-3">
       <div>
-        <h2 className="text-lg font-semibold">{t("inc.envelope.title")}</h2>
+        <h2 className="flex items-center text-lg font-semibold">
+          {t("inc.envelope.title")}
+          <InfoTip text={t("gloss.taxEnvelope")} label={t("inc.envelope.title")} />
+        </h2>
         <p className="text-sm muted">{t("inc.envelope.explain")}</p>
       </div>
       {summary.envelope.length === 0 ? (

@@ -4,7 +4,7 @@
  *  used on /positions) so nothing here can collide with a key another work
  *  package adds to its own strings file. */
 export const en: Record<string, string> = {
-  "fire.title": "FIRE",
+  "fire.title": "Retirement",
   "fire.subtitle":
     "Financial independence, priced from your own portfolio, spending and income.",
   "fire.disclaimer":
@@ -144,7 +144,7 @@ export const en: Record<string, string> = {
   "fire.source.flows": "deposits/withdrawals on your positions",
   "fire.source.none": "no data yet",
 
-  "fire.tile.title": "FIRE",
+  "fire.tile.title": "Retirement",
   "fire.tile.setup": "Set your birth year",
   "fire.tile.fiAt": "FI at {age}",
 
@@ -153,8 +153,8 @@ export const en: Record<string, string> = {
   "fire.pos.flowHintQuantity":
     "Derived from the change in quantity unless entered — then in base currency. So market moves are not counted as saving or spending.",
   "fire.pos.invalidFlow": "Enter a valid amount, or leave it blank.",
-  "fire.pos.flowRecorded": "Flow: {value}",
-  "fire.pos.historyFlow": "Flow",
+  "fire.pos.flowRecorded": "Deposited / withdrawn: {value}",
+  "fire.pos.historyFlow": "Deposited / withdrawn",
 
   "fire.asset.addNew": "+ Add asset",
   "fire.asset.addTitle": "Add asset",
@@ -172,7 +172,7 @@ export const en: Record<string, string> = {
   "fire.asset.unitsPlaceholder": "e.g. BTC, SOL",
   "fire.asset.profile": "Risk profile",
   "fire.asset.profileAuto": "Auto (from category)",
-  "fire.asset.wrapper": "Wrapper",
+  "fire.asset.wrapper": "Tax-advantaged account",
   "fire.asset.wrapperHint":
     "Tax-advantaged retirement account — penalised before 60 (IKZE: 65).",
   "fire.wrapper.none": "None",
@@ -199,7 +199,7 @@ export const en: Record<string, string> = {
 };
 
 export const pl: Record<string, string> = {
-  "fire.title": "FIRE",
+  "fire.title": "Emerytura",
   "fire.subtitle":
     "Niezależność finansowa wyceniona na podstawie Twojego portfela, wydatków i dochodów.",
   "fire.disclaimer":
@@ -281,7 +281,7 @@ export const pl: Record<string, string> = {
   "fire.variant.barista.name": "Barista",
   "fire.variant.barista.hint":
     "Praca dorywcza pokrywa część wydatków i niesie własne ubezpieczenie NFZ.",
-  "fire.variant.coast.name": "Coast",
+  "fire.variant.coast.name": "Coast FIRE (rozpęd)",
   "fire.variant.coast.hint":
     "Przestań teraz dopłacać — ta kwota i tak dorośnie do celu regularnego do wieku emerytalnego.",
 
@@ -340,7 +340,7 @@ export const pl: Record<string, string> = {
   "fire.source.flows": "wpłaty/wypłaty na Twoich pozycjach",
   "fire.source.none": "brak jeszcze danych",
 
-  "fire.tile.title": "FIRE",
+  "fire.tile.title": "Emerytura",
   "fire.tile.setup": "Podaj rok urodzenia",
   "fire.tile.fiAt": "FI w wieku {age} lat",
 
@@ -350,8 +350,8 @@ export const pl: Record<string, string> = {
   "fire.pos.flowHintQuantity":
     "Wyliczane ze zmiany ilości, chyba że podane — wtedy w walucie bazowej. Dzięki temu ruchy rynku nie liczą się jako oszczędzanie ani wydawanie.",
   "fire.pos.invalidFlow": "Podaj poprawną kwotę albo zostaw puste.",
-  "fire.pos.flowRecorded": "Przepływ: {value}",
-  "fire.pos.historyFlow": "Przepływ",
+  "fire.pos.flowRecorded": "Wpłata / wypłata: {value}",
+  "fire.pos.historyFlow": "Wpłata / wypłata",
 
   "fire.asset.addNew": "+ Dodaj aktywo",
   "fire.asset.addTitle": "Dodaj aktywo",
@@ -369,7 +369,7 @@ export const pl: Record<string, string> = {
   "fire.asset.unitsPlaceholder": "np. BTC, SOL",
   "fire.asset.profile": "Profil ryzyka",
   "fire.asset.profileAuto": "Automatycznie (wg kategorii)",
-  "fire.asset.wrapper": "Opakowanie",
+  "fire.asset.wrapper": "Konto z ulgą podatkową",
   "fire.asset.wrapperHint":
     "Konto emerytalne z ulgą podatkową — karane przed 60. rokiem życia (IKZE: 65.).",
   "fire.wrapper.none": "Brak",

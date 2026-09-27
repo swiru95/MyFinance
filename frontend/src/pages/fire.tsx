@@ -15,6 +15,7 @@ import LeversCard from "@/components/fire/LeversCard";
 import BridgeCheckCard from "@/components/fire/BridgeCheckCard";
 import InputsPanel from "@/components/fire/InputsPanel";
 import FeatureOffCard from "@/components/FeatureOffCard";
+import InfoTip from "@/components/InfoTip";
 
 export default function FirePage() {
   const { t } = useI18n();
@@ -51,7 +52,10 @@ export default function FirePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{t("fire.title")}</h1>
+        <h1 className="flex items-center text-2xl font-semibold">
+          {t("fire.title")}
+          <InfoTip text={t("gloss.fireAcronym")} label="FIRE" />
+        </h1>
         <p className="text-sm muted">{t("fire.subtitle")}</p>
       </div>
 
