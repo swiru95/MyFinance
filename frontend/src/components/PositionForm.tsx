@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { api, fmtMoney } from "@/lib/api";
+import { fmtMoney } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { fireApi } from "@/lib/fireApi";
 import { INPUT_CURRENCIES } from "@/lib/types";
 import type { Asset, Prices } from "@/lib/types";
 
@@ -15,16 +16,23 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
   const { t, td, locale } = useI18n();
   const isCurrency = asset.kind === "currency";
   const isInterest = asset.kind === "interest";
+  const isQuantity = asset.kind === "gold" || asset.kind === "crypto";
   const [amount, setAmount] = useState<string>(
     initial ? String(initial.amount) : ""
   );
   const [currency, setCurrency] = useState<string>(
     initial?.currency ?? prices.base_currency
   );
+  const [flow, setFlow] = useState<string>("");
   const [notes, setNotes] = useState<string>(initial?.notes ?? "");
   const [accruesFrom, setAccruesFrom] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Currency and interest positions record the flow in the same currency the
+  // amount itself is in; gold/crypto only take a flow when entered (in base
+  // currency), otherwise it is derived server-side from the quantity change.
+  const flowUnit = isCurrency ? currency : prices.base_currency;
 
   const unitLabel =
     asset.kind === "gold"
@@ -66,15 +74,24 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
       setError(t("pos.needStartDate"));
       return;
     }
+    let flowValue: number | undefined;
+    if (flow.trim() !== "") {
+      flowValue = parseFloat(flow);
+      if (isNaN(flowValue)) {
+        setError(t("fire.pos.invalidFlow"));
+        return;
+      }
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.createPosition({
+      await fireApi.createPosition({
         asset_id: asset.id,
         amount: a,
         currency: isCurrency ? currency : prices.base_currency,
         notes,
         accrues_from: isInterest ? accruesFrom : null,
+        flow: flowValue,
       });
       onSubmit();
     } catch (err) {
@@ -150,6 +167,21 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
           })}
         </p>
       )}
+
+      <div>
+        <label className="label">{t("fire.pos.flowLabel", { unit: flowUnit })}</label>
+        <input
+          className="input"
+          type="number"
+          step="any"
+          value={flow}
+          onChange={(e) => setFlow(e.target.value)}
+          placeholder="0.00"
+        />
+        <p className="mt-1 text-xs muted">
+          {isQuantity ? t("fire.pos.flowHintQuantity") : t("fire.pos.flowHint")}
+        </p>
+      </div>
 
       <div>
         <label className="label">{t("common.notes")}</label>

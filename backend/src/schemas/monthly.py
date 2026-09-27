@@ -23,7 +23,14 @@ class MonthlyOut(BaseModel):
     notes: str
     base_currency: str = "PLN"
     # Everything below is derived, never stored.
+    # income_in_base is the typed `income` above converted to base, PLUS
+    # every active income source's net for the month - the figure every
+    # other derived field (surplus, savings_rate, effective_spent) is built
+    # on. income_from_sources_in_base isolates just the source part, and
+    # income_sources lists each contributing source for the UI to break down.
     income_in_base: float = 0.0
+    income_from_sources_in_base: float = 0.0
+    income_sources: list[dict] = []
     actual_in_base: float = 0.0
     committed: float = 0.0
     surplus: float = 0.0
@@ -61,3 +68,6 @@ class MonthlyAnalytics(BaseModel):
     avg_effective: float | None
     avg_savings_rate: float | None
     months_recorded: int
+    # Months with typed spending; fewer than months_recorded when income
+    # comes from sources in months nobody filled in.
+    months_with_spend: int = 0

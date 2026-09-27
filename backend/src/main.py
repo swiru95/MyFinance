@@ -9,6 +9,7 @@ from .config import settings
 from .models import (  # noqa: F401 (register models)
     asset,
     expense,
+    income,
     monthly,
     position,
     report,
@@ -18,11 +19,14 @@ from .routes import auth as auth_routes
 from .routes import positions as positions_routes
 from .routes import assets as assets_routes
 from .routes import expenses as expenses_routes
+from .routes import fire as fire_routes
+from .routes import income as income_routes
 from .routes import monthly as monthly_routes
 from .routes import prices as prices_routes
 from .routes import reports as reports_routes
 from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
+from .routes import tax as tax_routes
 from .services.price_service import PriceService
 
 
@@ -69,11 +73,14 @@ protected = [
     positions_routes.router,
     assets_routes.router,
     expenses_routes.router,
+    fire_routes.router,
+    income_routes.router,
     monthly_routes.router,
     prices_routes.router,
     reports_routes.router,
     statistics_routes.router,
     settings_routes.router,
+    tax_routes.router,
 ]
 for router in protected:
     app.include_router(router, dependencies=[Depends(require_user)])

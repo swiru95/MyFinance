@@ -16,7 +16,7 @@ class ExpenseIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     amount: float = Field(..., gt=0)
     currency: str = Field("PLN", pattern="^(PLN|EUR|USD|CHF)$")
-    period: str = Field("monthly", pattern="^(monthly|once)$")
+    period: str = Field("monthly", pattern="^(monthly|quarterly|yearly|once)$")
     category: str = ""
     starts_on: date
     ends_on: date | None = None
@@ -50,6 +50,8 @@ class ExpenseOut(BaseModel):
     base_currency: str = "PLN"
     status: str = "active"  # active | scheduled | ended
     is_indefinite: bool = False
+    next_due: date | None = None
+    monthly_equivalent_in_base: float = 0.0
 
     @field_serializer("created_at")
     def _utc(self, value):

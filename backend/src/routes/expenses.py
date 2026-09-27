@@ -4,7 +4,7 @@ Expenses are standing commitments, deliberately kept separate from the asset
 portfolio: they never affect the portfolio total, they only answer "what am I
 committed to paying, and for how long".
 """
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -25,19 +25,29 @@ def _status(e: Expense, today: date) -> str:
         return "scheduled"
     if e.period == "once":
         return "ended" if e.starts_on < today else "active"
+    # Recurring period (monthly, quarterly, yearly)
     if e.ends_on is not None and e.ends_on < today:
         return "ended"
     return "active"
 
 
 def _decorate(e: Expense, ps: PriceService, base: str, today: date) -> ExpenseOut:
+    from ..services.budget import monthly_equivalent, next_due
+
     out = ExpenseOut.model_validate(e)
     out.amount_in_base = round(
         convert_currency(ps, float(e.amount), e.currency, base), 2
     )
     out.base_currency = base
     out.status = _status(e, today)
-    out.is_indefinite = e.period == "monthly" and e.ends_on is None
+    out.is_indefinite = e.period in ("monthly", "quarterly", "yearly") and e.ends_on is None
+
+    # Compute next due date and monthly equivalent.
+    out.next_due = next_due(e, today)
+    equiv = monthly_equivalent(e)
+    out.monthly_equivalent_in_base = round(
+        convert_currency(ps, equiv, e.currency, base), 2
+    )
     return out
 
 
@@ -57,30 +67,52 @@ def list_expenses(db: Session = Depends(get_db)):
 
 @router.get("/summary", response_model=ExpenseSummary)
 def expense_summary(db: Session = Depends(get_db)):
-    """Monthly burn plus what is upcoming or about to end."""
+    """Monthly burn (as monthly equivalent) plus what is upcoming or about to end.
+
+    For all recurring expenses (monthly, quarterly, yearly), uses the monthly
+    equivalent amount to smooth budgeting — identical to today when everything
+    is monthly. The dashboard runway uses this smoothed basis.
+    """
     items, base = _all_decorated(db)
     today = today_in(db)
 
-    active_monthly = [i for i in items if i.period == "monthly" and i.status == "active"]
-    monthly_total = sum(i.amount_in_base for i in active_monthly)
+    # Active recurring expenses (any period except once).
+    active_recurring = [i for i in items if i.period != "once" and i.status == "active"]
+    # Monthly total is the sum of monthly equivalents for active recurring.
+    monthly_total = sum(i.monthly_equivalent_in_base for i in active_recurring)
 
-    upcoming = sorted(
+    # Upcoming one-offs plus quarterly/yearly expenses due within 90 days.
+    upcoming_oneoffs = sorted(
         (i for i in items if i.period == "once" and i.starts_on >= today),
         key=lambda i: i.starts_on,
     )
+    upcoming_later = [
+        i for i in items
+        if i.period in ("quarterly", "yearly")
+        and i.status == "active"
+        and i.next_due is not None
+        and (i.next_due - today).days <= 90
+    ]
+    upcoming = sorted(
+        upcoming_oneoffs + upcoming_later,
+        key=lambda i: i.next_due if i.period != "once" else i.starts_on,
+    )
+
+    # Ending soon: all active recurring with end date within 90 days.
     ending_soon = sorted(
         (
             i
-            for i in active_monthly
+            for i in active_recurring
             if i.ends_on is not None and (i.ends_on - today).days <= _ENDING_SOON_DAYS
         ),
         key=lambda i: i.ends_on,  # type: ignore[arg-type,return-value]
     )
 
+    # By category: use monthly equivalents.
     by_cat: dict[str, float] = {}
-    for i in active_monthly:
+    for i in active_recurring:
         by_cat[i.category or "Uncategorised"] = (
-            by_cat.get(i.category or "Uncategorised", 0.0) + i.amount_in_base
+            by_cat.get(i.category or "Uncategorised", 0.0) + i.monthly_equivalent_in_base
         )
     by_category = sorted(
         ({"category": k, "total": round(v, 2)} for k, v in by_cat.items()),
@@ -91,8 +123,8 @@ def expense_summary(db: Session = Depends(get_db)):
     return ExpenseSummary(
         base_currency=base,
         monthly_total=round(monthly_total, 2),
-        active_count=len(active_monthly),
-        indefinite_count=sum(1 for i in active_monthly if i.is_indefinite),
+        active_count=len(active_recurring),
+        indefinite_count=sum(1 for i in active_recurring if i.is_indefinite),
         upcoming=upcoming,
         ending_soon=ending_soon,
         by_category=by_category,

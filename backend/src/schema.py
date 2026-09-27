@@ -18,6 +18,7 @@ from .database import Base, engine
 from .models import (  # noqa: F401 (import registers the tables on Base)
     asset,
     expense,
+    income,
     monthly,
     position,
     report,
@@ -49,6 +50,12 @@ def migrate() -> None:
         ("assets", "profile",
          "ALTER TABLE assets ADD COLUMN profile VARCHAR(12) NOT NULL DEFAULT ''",
          "CREATE INDEX IF NOT EXISTS ix_assets_profile ON assets (profile)"),
+        ("positions", "flow_in_base",
+         "ALTER TABLE positions ADD COLUMN flow_in_base NUMERIC(20,4)",
+         None),
+        ("assets", "wrapper",
+         "ALTER TABLE assets ADD COLUMN wrapper VARCHAR(8) NOT NULL DEFAULT ''",
+         None),
     ]
     for table, column, add_sql, index_sql in wanted:
         if table not in tables:

@@ -25,4 +25,10 @@ class Position(Base):
     # Only for kind="interest": the day the principal started accruing. NULL
     # everywhere else.
     accrues_from: Mapped["date | None"] = mapped_column(Date, nullable=True)
+    # Money moved into (+) or out of (-) this asset since the previous
+    # snapshot, in base currency at this snapshot's prices. NULL means
+    # unknown, not zero - a snapshot without a recorded flow says nothing
+    # about whether money moved, so it must not be counted as a zero
+    # contribution by anything that sums this column (see services/fire.py).
+    flow_in_base: Mapped["float | None"] = mapped_column(Numeric(20, 4), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

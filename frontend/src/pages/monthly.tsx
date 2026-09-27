@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { api, fmtMoney, fmtNum } from "@/lib/api";
 import { INPUT_CURRENCIES } from "@/lib/types";
 import type { MonthlyAnalytics, MonthlyRecord } from "@/lib/types";
@@ -49,6 +50,8 @@ export default function MonthlyPage() {
     [months, selected]
   );
   const base = analytics?.base_currency ?? record?.base_currency ?? "PLN";
+  const sourceRows = record?.income_sources ?? [];
+  const sourcesTotal = record?.income_from_sources_in_base ?? 0;
 
   // Load the selected month's figures into the editor.
   useEffect(() => {
@@ -119,6 +122,26 @@ export default function MonthlyPage() {
             </select>
           </div>
 
+          {sourceRows.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-800 dark:bg-slate-800/50">
+              <p className="mb-1 font-medium">{t("mon.fromSources")}</p>
+              <ul className="space-y-0.5">
+                {sourceRows.map((s) => (
+                  <li key={s.source_id} className="flex justify-between gap-2">
+                    <span className="truncate">{s.name}</span>
+                    <span className="shrink-0 tabular-nums muted">
+                      {fmtMoney(s.net_in_base, base, locale)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-1 flex justify-between border-t border-slate-200 pt-1 font-medium dark:border-slate-700">
+                <span>{t("mon.fromSourcesTotal")}</span>
+                <span className="tabular-nums">{fmtMoney(sourcesTotal, base, locale)}</span>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label" htmlFor="m-income">{t("mon.income")}</label>
@@ -132,6 +155,12 @@ export default function MonthlyPage() {
                 onChange={(e) => setIncome(e.target.value)}
                 placeholder="0.00"
               />
+              <p className="mt-1 text-xs subtle">
+                {t("mon.otherIncomeHint")}{" "}
+                <Link href="/income" className="underline hover:no-underline">
+                  {t("mon.otherIncomeLink")}
+                </Link>
+              </p>
             </div>
             <div>
               <label className="label" htmlFor="m-spent">{t("mon.actualSpent")}</label>

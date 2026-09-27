@@ -3,9 +3,13 @@
 Each row is a standing commitment (rent, a subscription, a loan installment)
 rather than a single logged payment.
 
-- period "monthly": recurs every month from `starts_on`. `ends_on` is the last
+- period "monthly":   recurs every month from `starts_on`. `ends_on` is the last
   month it is charged; NULL means it runs indefinitely.
-- period "once":    a single payment due on `starts_on`. `ends_on` is unused.
+- period "quarterly": recurs every 3 months on the same day as `starts_on`.
+  `ends_on` is the last quarter in which it is charged; NULL means forever.
+- period "yearly":    recurs annually on the same day as `starts_on`.
+  `ends_on` is the last year it is charged; NULL means forever.
+- period "once":      a single payment due on `starts_on`. `ends_on` is unused.
 """
 from datetime import date, datetime, timezone
 

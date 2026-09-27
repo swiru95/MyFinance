@@ -111,7 +111,7 @@ export default function ExpenseForm({ base, existing, onDone, onCancel }: Props)
       <div>
         <label className="label">{t("exp.howOften")}</label>
         <div className="flex gap-2">
-          {(["monthly", "once"] as ExpensePeriod[]).map((p) => (
+          {(["monthly", "quarterly", "yearly", "once"] as ExpensePeriod[]).map((p) => (
             <button
               key={p}
               type="button"
@@ -122,7 +122,7 @@ export default function ExpenseForm({ base, existing, onDone, onCancel }: Props)
                   : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               }`}
             >
-              {p === "monthly" ? t("exp.everyMonthOption") : t("exp.onceOption")}
+              {p === "monthly" ? t("exp.everyMonthOption") : p === "quarterly" ? t("exp.quarterlyOption") : p === "yearly" ? t("exp.yearlyOption") : t("exp.onceOption")}
             </button>
           ))}
         </div>

@@ -1,0 +1,3 @@
+-r requirements.txt
+# Tests only; the image never installs this.
+pytest==9.1.1

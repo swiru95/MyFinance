@@ -119,7 +119,7 @@ export interface Settings {
   default_timezone: string;
 }
 
-export type ExpensePeriod = "monthly" | "once";
+export type ExpensePeriod = "monthly" | "quarterly" | "yearly" | "once";
 export type ExpenseStatus = "active" | "scheduled" | "ended";
 
 export interface Expense {
@@ -137,6 +137,8 @@ export interface Expense {
   base_currency: string;
   status: ExpenseStatus;
   is_indefinite: boolean;
+  next_due: string | null;
+  monthly_equivalent_in_base: number;
 }
 
 export interface ExpenseInput {
@@ -173,6 +175,16 @@ export interface MonthlyRecord {
   notes: string;
   base_currency: string;
   income_in_base: number;
+  /** Net income from income sources that month; income_in_base already
+   *  includes it on top of the typed `income`. */
+  income_from_sources_in_base: number;
+  income_sources: {
+    source_id: number;
+    name: string;
+    kind: "uop" | "b2b" | "other";
+    net_in_base: number;
+    overridden: boolean;
+  }[];
   actual_in_base: number;
   committed: number;
   surplus: number;

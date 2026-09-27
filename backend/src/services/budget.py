@@ -5,13 +5,14 @@ definitions rather than stored, so correcting an expense fixes history too.
 """
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 
 from ..models.expense import Expense
-from ..routes.helpers import convert_currency
 from ..services.price_service import PriceService
 
 MONTH_RE = r"^\d{4}-(0[1-9]|1[0-2])$"
+PERIOD_MONTHS = {"monthly": 1, "quarterly": 3, "yearly": 12}
 
 
 def month_bounds(month: str) -> tuple[date, date]:
@@ -66,18 +67,105 @@ def shift_month(month: str, delta: int) -> str:
 
 
 def applies_in_month(e: Expense, first: date, last: date) -> bool:
-    """Is this expense charged at all during [first, last]?"""
+    """Is this expense charged at all during [first, last]?
+
+    For recurring expenses (monthly, quarterly, yearly), the charge date is
+    the same day of the month as starts_on, in each period where it recurs.
+    """
     if e.period == "once":
         return first <= e.starts_on <= last
     if e.starts_on > last:
         return False
-    return e.ends_on is None or e.ends_on >= first
+    if e.ends_on is not None and e.ends_on < first:
+        return False
+
+    if e.period == "monthly":
+        return True
+
+    # For quarterly/yearly: check if any month in [first, last] is a recurring month.
+    period_months = PERIOD_MONTHS[e.period]
+    year, month = first.year, first.month
+    while date(year, month, 1) <= last:
+        # Count months between starts_on month and this month.
+        # If divisible by period_months and >= 0, it's a recurring month.
+        m_diff = (year - e.starts_on.year) * 12 + (month - e.starts_on.month)
+        if m_diff >= 0 and m_diff % period_months == 0:
+            return True
+        # Advance to next month.
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+    return False
+
+
+def monthly_equivalent(e: Expense) -> float:
+    """Monthly equivalent of a recurring expense.
+
+    For monthly expenses, this is the amount itself. For quarterly/yearly,
+    it is the amount divided by the period in months. For one-offs, it is 0.
+    """
+    if e.period == "once":
+        return 0.0
+    period_months = PERIOD_MONTHS.get(e.period, 1)
+    return float(e.amount) / period_months
+
+
+def next_due(e: Expense, today: date) -> date | None:
+    """Next charge date for this expense on or after today.
+
+    For once-only expenses, returns starts_on if it's today or future, else None.
+    For recurring expenses, calculates the next occurrence based on the period.
+    Returns None if the expense has ended.
+    """
+    if e.period == "once":
+        return e.starts_on if e.starts_on >= today else None
+
+    if e.ends_on is not None and e.ends_on < today:
+        return None
+
+    if today <= e.starts_on:
+        return e.starts_on
+
+    step = PERIOD_MONTHS.get(e.period, 1)
+    months_diff = (today.year - e.starts_on.year) * 12 + (today.month - e.starts_on.month)
+    # The first charge in or after today's month; if that one has already
+    # passed this month (its day is behind today), the one after it.
+    offset = -(-months_diff // step) * step
+    due = _charge_date(e.starts_on, offset)
+    if due < today:
+        due = _charge_date(e.starts_on, offset + step)
+    if e.ends_on is not None and due > e.ends_on:
+        return None
+    return due
+
+
+def _charge_date(start: date, months: int) -> date:
+    """`start` moved by whole months, the day clamped to the month's length.
+
+    A charge set up on the 31st falls on the 28th/29th in February rather than
+    spilling into March.
+    """
+    total = start.year * 12 + (start.month - 1) + months
+    year, month = total // 12, total % 12 + 1
+    return date(year, month, min(start.day, calendar.monthrange(year, month)[1]))
 
 
 def committed_for_month(
     expenses: list[Expense], month: str, ps: PriceService, base: str
 ) -> tuple[float, dict[str, float]]:
-    """Total committed spend for `month` plus a per-category breakdown."""
+    """Total committed spend for `month` plus a per-category breakdown.
+
+    The cash view: a yearly or quarterly expense counts in full in the months
+    it is charged and not at all in between, because this is what the month's
+    budget actually has to cover. The smoothed view (`monthly_equivalent`) is
+    for planning figures such as the runway reserve.
+    """
+    # Imported here: routes/__init__ pulls in routes.monthly, whose schemas
+    # import this module, so a top-level import is circular whenever this
+    # module is imported first.
+    from ..routes.helpers import convert_currency
+
     first, last = month_bounds(month)
     total = 0.0
     by_category: dict[str, float] = {}

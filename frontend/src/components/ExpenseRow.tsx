@@ -51,6 +51,7 @@ export default function ExpenseRow({ expense, base, onEdit, onDelete }: Props) {
         </>
       );
     }
+    // Recurring (monthly, quarterly, yearly)
     if (!expense.ends_on) {
       return <>{t("exp.since", { date: fmtDay(expense.starts_on, locale) })}</>;
     }
@@ -95,11 +96,26 @@ export default function ExpenseRow({ expense, base, onEdit, onDelete }: Props) {
               {t("exp.badgeOneOff")}
             </span>
           )}
+          {expense.period === "quarterly" && (
+            <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300">
+              {t("exp.quarterlyOption")}
+            </span>
+          )}
+          {expense.period === "yearly" && (
+            <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-500/15 dark:text-orange-300">
+              {t("exp.yearlyOption")}
+            </span>
+          )}
           {expense.category && (
             <span className="text-xs subtle">{td(expense.category)}</span>
           )}
         </div>
         <p className="mt-0.5 text-xs muted">{term()}</p>
+        {expense.next_due && expense.period !== "once" && (
+          <p className="mt-0.5 text-xs subtle">
+            Next due {fmtDay(expense.next_due, locale)}
+          </p>
+        )}
         {expense.notes && (
           <p className="mt-0.5 truncate text-xs subtle">{expense.notes}</p>
         )}
@@ -109,10 +125,12 @@ export default function ExpenseRow({ expense, base, onEdit, onDelete }: Props) {
         <div className="text-right">
           <p className="font-semibold tabular-nums text-slate-900 dark:text-slate-50">
             {fmtMoney(expense.amount_in_base, base, locale)}
-            {expense.period === "monthly" && (
-              <span className="text-xs font-normal subtle">{t("exp.perMonth")}</span>
-            )}
           </p>
+          {expense.period !== "once" && (
+            <p className="text-xs font-normal subtle">
+              ≈ {fmtMoney(expense.monthly_equivalent_in_base, base, locale)}{t("exp.perMonth")}
+            </p>
+          )}
           {expense.currency !== base && (
             <p className="text-xs tabular-nums subtle">
               {fmtMoney(expense.amount, expense.currency, locale)}

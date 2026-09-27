@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.expense import Expense
+from ..models.income import IncomeSource
 from ..models.monthly import MonthlyRecord
 from ..schemas.monthly import (
     MonthlyAnalytics,
@@ -21,6 +22,8 @@ from ..services.budget import (
     shift_month,
     wallet_window,
 )
+from ..services.income import income_by_month, is_active_in_month
+from ..tax.pl.params import EARLIEST_YEAR
 from ..services.portfolio import wallet_values
 from ..services.price_service import PriceService
 from .helpers import convert_currency, get_base_currency, today_in
@@ -63,21 +66,27 @@ def _build(
     ps: PriceService,
     base: str,
     wallet: tuple[float | None, float | None] = (None, None),
+    source_income: dict | None = None,
 ) -> MonthlyOut:
     committed, by_cat = committed_for_month(expenses, month, ps, base)
     currency = record.currency if record else base
     income = float(record.income) if record else 0.0
     actual = float(record.actual_spent) if record else 0.0
-    income_base = convert_currency(ps, income, currency, base)
+    income_base_typed = convert_currency(ps, income, currency, base)
     actual_base = convert_currency(ps, actual, currency, base)
-    surplus = income_base - actual_base
+
+    source_income = source_income or {"total_in_base": 0.0, "sources": []}
+    income_from_sources = source_income["total_in_base"]
+    income_total = income_base_typed + income_from_sources
+
+    surplus = income_total - actual_base
     wallet_start, wallet_end = wallet
     change = (
         round(wallet_end - wallet_start, 2)
         if wallet_start is not None and wallet_end is not None
         else None
     )
-    effective = effective_spend(income_base, wallet_start, wallet_end)
+    effective = effective_spend(income_total, wallet_start, wallet_end)
     return MonthlyOut(
         month=month,
         income=income,
@@ -85,11 +94,13 @@ def _build(
         currency=currency,
         notes=record.notes if record else "",
         base_currency=base,
-        income_in_base=round(income_base, 2),
+        income_in_base=round(income_total, 2),
+        income_from_sources_in_base=round(income_from_sources, 2),
+        income_sources=source_income["sources"],
         actual_in_base=round(actual_base, 2),
         committed=round(committed, 2),
         surplus=round(surplus, 2),
-        savings_rate=round(100.0 * surplus / income_base, 1) if income_base else None,
+        savings_rate=round(100.0 * surplus / income_total, 1) if income_total else None,
         variance=round(actual_base - committed, 2),
         wallet_start=wallet_start,
         wallet_end=wallet_end,
@@ -109,8 +120,10 @@ def _build(
 def list_months(db: Session = Depends(get_db)):
     """Saved months, newest first, with the current month always present.
 
-    The current month is synthesised when it has not been filled in yet, so the
-    page always has a row to type into without leaving empty rows in the table.
+    Also includes every month an income source is active in, back to at most
+    23 months before the current one - a source with no saved MonthlyRecord
+    still needs a row to appear on, or its income would exist only inside
+    the /api/income endpoints and never surface on the budget page.
     """
     base = get_base_currency(db)
     ps = PriceService(base)
@@ -118,10 +131,26 @@ def list_months(db: Session = Depends(get_db)):
     records = {r.month: r for r in db.query(MonthlyRecord).all()}
     today = today_in(db)
     current = month_key(today)
-    months = sorted(set(records) | {current}, reverse=True)
+
+    candidate_months = set(records) | {current}
+    sources = db.query(IncomeSource).all()
+    if sources:
+        earliest = min(s.starts_on for s in sources)
+        span_start = max(
+            month_key(earliest), shift_month(current, -23), f"{EARLIEST_YEAR}-01"
+        )
+        m = span_start
+        while m <= current:
+            if any(is_active_in_month(s, m) for s in sources):
+                candidate_months.add(m)
+            m = shift_month(m, 1)
+
+    months = sorted(candidate_months, reverse=True)
     wallet = _wallet_for_months(db, months, today)
+    source_income = income_by_month(db, months, ps, base)
     return [
-        _build(m, records.get(m), expenses, ps, base, wallet[m]) for m in months
+        _build(m, records.get(m), expenses, ps, base, wallet[m], source_income.get(m))
+        for m in months
     ]
 
 
@@ -144,6 +173,7 @@ def analytics(
         for offset in range(-months_back, months_ahead + 1)
     ]
     wallet = _wallet_for_months(db, span, today)
+    source_income = income_by_month(db, span, ps, base)
 
     timeline: list[TimelinePoint] = []
     category_series: list[dict] = []
@@ -157,35 +187,61 @@ def analytics(
         category_series.append(row)
 
         rec = records.get(m)
+        src_total = source_income.get(m, {"total_in_base": 0.0})["total_in_base"]
+        # A month counts as recorded either because it has a MonthlyRecord
+        # (as before) or, new here, because an income source paid out in it -
+        # but a future month never counts just for having an active source,
+        # or a source that merely spans "today onward" would light up the
+        # whole projection as if it were already known.
+        recorded = rec is not None or (m <= current and src_total > 0)
+
+        if not recorded:
+            timeline.append(TimelinePoint(month=m, committed=round(committed, 2)))
+            continue
+
+        income_base_typed = (
+            convert_currency(ps, float(rec.income), rec.currency, base)
+            if rec is not None
+            else 0.0
+        )
+        income_total = income_base_typed + src_total
+
         if rec is not None:
-            income_base = convert_currency(ps, float(rec.income), rec.currency, base)
-            actual_base = convert_currency(
-                ps, float(rec.actual_spent), rec.currency, base
-            )
-            effective = effective_spend(income_base, *wallet[m])
+            actual_base = convert_currency(ps, float(rec.actual_spent), rec.currency, base)
+            effective = effective_spend(income_total, *wallet[m])
             timeline.append(
                 TimelinePoint(
                     month=m,
                     committed=round(committed, 2),
-                    income=round(income_base, 2),
+                    income=round(income_total, 2),
                     actual=round(actual_base, 2),
-                    surplus=round(income_base - actual_base, 2),
+                    surplus=round(income_total - actual_base, 2),
                     effective=round(effective, 2) if effective is not None else None,
                 )
             )
         else:
-            timeline.append(TimelinePoint(month=m, committed=round(committed, 2)))
+            # Source income only - no manually recorded actual spend to show.
+            timeline.append(
+                TimelinePoint(
+                    month=m, committed=round(committed, 2), income=round(income_total, 2)
+                )
+            )
 
     recorded = [p for p in timeline if p.income is not None]
-    with_income = [p for p in recorded if (p.income or 0) > 0]
+    with_income = [p for p in recorded if (p.income or 0) > 0 and p.surplus is not None]
     avg_income = (
         round(sum(p.income or 0 for p in recorded) / len(recorded), 2)
         if recorded
         else None
     )
+    # Income can now come from sources in a month nobody typed spending into,
+    # so each average runs over the months that actually carry its figure: a
+    # missing spend is unknown, and counting it as 0 would flatter both the
+    # spend and the savings rate that FIRE reads from here.
+    with_spend = [p for p in recorded if p.actual is not None]
     avg_actual = (
-        round(sum(p.actual or 0 for p in recorded) / len(recorded), 2)
-        if recorded
+        round(sum(p.actual for p in with_spend) / len(with_spend), 2)
+        if with_spend
         else None
     )
     with_effective = [p for p in timeline if p.effective is not None]
@@ -214,6 +270,7 @@ def analytics(
         avg_effective=avg_effective,
         avg_savings_rate=avg_rate,
         months_recorded=len(recorded),
+        months_with_spend=len(with_spend),
     )
 
 
@@ -224,7 +281,10 @@ def get_month(month: str, db: Session = Depends(get_db)):
     ps = PriceService(base)
     record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
     wallet = _wallet_for_months(db, [month], today_in(db))[month]
-    return _build(month, record, db.query(Expense).all(), ps, base, wallet)
+    source_income = income_by_month(db, [month], ps, base)
+    return _build(
+        month, record, db.query(Expense).all(), ps, base, wallet, source_income.get(month)
+    )
 
 
 @router.put("/{month}", response_model=MonthlyOut)
@@ -241,9 +301,11 @@ def upsert_month(month: str, payload: MonthlyIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(record)
     base = get_base_currency(db)
+    ps = PriceService(base)
     wallet = _wallet_for_months(db, [month], today_in(db))[month]
+    source_income = income_by_month(db, [month], ps, base)
     return _build(
-        month, record, db.query(Expense).all(), PriceService(base), base, wallet
+        month, record, db.query(Expense).all(), ps, base, wallet, source_income.get(month)
     )
 
 
