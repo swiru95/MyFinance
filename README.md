@@ -54,8 +54,9 @@ Then open:
 
 ## Effective spend
 
-The **Monthly** page records what you earned and what you think you spent, but
-the figure that is hard to argue with is derived instead of typed:
+The **Expenses** page's "Month by month" section records what you think you
+spent against what you actually earned that month, but the figure that is
+hard to argue with is derived instead of typed:
 
 ```
 effective spend = income − (portfolio value at month end − at month start)
@@ -79,8 +80,9 @@ identity, not a bug, and the page says so under the chart.
 The **Income** page holds recurring income sources — umowa o pracę, B2B through
 your own JDG, or anything already net (rent, 800+). Each works like a recurring
 expense: default monthly figures, an active date range, and per-month entries
-for the exceptions (a bonus, a holiday month, a smaller invoice). The typed
-income on the **Monthly** page now means *other* income not covered by a source.
+for the exceptions (a bonus, a holiday month, a smaller invoice). The
+**Income** page's "Other income" card holds anything not covered by a
+source — a gift, a refund, a one-off.
 
 Every figure comes from a deterministic engine in `backend/src/tax/pl/`:
 

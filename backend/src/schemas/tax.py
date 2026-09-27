@@ -132,7 +132,9 @@ class ComparePreviewIn(BaseModel):
     b2b_costs_monthly: float = Field(0.0, ge=0)
     b2b_options: B2bOptionsIn = B2bOptionsIn()
     paid_leave_days: int = Field(26, ge=0, le=366)
-    working_days: int = Field(250, gt=0, le=366)
+    # None -> the statutory working-time calendar's total for `year`
+    # (tax/pl/calendar.py), not a fixed guess.
+    working_days: int | None = Field(None, gt=0, le=366)
     b2b_billed_per_day: bool = True
 
 

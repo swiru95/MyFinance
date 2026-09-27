@@ -12,6 +12,7 @@ from ..schemas.monthly import (
     MonthlyAnalytics,
     MonthlyIn,
     MonthlyOut,
+    MonthlyPatch,
     TimelinePoint,
 )
 from ..services.budget import (
@@ -301,6 +302,41 @@ def upsert_month(month: str, payload: MonthlyIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(record)
     base = get_base_currency(db)
+    ps = PriceService(base)
+    wallet = _wallet_for_months(db, [month], today_in(db))[month]
+    source_income = income_by_month(db, [month], ps, base)
+    return _build(
+        month, record, db.query(Expense).all(), ps, base, wallet, source_income.get(month)
+    )
+
+
+@router.patch("/{month}", response_model=MonthlyOut)
+def patch_month(month: str, payload: MonthlyPatch, db: Session = Depends(get_db)):
+    """Update only the fields sent, creating the record if missing.
+
+    Spending (Expenses) and other income (Income) now edit this same row from
+    two different pages; a PUT from either would carry its own zero/blank
+    defaults for the fields it does not show and silently erase the other
+    page's figure. PATCH only ever touches what the caller actually sent.
+    """
+    _validate_month(month)
+    base = get_base_currency(db)
+    record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
+    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if record is None:
+        record = MonthlyRecord(
+            month=month,
+            income=fields.get("income", 0),
+            actual_spent=fields.get("actual_spent", 0),
+            currency=fields.get("currency", base),
+            notes=fields.get("notes", ""),
+        )
+        db.add(record)
+    else:
+        for field, value in fields.items():
+            setattr(record, field, value)
+    db.commit()
+    db.refresh(record)
     ps = PriceService(base)
     wallet = _wallet_for_months(db, [month], today_in(db))[month]
     source_income = income_by_month(db, [month], ps, base)

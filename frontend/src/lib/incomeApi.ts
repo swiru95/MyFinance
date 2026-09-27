@@ -15,6 +15,7 @@ import type {
   TaxParams,
   UopPreviewInput,
   UopPreviewResult,
+  YearCalendar,
 } from "./incomeTypes";
 
 /** /api/income - recurring sources, their month overrides, and the
@@ -51,6 +52,7 @@ export const incomeApi = {
 /** /api/tax - stateless Polish tax calculators (routes/tax.py). */
 export const taxApi = {
   params: (year: number) => request<TaxParams>(`/tax/params/${year}`),
+  calendar: (year: number) => request<YearCalendar>(`/tax/calendar/${year}`),
   previewUop: (data: UopPreviewInput) =>
     request<UopPreviewResult>("/tax/uop", {
       method: "POST",

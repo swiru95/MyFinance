@@ -7,6 +7,7 @@ import SourceForm from "@/components/income/SourceForm";
 import YearSchedule from "@/components/income/YearSchedule";
 import TaxEnvelope from "@/components/income/TaxEnvelope";
 import YearOverviewChart from "@/components/income/YearOverviewChart";
+import OtherIncomeCard from "@/components/income/OtherIncomeCard";
 
 export default function IncomePage() {
   const { t } = useI18n();
@@ -114,6 +115,8 @@ export default function IncomePage() {
           <YearOverviewChart months={summary.months} currency={base} />
         </div>
       )}
+
+      <OtherIncomeCard base={base} />
 
       {formOpen && (
         <div className="fixed inset-0 z-20 grid place-items-center overflow-y-auto bg-black/40 p-4">

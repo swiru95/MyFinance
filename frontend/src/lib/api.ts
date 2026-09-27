@@ -7,6 +7,7 @@ import type {
   ExpenseSummary,
   MonthlyAnalytics,
   MonthlyInput,
+  MonthlyPatch,
   MonthlyRecord,
   Prices,
   Position,
@@ -25,7 +26,7 @@ const BASE = "/api";
  *
  *  Injected by AuthProvider rather than imported, so this module keeps no
  *  dependency on MSAL and stays usable when there is no tenant configured. */
-type TokenProvider = () => Promise<string | null>;
+type TokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
 
 let getToken: TokenProvider | null = null;
 
@@ -65,11 +66,30 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     // MSAL serves this from cache until the token is close to expiring, so
     // this is not a network round trip on every call.
     const token = await getToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    if (!token) {
+      // setTokenProvider is only ever wired up once auth is enabled (see
+      // AuthProvider), so a null token here does not mean "no auth
+      // required" - acquireTokenSilent could not produce one, which means
+      // either the account has not loaded yet or Entra genuinely needs
+      // interaction and getAccessToken() has already kicked off a redirect.
+      // Sending the request anyway would just hand the backend a bearer-less
+      // call it is guaranteed to 401 and race the in-flight redirect with a
+      // real round trip. Fail the same way locally, without the network hop.
+      onAuthError?.(401);
+      throw new AuthError(401, "No access token available");
+    }
+    headers.Authorization = `Bearer ${token}`;
+  }
+  let res = await fetch(`${BASE}${path}`, { ...options, headers });
+  if (res.status === 401 && getToken) {
+    // A token that expired between MSAL's cache check and the backend's check
+    // should not cost the user their session.
+    const newToken = await getToken(true);
+    if (newToken) {
+      headers.Authorization = `Bearer ${newToken}`;
+      res = await fetch(`${BASE}${path}`, { ...options, headers });
     }
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) {
@@ -122,6 +142,14 @@ export const api = {
   saveMonth: (month: string, data: MonthlyInput) =>
     request<MonthlyRecord>(`/monthly/${month}`, {
       method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  // Expenses and Income each own one half of this row (spend vs. other
+  // income); PATCH sends only the fields that page edits so the other half
+  // is left untouched - see backend/src/routes/monthly.py::patch_month.
+  patchMonth: (month: string, data: MonthlyPatch) =>
+    request<MonthlyRecord>(`/monthly/${month}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     }),
   deleteMonth: (month: string) =>

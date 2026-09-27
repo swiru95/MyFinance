@@ -56,6 +56,9 @@ def migrate() -> None:
         ("assets", "wrapper",
          "ALTER TABLE assets ADD COLUMN wrapper VARCHAR(8) NOT NULL DEFAULT ''",
          None),
+        ("income_entries", "units",
+         "ALTER TABLE income_entries ADD COLUMN units NUMERIC(10,2)",
+         None),
     ]
     for table, column, add_sql, index_sql in wanted:
         if table not in tables:

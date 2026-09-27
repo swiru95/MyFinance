@@ -13,6 +13,18 @@ class MonthlyIn(BaseModel):
     notes: str = ""
 
 
+class MonthlyPatch(BaseModel):
+    """Partial update - every field optional, so one page can touch its own
+    figure (Expenses: actual_spent/notes; Income: income/currency) without
+    clobbering the value the other page owns on the same row. A full PUT
+    always writes all four and so is unsafe for that split-edit case."""
+
+    income: float | None = Field(None, ge=0)
+    actual_spent: float | None = Field(None, ge=0)
+    currency: str | None = Field(None, pattern="^(PLN|EUR|USD|CHF)$")
+    notes: str | None = None
+
+
 class MonthlyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

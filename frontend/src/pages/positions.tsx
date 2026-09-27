@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtMoney } from "@/lib/api";
+import { api, fmtMoney, request } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { Prices } from "@/lib/types";
 import type { AssetWithWrapper, PositionWithFlow } from "@/lib/fireTypes";
@@ -68,9 +68,7 @@ export default function PositionsPage() {
       setHistory([]);
       return;
     }
-    const res: PositionWithFlow[] = await fetch(`/api/positions/${pos.id}/history`).then((r) =>
-      r.json()
-    );
+    const res = await request<PositionWithFlow[]>(`/positions/${pos.id}/history`);
     setHistory(res);
     setHistoryFor(pos.id);
   }

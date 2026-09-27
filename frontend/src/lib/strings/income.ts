@@ -12,8 +12,6 @@ export const en: Record<string, string> = {
   "mon.fromSources": "Income from sources",
   "mon.fromSourcesTotal": "Total from sources",
   "mon.fromSourcesEmpty": "No source income this month.",
-  "mon.otherIncomeHint": "For anything not from a tracked source, like a gift or a refund.",
-  "mon.otherIncomeLink": "Manage income sources →",
 
   // ---- /income: page ----
   "inc.title": "Income",
@@ -87,6 +85,8 @@ export const en: Record<string, string> = {
   "inc.form.invoiceMonthly": "Invoice amount (monthly)",
   "inc.form.rate": "Rate",
   "inc.form.unitsPerMonth": "Units per month",
+  "inc.form.useCalendar": "From the working-time calendar",
+  "inc.form.calendarHint": "{days} days / {hours} h in {month}",
   "inc.form.costsMonthly": "Business costs (monthly)",
   "inc.form.taxForm": "Tax form",
   "inc.form.ryczaltRate": "Ryczałt rate",
@@ -111,6 +111,11 @@ export const en: Record<string, string> = {
   "inc.schedule.selectSource": "Select a source to see its year schedule.",
   "inc.schedule.month": "Month",
   "inc.schedule.amount": "Gross / revenue",
+  "inc.schedule.unitsDays": "Days",
+  "inc.schedule.unitsHours": "Hours",
+  "inc.schedule.unitsCalendar": "calendar",
+  "inc.schedule.unitsFixed": "fixed",
+  "inc.schedule.unitsEntry": "entered",
   "inc.schedule.social": "ZUS social",
   "inc.schedule.health": "Health",
   "inc.schedule.pit": "PIT advance",
@@ -134,10 +139,13 @@ export const en: Record<string, string> = {
   "inc.entry.title": "{month} entry",
   "inc.entry.amount": "Amount",
   "inc.entry.costs": "Costs",
+  "inc.entry.revenuePreview": "Revenue: {amount}",
   "inc.entry.overrideNet": "Override net (actual, from a payslip or statement)",
   "inc.entry.overrideNetHint": "Wins over the estimate above when set.",
   "inc.entry.clear": "Clear entry",
   "inc.entry.confirmClear": "Clear the entry for {month}?",
+  "inc.entry.useCalendar": "Use calendar",
+  "inc.entry.confirmUseCalendar": "Switch {month} back to the working-time calendar?",
 
   // Tax envelope
   "inc.envelope.title": "Money on your account that is not yours",
@@ -263,6 +271,8 @@ export const en: Record<string, string> = {
   "tax.params.pitThreshold": "PIT threshold (32% above)",
   "tax.params.pitRates": "PIT rates",
   "tax.params.linearRate": "Liniowy rate",
+  "tax.params.workingTime": "Working time (days / hours)",
+  "tax.params.holidays": "Public holidays this year",
   "tax.params.verifiedOn": "Verified {date}",
   "tax.params.sources": "Sources",
 };
@@ -273,9 +283,6 @@ export const pl: Record<string, string> = {
   "mon.fromSources": "Dochód ze źródeł",
   "mon.fromSourcesTotal": "Suma ze źródeł",
   "mon.fromSourcesEmpty": "Brak dochodu ze źródeł w tym miesiącu.",
-  "mon.otherIncomeHint":
-    "Na wszystko, co nie pochodzi ze śledzonego źródła, np. prezent czy zwrot.",
-  "mon.otherIncomeLink": "Zarządzaj źródłami dochodu →",
 
   // ---- /income ----
   "inc.title": "Dochody",
@@ -346,6 +353,8 @@ export const pl: Record<string, string> = {
   "inc.form.invoiceMonthly": "Kwota faktury (miesięcznie)",
   "inc.form.rate": "Stawka",
   "inc.form.unitsPerMonth": "Jednostek miesięcznie",
+  "inc.form.useCalendar": "Z kalendarza czasu pracy",
+  "inc.form.calendarHint": "{days} dni / {hours} godz w {month}",
   "inc.form.costsMonthly": "Koszty działalności (miesięcznie)",
   "inc.form.taxForm": "Forma opodatkowania",
   "inc.form.ryczaltRate": "Stawka ryczałtu",
@@ -370,6 +379,11 @@ export const pl: Record<string, string> = {
   "inc.schedule.selectSource": "Wybierz źródło, aby zobaczyć jego harmonogram roczny.",
   "inc.schedule.month": "Miesiąc",
   "inc.schedule.amount": "Brutto / przychód",
+  "inc.schedule.unitsDays": "Dni",
+  "inc.schedule.unitsHours": "Godziny",
+  "inc.schedule.unitsCalendar": "kalendarz",
+  "inc.schedule.unitsFixed": "stałe",
+  "inc.schedule.unitsEntry": "wpisane",
   "inc.schedule.social": "ZUS społeczne",
   "inc.schedule.health": "Zdrowotna",
   "inc.schedule.pit": "Zaliczka PIT",
@@ -393,10 +407,13 @@ export const pl: Record<string, string> = {
   "inc.entry.title": "Wpis za {month}",
   "inc.entry.amount": "Kwota",
   "inc.entry.costs": "Koszty",
+  "inc.entry.revenuePreview": "Przychód: {amount}",
   "inc.entry.overrideNet": "Nadpisz netto (rzeczywiste, z paska lub wyciągu)",
   "inc.entry.overrideNetHint": "Gdy ustawione, wygrywa z szacunkiem powyżej.",
   "inc.entry.clear": "Wyczyść wpis",
   "inc.entry.confirmClear": "Wyczyścić wpis za {month}?",
+  "inc.entry.useCalendar": "Użyj kalendarza",
+  "inc.entry.confirmUseCalendar": "Przełączyć {month} z powrotem na kalendarz czasu pracy?",
 
   "inc.envelope.title": "Pieniądze na koncie, które nie są Twoje",
   "inc.envelope.explain":
@@ -519,6 +536,8 @@ export const pl: Record<string, string> = {
   "tax.params.pitThreshold": "Próg PIT (powyżej 32%)",
   "tax.params.pitRates": "Stawki PIT",
   "tax.params.linearRate": "Stawka liniowa",
+  "tax.params.workingTime": "Wymiar czasu pracy (dni / godziny)",
+  "tax.params.holidays": "Dni ustawowo wolne w tym roku",
   "tax.params.verifiedOn": "Zweryfikowano {date}",
   "tax.params.sources": "Źródła",
 };

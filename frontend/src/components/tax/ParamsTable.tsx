@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fmtDay, fmtMoney, fmtNum } from "@/lib/api";
 import { taxApi } from "@/lib/incomeApi";
-import type { TaxParams } from "@/lib/incomeTypes";
+import type { TaxParams, YearCalendar } from "@/lib/incomeTypes";
 import { useI18n } from "@/lib/i18n";
 
 interface Row {
@@ -15,6 +15,7 @@ interface Row {
 export default function ParamsTable({ year }: { year: number }) {
   const { t, locale } = useI18n();
   const [params, setParams] = useState<TaxParams | null>(null);
+  const [calendar, setCalendar] = useState<YearCalendar | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -22,11 +23,21 @@ export default function ParamsTable({ year }: { year: number }) {
       .params(year)
       .then(setParams)
       .catch((e) => setError(e instanceof Error ? e.message : t("common.failedLoad")));
+    taxApi
+      .calendar(year)
+      .then(setCalendar)
+      .catch(() => setCalendar(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year]);
 
   if (error) return <div className="banner-error">{error}</div>;
   if (!params) return <p className="text-sm subtle">{t("common.loading")}</p>;
+
+  const totalWorkingDays = calendar?.reduce((sum, m) => sum + m.working_days, 0) ?? null;
+  const totalWorkingHours = calendar?.reduce((sum, m) => sum + m.working_hours, 0) ?? null;
+  const allHolidays = calendar
+    ? calendar.flatMap((m) => m.holidays).sort((a, b) => a.date.localeCompare(b.date))
+    : [];
 
   const pln = (v: number) => fmtMoney(v, "PLN", locale);
 
@@ -53,6 +64,14 @@ export default function ParamsTable({ year }: { year: number }) {
       value: `${fmtNum(params.pit_rate_1 * 100, 0, locale)}% / ${fmtNum(params.pit_rate_2 * 100, 0, locale)}%`,
     },
     { labelKey: "tax.params.linearRate", value: `${fmtNum(params.linear_rate * 100, 0, locale)}%` },
+    ...(totalWorkingDays != null && totalWorkingHours != null
+      ? [
+          {
+            labelKey: "tax.params.workingTime",
+            value: `${fmtNum(totalWorkingDays, 0, locale)} / ${fmtNum(totalWorkingHours, 0, locale)} h`,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -69,6 +88,21 @@ export default function ParamsTable({ year }: { year: number }) {
           </tbody>
         </table>
       </div>
+      {allHolidays.length > 0 && (
+        <details className="text-xs">
+          <summary className="cursor-pointer select-none font-medium muted">
+            {t("tax.params.holidays")}
+          </summary>
+          <ul className="mt-1 space-y-0.5">
+            {allHolidays.map((h) => (
+              <li key={h.date} className="flex justify-between gap-3">
+                <span className="subtle">{fmtDay(h.date, locale)}</span>
+                <span>{h.name}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <p className="text-xs subtle">{t("tax.params.verifiedOn", { date: fmtDay(params.verified_on, locale) })}</p>
       <div>
         <p className="text-xs font-medium muted">{t("tax.params.sources")}</p>
