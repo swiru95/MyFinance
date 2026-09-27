@@ -19,6 +19,7 @@ from .models import (  # noqa: F401 (import registers the tables on Base)
     asset,
     expense,
     income,
+    insight,
     monthly,
     position,
     report,

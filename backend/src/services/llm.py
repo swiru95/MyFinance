@@ -94,12 +94,20 @@ def complete(
     *,
     temperature: float = 0.3,
     max_tokens: int = 4096,
+    response_format: dict | None = None,
 ) -> str:
     """Run one chat completion and return the assistant's text.
 
     Reasoning models answer with `reasoning_content` alongside `content`. Only
     `content` is returned: the chain of thought is the model working, not the
     report, and storing it would bury the actual assessment.
+
+    `response_format` is passed through verbatim (OpenAI's `json_schema` or
+    `json_object` shape) when the caller wants structured output. Not every
+    model behind the router understands it, so callers that use it are
+    expected to retry once without it on failure - this function does not do
+    that itself, because "unsupported param" and "server unreachable" both
+    surface the same way here and only the caller knows which retry is safe.
     """
     if not configured():
         raise LLMUnavailable("No model configured")
@@ -115,6 +123,8 @@ def complete(
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if response_format is not None:
+        payload["response_format"] = response_format
     headers = {}
     if settings.llm_api_key:
         headers["Authorization"] = f"Bearer {settings.llm_api_key}"

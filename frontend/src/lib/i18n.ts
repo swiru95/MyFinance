@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import * as fireStrings from "./strings/fire";
 import * as incomeStrings from "./strings/income";
+import * as insightsStrings from "./strings/insights";
 
 export type Language = "en" | "pl";
 
@@ -623,8 +624,8 @@ const pl: Dict = {
 };
 
 const DICTS: Record<Language, Dict> = {
-  en: { ...en, ...incomeStrings.en, ...fireStrings.en },
-  pl: { ...pl, ...incomeStrings.pl, ...fireStrings.pl },
+  en: { ...en, ...incomeStrings.en, ...fireStrings.en, ...insightsStrings.en },
+  pl: { ...pl, ...incomeStrings.pl, ...fireStrings.pl, ...insightsStrings.pl },
 };
 
 /**
