@@ -34,6 +34,7 @@ _B2B_FIELDS = (
     "vat",
     "vat_rate",
     "costs_vat_rate",
+    "ryczalt_health_tier",
 )
 
 
@@ -61,6 +62,9 @@ class B2bOptionsIn(BaseModel):
     vat: str = Field("standard", pattern="^(standard|exempt|reverse_charge)$")
     vat_rate: float = Field(0.23, ge=0, le=1)
     costs_vat_rate: float = Field(0.23, ge=0, le=1)
+    # None = auto (tier from this year's revenue, today's behaviour). 1/2/3
+    # pays that tier every active month regardless of revenue.
+    ryczalt_health_tier: int | None = Field(None, ge=1, le=3)
 
     @model_validator(mode="after")
     def _check_custom_base(self):

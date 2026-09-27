@@ -45,6 +45,34 @@ def test_b2b_ryczalt_month1():
         assert m.health == 830.58
     assert y.months[0].pit_advance == 2119
     assert y.months[0].take_home == 15123.66
+    # Auto tier already equals the implied tier, so nothing to settle.
+    assert y.ryczalt_health_tier_actual == 2
+    assert y.ryczalt_health_reconciliation == 0.00
+
+
+def test_b2b_ryczalt_chosen_tier_reconciles():
+    # Paying at last year's (higher) tier 3 all year while this year's
+    # actual revenue only implies tier 2 - the annual return refunds the
+    # difference.
+    opts = B2bOptions(
+        tax_form="ryczalt",
+        ryczalt_rate=0.12,
+        zus_stage="full",
+        sickness=True,
+        vat="standard",
+        ryczalt_health_tier=3,
+    )
+    y = b2b_schedule(2026, [20_000.0] * 12, [0.0] * 12, opts)
+    m1 = y.months[0]
+    assert m1.health_tier == 3
+    assert m1.health == 1495.04
+    assert m1.income == 20_000.00  # ryczalt income is informational only
+    pit_base = round(20_000 - 1926.76 - 0.5 * 1495.04)
+    assert pit_base == 17326
+    assert m1.pit_advance == 2079
+    assert m1.take_home == 14499.20
+    assert y.ryczalt_health_tier_actual == 2
+    assert y.ryczalt_health_reconciliation == -7973.52
 
 
 def test_b2b_skala_absorbs_reduction_then_owes():
