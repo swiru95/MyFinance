@@ -20,6 +20,7 @@ import RunwayChart from "@/components/RunwayChart";
 import FireTile from "@/components/fire/FireTile";
 import { fireApi } from "@/lib/fireApi";
 import type { FireResponse } from "@/lib/fireTypes";
+import NextStepTile from "@/components/insights/NextStepTile";
 
 export default function Dashboard() {
   const { t, td, locale } = useI18n();
@@ -299,6 +300,7 @@ export default function Dashboard() {
           </p>
         </div>
         <FireTile data={fire} />
+        <NextStepTile />
       </div>
 
       <div className="card">

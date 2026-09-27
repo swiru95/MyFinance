@@ -1,6 +1,7 @@
 from .asset import Asset
 from .expense import Expense
 from .income import IncomeEntry, IncomeSource
+from .insight import Insight
 from .monthly import MonthlyRecord
 from .position import Position
 from .report import Report
@@ -11,6 +12,7 @@ __all__ = [
     "Expense",
     "IncomeEntry",
     "IncomeSource",
+    "Insight",
     "MonthlyRecord",
     "Position",
     "Report",

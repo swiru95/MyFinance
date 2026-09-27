@@ -10,6 +10,7 @@ from .models import (  # noqa: F401 (register models)
     asset,
     expense,
     income,
+    insight,
     monthly,
     position,
     report,
@@ -21,6 +22,7 @@ from .routes import assets as assets_routes
 from .routes import expenses as expenses_routes
 from .routes import fire as fire_routes
 from .routes import income as income_routes
+from .routes import insights as insights_routes
 from .routes import monthly as monthly_routes
 from .routes import prices as prices_routes
 from .routes import reports as reports_routes
@@ -75,6 +77,7 @@ protected = [
     expenses_routes.router,
     fire_routes.router,
     income_routes.router,
+    insights_routes.router,
     monthly_routes.router,
     prices_routes.router,
     reports_routes.router,
