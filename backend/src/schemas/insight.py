@@ -32,6 +32,7 @@ class InsightOut(BaseModel):
     content: str
     content_en: str
     data: dict
+    data_localized: dict | None = None
     snapshot: dict
     ungrounded: list[str]
     model: str

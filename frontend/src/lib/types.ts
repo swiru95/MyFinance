@@ -96,12 +96,25 @@ export interface AllocationProfile {
   categories: string[];
 }
 
+export interface AllocationWrapper {
+  /** ike | ikze | ppk | oipe | oki - never "", empty wrapper is left out. */
+  wrapper: string;
+  value: number;
+  percent: number;
+  assets: number;
+}
+
 export interface Allocation {
   base_currency: string;
   total: number;
   items: AllocationItem[];
   by_category: AllocationCategory[];
   by_profile: AllocationProfile[];
+  /** Non-empty wrappers present, in the wrapper table's fixed order
+   *  (ike, ikze, ppk, oipe, oki) - see routes/statistics.allocation. */
+  by_wrapper: AllocationWrapper[];
+  tax_advantaged_total: number;
+  tax_advantaged_percent: number;
 }
 
 export interface Prices {
@@ -157,14 +170,34 @@ export interface CategoryTotal {
   total: number;
 }
 
+/** One B2B source's ZUS + health contribution this month - owed even with
+ *  zero revenue, and already deducted from that source's net income (see
+ *  services/business_costs.py), so it is shown separately, never folded
+ *  into a typed expense. */
+export interface BusinessContribution {
+  source_id: number;
+  name: string;
+  social: number;
+  health_fixed: number;
+  total: number;
+  currency: string;
+}
+
 export interface ExpenseSummary {
   base_currency: string;
+  /** Personal typed expenses plus this month's JDG ZUS/health contributions
+   *  - the runway/reserve basis. */
   monthly_total: number;
+  /** Typed expenses only - what monthly_total was before contributions were
+   *  added. FIRE's post-FI spend estimate reads this one. */
+  monthly_total_personal: number;
   active_count: number;
   indefinite_count: number;
   upcoming: Expense[];
   ending_soon: Expense[];
   by_category: CategoryTotal[];
+  business_contributions: BusinessContribution[];
+  business_contributions_total: number;
 }
 
 export interface MonthlyRecord {

@@ -63,6 +63,7 @@ const en: Dict = {
   "dash.nothingToAllocate": "Nothing to allocate yet.",
   "dash.monthlyCommitted": "Monthly commitment",
   "dash.fromExpenses": "From your recurring expenses",
+  "dash.monthlyCommittedInclBusiness": "incl. {amount} JDG ZUS + health",
   "dash.runway": "Reserve covers",
   "dash.runwayMonths": "{months} months",
   "dash.runwayFrom": "Safe assets ÷ monthly commitment",
@@ -189,6 +190,14 @@ const en: Dict = {
   "exp.perMonth": "/mo",
   "exp.uncategorised": "Uncategorised",
 
+  "exp.business.title": "ZUS & health (JDG)",
+  "exp.business.rowName": "ZUS + health — {name}",
+  "exp.business.badge": "from your JDG · automatic",
+  "exp.business.social": "Social (ZUS)",
+  "exp.business.health": "Health",
+  "exp.business.note":
+    "Already deducted from that source's net income, so it counts towards your reserve but not towards what you actually spent.",
+
   "exp.monthly.title": "Month by month",
   "exp.monthly.subtitle":
     "Record what you actually spent each month. Committed spend is computed from your recurring expenses, so you never retype it.",
@@ -200,6 +209,8 @@ const en: Dict = {
   "mon.notFilled": " — not filled in",
   "mon.income": "Income",
   "mon.actualSpent": "Actually spent",
+  "mon.actualSpentHint":
+    "Do not include JDG ZUS, health insurance or PIT — they are already taken out of that income.",
   "mon.saveMonth": "Save {month}",
   "mon.saved": "Saved {month}.",
   "mon.committedThis": "Committed this month",
@@ -361,6 +372,7 @@ const pl: Dict = {
   "dash.nothingToAllocate": "Brak danych do pokazania.",
   "dash.monthlyCommitted": "Zobowiązania miesięczne",
   "dash.fromExpenses": "Z Twoich wydatków cyklicznych",
+  "dash.monthlyCommittedInclBusiness": "w tym {amount} ZUS i zdrowotna z JDG",
   "dash.runway": "Rezerwa starczy na",
   "dash.runwayMonths": "{months} mies.",
   "dash.runwayFrom": "Aktywa bezpieczne ÷ zobowiązania miesięczne",
@@ -488,6 +500,14 @@ const pl: Dict = {
   "exp.perMonth": "/mies.",
   "exp.uncategorised": "Bez kategorii",
 
+  "exp.business.title": "ZUS i zdrowotna (JDG)",
+  "exp.business.rowName": "ZUS + zdrowotna — {name}",
+  "exp.business.badge": "z JDG · liczone automatycznie",
+  "exp.business.social": "Społeczne (ZUS)",
+  "exp.business.health": "Zdrowotna",
+  "exp.business.note":
+    "Już odliczone od dochodu netto tego źródła — liczy się do Twojej rezerwy, ale nie do tego, co faktycznie wydałeś/aś.",
+
   "exp.monthly.title": "Miesiąc po miesiącu",
   "exp.monthly.subtitle":
     "Zapisuj, ile faktycznie wydałeś w danym miesiącu. Zobowiązania są liczone automatycznie z wydatków cyklicznych.",
@@ -499,6 +519,8 @@ const pl: Dict = {
   "mon.notFilled": " — nieuzupełniony",
   "mon.income": "Przychód",
   "mon.actualSpent": "Faktycznie wydane",
+  "mon.actualSpentHint":
+    "Nie uwzględniaj tu ZUS, składki zdrowotnej ani PIT z JDG — są już odjęte od tego przychodu.",
   "mon.saveMonth": "Zapisz {month}",
   "mon.saved": "Zapisano {month}.",
   "mon.committedThis": "Zobowiązania w tym miesiącu",
@@ -658,6 +680,8 @@ const DATA_PL: Dict = {
   Receivables: "Należności",
   // Fallback bucket emitted by the expense/budget endpoints.
   Uncategorised: "Bez kategorii",
+  // The synthetic by_category bucket for JDG ZUS/health (routes/expenses.py).
+  "JDG: ZUS + health": "JDG: ZUS i zdrowotna",
 };
 
 const DATA_DICTS: Partial<Record<Language, Dict>> = { pl: DATA_PL };

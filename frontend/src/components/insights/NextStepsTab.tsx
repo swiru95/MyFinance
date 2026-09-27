@@ -103,8 +103,18 @@ export default function NextStepsTab({ status }: Props) {
   const pending = insight != null && PENDING.includes(insight.status);
   const data =
     insight?.status === "done" && insight.data
-      ? (insight.data as unknown as NextStepsData)
+      ? ((insight.language === "pl"
+          ? (insight.data_localized ?? insight.data)
+          : insight.data) as unknown as NextStepsData)
       : null;
+  // data_localized is only ever set for a "pl" job (see
+  // services/insights.py:localize_data); null there means the translation
+  // call failed, so the list below is silently showing English prose.
+  const translationUnavailable =
+    insight?.status === "done" &&
+    insight.language === "pl" &&
+    insight.data != null &&
+    insight.data_localized == null;
   const rungs = [...(ladder?.rungs ?? [])].sort((a, b) => a.order - b.order);
   const unavailable = status != null && !status.configured;
 
@@ -151,6 +161,10 @@ export default function NextStepsTab({ status }: Props) {
             <p className="text-sm font-medium text-red-600">{t("ins.job.failed")}</p>
             <p className="text-xs muted">{insight.error}</p>
           </div>
+        )}
+
+        {!pending && data && data.steps.length > 0 && translationUnavailable && (
+          <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
         )}
 
         {!pending && data && data.steps.length > 0 && (

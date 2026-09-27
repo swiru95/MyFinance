@@ -10,11 +10,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..tax.pl.wrappers import ACCESS_AGE
+
 # Age at which each Polish tax-advantaged wrapper's money becomes accessible
-# without penalty. IKZE is later than the other three, so it is deliberately
-# excluded from the "accessible" bridge money everywhere below (see
-# bridge_check) rather than averaged in with them.
-ACCESS_AGE = {"ike": 60, "ppk": 60, "oipe": 60, "ikze": 65}
+# without penalty - re-exported here (rather than duplicated) from the single
+# wrapper table in tax/pl/wrappers.py, since bridge_check and every caller
+# below were written against this name. IKZE is later than the other locked
+# wrappers, so it is deliberately excluded from the "accessible" bridge money
+# everywhere below (see bridge_check) rather than averaged in with them. OKI
+# has no age lock at all, so it never appears in this dict - it is
+# accessible immediately, same as an unwrapped asset.
 
 # The four ways to phrase "I no longer have to work". Kept as a tuple rather
 # than re-listed in every function that needs all of them.

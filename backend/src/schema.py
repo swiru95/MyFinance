@@ -60,6 +60,9 @@ def migrate() -> None:
         ("income_entries", "units",
          "ALTER TABLE income_entries ADD COLUMN units NUMERIC(10,2)",
          None),
+        ("insights", "data_localized",
+         "ALTER TABLE insights ADD COLUMN data_localized JSON",
+         None),
     ]
     for table, column, add_sql, index_sql in wanted:
         if table not in tables:

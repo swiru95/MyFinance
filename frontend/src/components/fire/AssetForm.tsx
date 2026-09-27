@@ -5,7 +5,7 @@ import type { AssetWithWrapper, Wrapper } from "@/lib/fireTypes";
 
 const KINDS = ["currency", "gold", "crypto"] as const;
 const PROFILES = ["", "safe", "moderate", "risky", "illiquid"] as const;
-const WRAPPERS: Wrapper[] = ["", "ike", "ikze", "ppk", "oipe"];
+const WRAPPERS: Wrapper[] = ["", "ike", "ikze", "ppk", "oipe", "oki"];
 
 interface Props {
   /** Present = editing (name/category/profile/icon/wrapper only - kind and
@@ -175,7 +175,9 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
             </option>
           ))}
         </select>
-        <p className="mt-1 text-xs muted">{t("fire.asset.wrapperHint")}</p>
+        <p className="mt-1 text-xs muted">
+          {wrapper === "oki" ? t("fire.wrapper.oki.hint") : t("fire.asset.wrapperHint")}
+        </p>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

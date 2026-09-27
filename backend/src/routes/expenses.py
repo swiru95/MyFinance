@@ -72,14 +72,33 @@ def expense_summary(db: Session = Depends(get_db)):
     For all recurring expenses (monthly, quarterly, yearly), uses the monthly
     equivalent amount to smooth budgeting — identical to today when everything
     is monthly. The dashboard runway uses this smoothed basis.
+
+    A B2B source's income is already net of its ZUS/health contributions (see
+    services/business_costs.py), so those never appear as a typed expense -
+    they are added here, on top of monthly_total_personal, to get the full
+    monthly_total a reserve actually has to cover. Callers that must stay
+    personal-only (the monthly budget's committed figure, FIRE's post-FI
+    spend fallback) read monthly_total_personal instead.
     """
+    from ..services.business_costs import fixed_contributions
+    from ..services.budget import month_key
+    from ..services.price_service import PriceService
+
     items, base = _all_decorated(db)
     today = today_in(db)
 
     # Active recurring expenses (any period except once).
     active_recurring = [i for i in items if i.period != "once" and i.status == "active"]
     # Monthly total is the sum of monthly equivalents for active recurring.
-    monthly_total = sum(i.monthly_equivalent_in_base for i in active_recurring)
+    monthly_total_personal = sum(i.monthly_equivalent_in_base for i in active_recurring)
+
+    business_contributions = fixed_contributions(
+        db, month_key(today), PriceService(base), base
+    )
+    business_contributions_total = round(
+        sum(c["total"] for c in business_contributions), 2
+    )
+    monthly_total = monthly_total_personal + business_contributions_total
 
     # Upcoming one-offs plus quarterly/yearly expenses due within 90 days.
     upcoming_oneoffs = sorted(
@@ -114,20 +133,29 @@ def expense_summary(db: Session = Depends(get_db)):
         by_cat[i.category or "Uncategorised"] = (
             by_cat.get(i.category or "Uncategorised", 0.0) + i.monthly_equivalent_in_base
         )
-    by_category = sorted(
-        ({"category": k, "total": round(v, 2)} for k, v in by_cat.items()),
-        key=lambda d: d["total"],
-        reverse=True,
-    )
+    by_category = [
+        {"category": k, "total": round(v, 2)} for k, v in by_cat.items()
+    ]
+    if business_contributions_total > 0:
+        # A stable id, not a typed category - "JDG: ZUS + health" is only
+        # ever emitted here, so the frontend's data-string table (i18n.ts)
+        # can translate it for PL the same way it does "Uncategorised".
+        by_category.append(
+            {"category": "JDG: ZUS + health", "total": business_contributions_total}
+        )
+    by_category.sort(key=lambda d: d["total"], reverse=True)
 
     return ExpenseSummary(
         base_currency=base,
         monthly_total=round(monthly_total, 2),
+        monthly_total_personal=round(monthly_total_personal, 2),
         active_count=len(active_recurring),
         indefinite_count=sum(1 for i in active_recurring if i.is_indefinite),
         upcoming=upcoming,
         ending_soon=ending_soon,
         by_category=by_category,
+        business_contributions=business_contributions,
+        business_contributions_total=business_contributions_total,
     )
 
 

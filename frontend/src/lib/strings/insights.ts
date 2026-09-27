@@ -198,6 +198,9 @@ export const en: Record<string, string> = {
 
   "ins.tile.title": "Next step",
   "ins.tile.allDone": "All caught up",
+
+  "ins.data.translationUnavailable":
+    "Translation unavailable — showing the English original.",
 };
 
 export const pl: Record<string, string> = {
@@ -386,4 +389,7 @@ export const pl: Record<string, string> = {
 
   "ins.tile.title": "Kolejny krok",
   "ins.tile.allDone": "Wszystko zrobione",
+
+  "ins.data.translationUnavailable":
+    "Tłumaczenie niedostępne — pokazujemy oryginał po angielsku.",
 };

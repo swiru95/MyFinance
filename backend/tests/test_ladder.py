@@ -168,6 +168,17 @@ def test_ikze_used_progresses_with_flows(client, db):
     assert "tax_saved" in rung["figures"]
 
 
+def test_oki_asset_does_not_count_towards_ikze_or_ike_usage(client, db):
+    # oki is tax-advantaged but is its own wrapper string, not "ikze"/"ike",
+    # so _wrapper_flows_ytd's exact-match filter naturally excludes it - this
+    # just pins that behaviour down as a regression test.
+    a = _asset(client, wrapper="oki")
+    _position(client, a["id"], 40_000, flow=40_000)
+    rungs = build_ladder(db)
+    assert _rung(rungs, "ikze_used")["figures"]["flows_ytd"] == 0
+    assert _rung(rungs, "ike_used")["figures"]["flows_ytd"] == 0
+
+
 def test_fire_configured_and_savings_rate_unknown_without_settings(client, db):
     rungs = build_ladder(db)
     assert _rung(rungs, "fire_configured")["status"] == "todo"
@@ -211,6 +222,24 @@ def test_data_fresh_todo_on_empty_wallet_then_in_progress_with_stale_asset(clien
     rung = _rung(rungs, "data_fresh")
     assert rung["status"] == "in_progress"
     assert a["name"] in rung["figures"]["stale_assets"]
+
+
+def test_starter_buffer_and_emergency_fund_report_business_contributions(client, db):
+    """Both rungs keep using the full monthly_total (personal + JDG ZUS/
+    health) as their target, and now also surface the contribution figure
+    itself so the "why" text can explain what is included."""
+    _expense(client, 1000)
+    _b2b_source(client)
+
+    from src.routes.expenses import expense_summary
+
+    expected = expense_summary(db=db).business_contributions_total
+    assert expected > 0
+
+    rungs = build_ladder(db)
+    for key in ("starter_buffer", "emergency_fund"):
+        rung = _rung(rungs, key)
+        assert rung["figures"]["business_contributions_total"] == expected
 
 
 def test_ladder_feedback_round_trips_through_settings(client, db):

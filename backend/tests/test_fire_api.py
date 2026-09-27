@@ -115,6 +115,28 @@ def test_fire_assembles_reserve_wrapper_and_illiquid_exclusion(client):
     assert body["disclaimer_key"] == "fire.disclaimer"
 
 
+def test_fire_oki_wrapper_counts_as_accessible_not_wrapped(client):
+    # OKI is tax-advantaged but carries no age lock (unlike IKE/IKZE/PPK/OIPE),
+    # so it belongs in accessible_assets, not wrapped_assets - the inverse of
+    # what an IKE-wrapped holding of the same size does.
+    cash = _asset(client, name="Cash", category="Cash", profile="safe")
+    _position(client, cash["id"], 100_000)
+
+    oki = _asset(client, name="OKI broker", category="Stocks", wrapper="oki")
+    _position(client, oki["id"], 50_000)
+
+    ike = _asset(client, name="IKE broker", category="Stocks", wrapper="ike")
+    _position(client, ike["id"], 50_000)
+
+    _expense(client, 5000)
+    client.put("/api/fire/settings", json={"birth_year": 1990})
+
+    body = client.get("/api/fire").json()
+    # 100_000 (cash) + 50_000 (oki) - 30_000 (reserve, 6 x 5000) = 120_000.
+    assert body["inputs"]["accessible_assets"] == pytest.approx(120_000)
+    assert body["inputs"]["wrapped_assets"] == pytest.approx(50_000)  # only the IKE leg
+
+
 def test_fire_reserve_floors_accessible_at_zero(client):
     cash = _asset(client, name="Small cash", category="Cash", profile="safe")
     _position(client, cash["id"], 1000)  # far less than the reserve
@@ -160,3 +182,27 @@ def test_required_income_uses_the_users_own_b2b_terms(client):
         tax_form="liniowy", zus_stage="preferential", sickness=True))
     got = body["required_income"]["b2b_liniowy"]
     assert got["revenue_monthly"] == pytest.approx(expected["revenue_monthly"], abs=1)
+
+
+def test_committed_spend_source_excludes_business_contributions(client):
+    """The monthly_spend "committed" fallback must read monthly_total_personal,
+    not monthly_total - a B2B source's fixed ZUS/health contributions stop
+    once the JDG is closed at FI, so they should not inflate the pre-FI
+    spend estimate either (see routes/fire.get_fire)."""
+    client.post("/api/income/sources", json={
+        "name": "JDG", "kind": "b2b", "starts_on": "2020-01-01",
+        "params": {"billing": "monthly", "invoice_monthly": 15000,
+                   "costs_monthly": 0, "tax_form": "liniowy",
+                   "zus_stage": "full", "sickness": True},
+    })
+    _expense(client, 5000)
+    client.put("/api/fire/settings", json={"birth_year": 1990})
+
+    summary = client.get("/api/expenses/summary").json()
+    assert summary["business_contributions_total"] == pytest.approx(2359.30)
+    assert summary["monthly_total"] == pytest.approx(5000 + 2359.30)
+
+    body = client.get("/api/fire").json()
+    assert body["inputs"]["spend_source"] == "committed"
+    # Personal-only (5000), not the full monthly_total (7359.30).
+    assert body["inputs"]["monthly_spend"] == pytest.approx(5000)

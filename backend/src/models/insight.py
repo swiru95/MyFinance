@@ -39,6 +39,16 @@ class Insight(Base):
     # mismatches/priorities; next_steps: ranked steps). Empty for digest,
     # which is free-form Markdown like a wallet report.
     data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # `data` with only its prose fields translated to Polish in one model
+    # call (profile: summary_md, priorities[], mismatches[].about/stated/
+    # actual/why_it_matters; next_steps: steps[].title/why_md) - enum
+    # fields and keys are copied through untouched. Only ever set for
+    # language "pl" on profile/next_steps, whose tabs render `data` as
+    # prose rather than through `content`/`content_en`. Stays None when
+    # translation was never attempted (en jobs, digest) or when it failed -
+    # the reason for a failure is appended to `error` without failing the
+    # job, and the frontend falls back to the English `data` with a note.
+    data_localized: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     # The figures the model was given, so `content_en` stays interpretable
     # once the underlying numbers have moved on.
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

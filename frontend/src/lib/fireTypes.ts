@@ -4,9 +4,10 @@
  *  rationale. */
 import type { Asset, Position } from "./types";
 
-/** "" = not in any wrapper. Each of the other four is penalised before a
- *  different age (see backend services/fire.ACCESS_AGE). */
-export type Wrapper = "" | "ike" | "ikze" | "ppk" | "oipe";
+/** "" = not in any wrapper. Four of the five (ike/ikze/ppk/oipe) are
+ *  penalised before a different age (see backend services/fire.ACCESS_AGE);
+ *  oki carries no age lock at all (see backend/src/tax/pl/wrappers.py). */
+export type Wrapper = "" | "ike" | "ikze" | "ppk" | "oipe" | "oki";
 
 /** Every Asset the API returns already carries `wrapper` (see AssetOut) -
  *  lib/types.ts just does not declare it, so this extends rather than

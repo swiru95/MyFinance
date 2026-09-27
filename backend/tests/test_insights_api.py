@@ -175,6 +175,94 @@ def test_profile_fails_cleanly_on_malformed_json(client, monkeypatch):
     assert got["error"]
 
 
+def test_profile_en_never_calls_translator(client, monkeypatch):
+    """The translate model is only ever needed for a pl job - an en job
+    should never reach it, for the Markdown *or* the data translation."""
+    llm = _configured_llm(monkeypatch)
+    calls: list[str] = []
+
+    def fake_complete(model, system, user, *, temperature=0.3, max_tokens=4096, response_format=None):
+        calls.append(model)
+        if model == "Thinker":
+            return json.dumps(PROFILE_JSON)
+        raise AssertionError(f"translator should not run for an en job: {model}")
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+
+    r = client.post("/api/insights/profile", json={"language": "en"})
+    got = _poll(client, r.json()["id"])
+
+    assert got["status"] == "done", got
+    assert got["data_localized"] is None
+    assert calls and all(m == "Thinker" for m in calls)
+
+
+def test_profile_pl_produces_data_localized(client, monkeypatch):
+    llm = _configured_llm(monkeypatch)
+    translated_data = {
+        "summary_md": "To portfolio laczy stabilny dochod z ostroznym rozlokowaniem.",
+        "priorities": ["Zbuduj fundusz awaryjny"],
+        "mismatches": [],
+    }
+
+    def fake_complete(model, system, user, *, temperature=0.3, max_tokens=4096, response_format=None):
+        if model == "Thinker":
+            assert response_format is not None
+            return json.dumps(PROFILE_JSON)
+        if model == "Bielik":
+            if response_format is None:
+                # The Markdown content_en -> content translation pass.
+                return "## Podsumowanie\nPrzetlumaczony tekst raportu."
+            # The structured data -> data_localized translation pass.
+            payload = json.loads(user)
+            assert set(payload.keys()) == {"summary_md", "priorities", "mismatches"}
+            return json.dumps(translated_data)
+        raise AssertionError(model)
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+
+    r = client.post("/api/insights/profile", json={"language": "pl"})
+    got = _poll(client, r.json()["id"])
+
+    assert got["status"] == "done", got
+    assert got["data_localized"] is not None
+    assert got["data_localized"]["summary_md"] == translated_data["summary_md"]
+    assert got["data_localized"]["priorities"] == translated_data["priorities"]
+    # Enums and keys are copied through untouched, not re-translated.
+    assert got["data_localized"]["stated_tolerance"] == got["data"]["stated_tolerance"]
+    assert got["data_localized"]["capacity"] == got["data"]["capacity"]
+    assert got["data_localized"]["revealed"] == got["data"]["revealed"]
+    assert got["data_localized"]["suggested_style"] == got["data"]["suggested_style"]
+    # The English data is untouched by the translation.
+    assert got["data"]["summary_md"] == PROFILE_JSON["summary_md"]
+
+
+def test_profile_pl_wrong_translation_shape_leaves_data_localized_none(client, monkeypatch):
+    llm = _configured_llm(monkeypatch)
+
+    def fake_complete(model, system, user, *, temperature=0.3, max_tokens=4096, response_format=None):
+        if model == "Thinker":
+            return json.dumps(PROFILE_JSON)
+        if model == "Bielik":
+            if response_format is None:
+                return "## Podsumowanie\nPrzetlumaczony tekst raportu."
+            # Missing keys / wrong shape - not what localize_data asked for.
+            return json.dumps({"unexpected": "shape"})
+        raise AssertionError(model)
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+
+    r = client.post("/api/insights/profile", json={"language": "pl"})
+    got = _poll(client, r.json()["id"])
+
+    # The job still finishes - a bad data translation degrades to a note in
+    # the UI, it must not fail a job whose Markdown content translated fine.
+    assert got["status"] == "done", got
+    assert got["data_localized"] is None
+    assert "Data translation unavailable" in got["error"]
+    assert got["content"]  # the Markdown translation still went through
+
+
 # --- digest job -------------------------------------------------------
 
 def test_digest_job_defaults_period_and_completes(client, monkeypatch):
@@ -270,6 +358,89 @@ def test_next_steps_drops_unknown_key(client, monkeypatch):
     kept_keys = [s["key"] for s in got["data"]["steps"]]
     assert kept_keys == ["fire_configured"]
     assert any("not_a_real_rung" in u for u in got["ungrounded"])
+
+
+def test_next_steps_pl_produces_data_localized(client, monkeypatch):
+    llm = _configured_llm(monkeypatch)
+    steps_json = {
+        "steps": [
+            {
+                "key": "fire_configured",
+                "title": "Set your FIRE target",
+                "why_md": "Planning needs a birth year and a target age to work from.",
+            },
+        ],
+    }
+    translated_data = {
+        "steps": [
+            {
+                "title": "Ustaw cel FIRE",
+                "why_md": "Planowanie wymaga roku urodzenia i docelowego wieku.",
+            },
+        ],
+    }
+
+    def fake_complete(model, system, user, *, temperature=0.3, max_tokens=4096, response_format=None):
+        if model == "Thinker":
+            assert response_format is not None
+            return json.dumps(steps_json)
+        if model == "Bielik":
+            if response_format is None:
+                return "## Kolejny krok\nUstaw cel FIRE."
+            payload = json.loads(user)
+            assert payload == {
+                "steps": [
+                    {
+                        "title": "Set your FIRE target",
+                        "why_md": "Planning needs a birth year and a target age to work from.",
+                    },
+                ],
+            }
+            return json.dumps(translated_data)
+        raise AssertionError(model)
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+
+    r = client.post("/api/insights/next_steps", json={"language": "pl"})
+    got = _poll(client, r.json()["id"])
+
+    assert got["status"] == "done", got
+    assert got["data_localized"] is not None
+    loc_step = got["data_localized"]["steps"][0]
+    assert loc_step["title"] == "Ustaw cel FIRE"
+    assert loc_step["why_md"] == "Planowanie wymaga roku urodzenia i docelowego wieku."
+    # key is not prose - copied through untouched, never re-translated.
+    assert loc_step["key"] == "fire_configured"
+    assert got["data"]["steps"][0]["title"] == "Set your FIRE target"
+
+
+def test_next_steps_en_never_calls_translator(client, monkeypatch):
+    llm = _configured_llm(monkeypatch)
+    steps_json = {
+        "steps": [
+            {
+                "key": "fire_configured",
+                "title": "Set your FIRE target",
+                "why_md": "Planning needs a birth year and a target age to work from.",
+            },
+        ],
+    }
+    calls: list[str] = []
+
+    def fake_complete(model, system, user, *, temperature=0.3, max_tokens=4096, response_format=None):
+        calls.append(model)
+        if model == "Thinker":
+            return json.dumps(steps_json)
+        raise AssertionError(f"translator should not run for an en job: {model}")
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+
+    r = client.post("/api/insights/next_steps", json={"language": "en"})
+    got = _poll(client, r.json()["id"])
+
+    assert got["status"] == "done", got
+    assert got["data_localized"] is None
+    assert calls and all(m == "Thinker" for m in calls)
 
 
 def test_ladder_feedback_is_also_keyed_at_the_top(client):

@@ -210,10 +210,40 @@ def allocation(db: Session = Depends(get_db)):
             "categories": sorted(b["categories"]),
         })
 
+    # And once more by tax wrapper, in the wrapper table's own fixed order
+    # (ike, ikze, ppk, oipe, oki) rather than by size, so a badge/colour keyed
+    # off wrapper name lands in the same slot everywhere it is shown.
+    from ..tax.pl.wrappers import WRAPPERS as _WRAPPER_INFO
+
+    wrapper_groups: dict[str, dict] = {}
+    for it in items:
+        w = it["wrapper"]
+        if not w:
+            continue
+        g = wrapper_groups.setdefault(w, {"wrapper": w, "value": 0.0, "assets": 0})
+        g["value"] += it["value"]
+        g["assets"] += 1
+    by_wrapper = []
+    for name in _WRAPPER_INFO:
+        g = wrapper_groups.get(name)
+        if not g:
+            continue
+        by_wrapper.append({
+            "wrapper": name,
+            "value": round(g["value"], 2),
+            "percent": round(100.0 * g["value"] / total, 2) if total else 0.0,
+            "assets": g["assets"],
+        })
+    tax_advantaged_total = round(sum(g["value"] for g in by_wrapper), 2)
+    tax_advantaged_percent = round(100.0 * tax_advantaged_total / total, 2) if total else 0.0
+
     return {
         "base_currency": base,
         "total": round(total, 2),
         "items": items,
         "by_category": by_category,
         "by_profile": by_profile,
+        "by_wrapper": by_wrapper,
+        "tax_advantaged_total": tax_advantaged_total,
+        "tax_advantaged_percent": tax_advantaged_percent,
     }

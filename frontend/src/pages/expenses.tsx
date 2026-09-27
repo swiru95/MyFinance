@@ -5,6 +5,7 @@ import type { Expense, ExpenseSummary } from "@/lib/types";
 import ExpenseForm from "@/components/ExpenseForm";
 import ExpenseRow from "@/components/ExpenseRow";
 import MonthlySection from "@/components/expenses/MonthlySection";
+import BusinessContributions from "@/components/expenses/BusinessContributions";
 
 type Filter = "active" | "all";
 
@@ -160,6 +161,10 @@ export default function ExpensesPage() {
             })}
           </ul>
         </div>
+      )}
+
+      {summary && summary.business_contributions.length > 0 && (
+        <BusinessContributions rows={summary.business_contributions} base={base} />
       )}
 
       <div className="flex gap-2">

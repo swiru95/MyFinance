@@ -60,7 +60,14 @@ class ExpenseOut(BaseModel):
 
 class ExpenseSummary(BaseModel):
     base_currency: str
+    # Personal typed expenses plus this month's JDG ZUS/health contributions
+    # - the runway/reserve basis. See monthly_total_personal for the
+    # typed-only figure (what FIRE falls back to once the JDG is closed).
     monthly_total: float
+    # Typed expenses only - today's monthly_total, kept under its own name so
+    # a caller that must not double up on contributions (the monthly budget's
+    # "committed", FIRE's post-FI spend fallback) has a figure to read.
+    monthly_total_personal: float
     active_count: int
     indefinite_count: int
     # One-off payments still ahead of us, soonest first.
@@ -68,3 +75,8 @@ class ExpenseSummary(BaseModel):
     # Monthly commitments with an end date within the next 90 days.
     ending_soon: list[ExpenseOut]
     by_category: list[dict]
+    # This month's B2B ZUS + health contributions, source by source - read-only,
+    # not typed expenses (see services/business_costs.py for why they are kept
+    # separate from the recurring-expense list).
+    business_contributions: list[dict] = []
+    business_contributions_total: float = 0.0
