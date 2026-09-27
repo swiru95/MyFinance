@@ -166,6 +166,7 @@ def allocation(db: Session = Depends(get_db)):
                 "units": asset.units,
                 "amount": float(p.amount),
                 "value": round(value, 2),
+                "wrapper": asset.wrapper or "",
             }
         )
     for it in items:

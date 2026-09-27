@@ -17,6 +17,9 @@ import PortfolioProfile from "@/components/PortfolioProfile";
 import { monthLabel } from "@/lib/chartTheme";
 import { blendedRate, compound, SCENARIOS } from "@/lib/projection";
 import RunwayChart from "@/components/RunwayChart";
+import FireTile from "@/components/fire/FireTile";
+import { fireApi } from "@/lib/fireApi";
+import type { FireResponse } from "@/lib/fireTypes";
 
 export default function Dashboard() {
   const { t, td, locale } = useI18n();
@@ -31,19 +34,21 @@ export default function Dashboard() {
   // the user is looking at.
   const [profileSeries, setProfileSeries] = useState<ValueOverTime | null>(null);
   const [analytics, setAnalytics] = useState<MonthlyAnalytics | null>(null);
+  const [fire, setFire] = useState<FireResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const [s, a, p, e, ps, an] = await Promise.all([
+        const [s, a, p, e, ps, an, f] = await Promise.all([
           api.summary(),
           api.allocation(),
           api.prices(),
           api.expenseSummary(),
           api.valueOverTime("profile"),
           api.monthlyAnalytics(11, 12),
+          fireApi.get(),
         ]);
         if (!alive) return;
         setSummary(s);
@@ -52,6 +57,7 @@ export default function Dashboard() {
         setExpenses(e);
         setProfileSeries(ps);
         setAnalytics(an);
+        setFire(f);
         setError(null);
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : t("common.failedLoad"));
@@ -292,6 +298,7 @@ export default function Dashboard() {
             {prices ? `${fmtMoney(prices.crypto.BTC, currency, locale)} · ${fmtMoney(prices.crypto.SOL, currency, locale)}` : "—"}
           </p>
         </div>
+        <FireTile data={fire} />
       </div>
 
       <div className="card">

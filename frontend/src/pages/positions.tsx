@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, fmtMoney } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { Asset, Position, Prices } from "@/lib/types";
+import type { Prices } from "@/lib/types";
+import type { AssetWithWrapper, PositionWithFlow } from "@/lib/fireTypes";
 import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
+import AssetForm from "@/components/fire/AssetForm";
 
 export default function PositionsPage() {
   const { t, td, locale } = useI18n();
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
+  // The API always returns `wrapper` / `flow_in_base` (see AssetOut /
+  // PositionOut on the backend); lib/types.ts just does not declare them, so
+  // the fetched rows are cast rather than re-fetched through a second call.
+  const [assets, setAssets] = useState<AssetWithWrapper[]>([]);
+  const [positions, setPositions] = useState<PositionWithFlow[]>([]);
   const [prices, setPrices] = useState<Prices | null>(null);
   const [openFor, setOpenFor] = useState<number | null>(null); // asset id for add form
   const [historyFor, setHistoryFor] = useState<number | null>(null); // position id
-  const [history, setHistory] = useState<Position[]>([]);
+  const [history, setHistory] = useState<PositionWithFlow[]>([]);
+  const [assetFormOpen, setAssetFormOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<AssetWithWrapper | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -22,8 +29,8 @@ export default function PositionsPage() {
         api.positions(),
         api.prices(),
       ]);
-      setAssets(a);
-      setPositions(p);
+      setAssets(a as AssetWithWrapper[]);
+      setPositions(p as PositionWithFlow[]);
       setPrices(pr);
       setError(null);
     } catch (e) {
@@ -41,7 +48,7 @@ export default function PositionsPage() {
   // Group the asset cards by class, preserving the order the classes first
   // appear in. An asset with no category forms a group of its own so nothing
   // is hidden under a nameless heading.
-  const groups: { name: string; assets: Asset[] }[] = [];
+  const groups: { name: string; assets: AssetWithWrapper[] }[] = [];
   for (const asset of assets) {
     const key = asset.category || asset.name;
     const existing = groups.find((g) => g.name === key);
@@ -49,36 +56,53 @@ export default function PositionsPage() {
     else groups.push({ name: key, assets: [asset] });
   }
 
-  const groupTotal = (group: Asset[]) =>
+  const groupTotal = (group: AssetWithWrapper[]) =>
     group.reduce(
       (sum, a) => sum + (positionByAsset.get(a.id)?.value_in_base ?? 0),
       0,
     );
 
-  async function toggleHistory(pos: Position) {
+  async function toggleHistory(pos: PositionWithFlow) {
     if (historyFor === pos.id) {
       setHistoryFor(null);
       setHistory([]);
       return;
     }
-    const res = await fetch(`/api/positions/${pos.id}/history`).then((r) => r.json());
+    const res: PositionWithFlow[] = await fetch(`/api/positions/${pos.id}/history`).then((r) =>
+      r.json()
+    );
     setHistory(res);
     setHistoryFor(pos.id);
   }
 
-  async function remove(pos: Position) {
+  async function remove(pos: PositionWithFlow) {
     if (!confirm(t("pos.confirmDelete"))) return;
     await api.deletePosition(pos.id);
     refresh();
   }
 
+  function openNewAsset() {
+    setEditingAsset(null);
+    setAssetFormOpen(true);
+  }
+
+  function openEditAsset(asset: AssetWithWrapper) {
+    setEditingAsset(asset);
+    setAssetFormOpen(true);
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{t("pos.title")}</h1>
-        <p className="text-sm muted">
-          {t("pos.subtitle")}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("pos.title")}</h1>
+          <p className="text-sm muted">
+            {t("pos.subtitle")}
+          </p>
+        </div>
+        <button onClick={openNewAsset} className="btn-primary">
+          {t("fire.asset.addNew")}
+        </button>
       </div>
 
       {error && (
@@ -106,14 +130,22 @@ export default function PositionsPage() {
                 <span className="flex items-center gap-2 text-base font-medium">
                   <span className="text-lg">{asset.icon}</span> {td(asset.name)}
                 </span>
-                {pos && (
+                <span className="flex items-center gap-2">
+                  {pos && (
+                    <button
+                      onClick={() => toggleHistory(pos)}
+                      className="text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      {historyFor === pos.id ? t("pos.hideHistory") : t("pos.history")}
+                    </button>
+                  )}
                   <button
-                    onClick={() => toggleHistory(pos)}
+                    onClick={() => openEditAsset(asset)}
                     className="text-xs font-medium text-brand-600 hover:underline"
                   >
-                    {historyFor === pos.id ? t("pos.hideHistory") : t("pos.history")}
+                    {t("fire.asset.editButton")}
                   </button>
-                )}
+                </span>
               </div>
 
               {pos ? (
@@ -160,6 +192,29 @@ export default function PositionsPage() {
                 setOpenFor(null);
                 refresh();
               }}
+            />
+          </div>
+        </div>
+      )}
+
+      {assetFormOpen && (
+        <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">
+          <div className="card w-full max-w-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">
+                {editingAsset ? t("fire.asset.editTitle") : t("fire.asset.addTitle")}
+              </h2>
+              <button onClick={() => setAssetFormOpen(false)} className="subtle">
+                ✕
+              </button>
+            </div>
+            <AssetForm
+              existing={editingAsset}
+              onDone={() => {
+                setAssetFormOpen(false);
+                refresh();
+              }}
+              onCancel={() => setAssetFormOpen(false)}
             />
           </div>
         </div>

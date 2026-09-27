@@ -1,14 +1,15 @@
 import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useSettings } from "@/components/SettingsProvider";
-import type { Asset, Position } from "@/lib/types";
+import type { Asset } from "@/lib/types";
+import type { PositionWithFlow } from "@/lib/fireTypes";
 
 interface Props {
-  pos: Position;
+  pos: PositionWithFlow;
   asset: Asset;
   base: string;
   historyFor: number | null;
-  history: Position[];
+  history: PositionWithFlow[];
   onUpdate: () => void;
   onDelete: () => void;
 }
@@ -66,6 +67,13 @@ export default function PositionCard({
             {t("pos.accruesFrom")} {pos.accrues_from}
           </p>
         )}
+        {pos.flow_in_base != null && (
+          <p className="text-xs subtle">
+            {t("fire.pos.flowRecorded", {
+              value: fmtMoney(pos.flow_in_base, base, locale),
+            })}
+          </p>
+        )}
         <p className="mt-1 text-xs subtle">
           {t("pos.updatedAt", {
             when: fmtDateTime(pos.timestamp, locale, timeZone),
@@ -93,6 +101,7 @@ export default function PositionCard({
                 <th className="px-2 py-1">{t("pos.when")}</th>
                 <th className="px-2 py-1">{t("common.amount")}</th>
                 <th className="px-2 py-1 text-right">{t("pos.value")}</th>
+                <th className="px-2 py-1 text-right">{t("fire.pos.historyFlow")}</th>
               </tr>
             </thead>
             <tbody>
@@ -104,6 +113,9 @@ export default function PositionCard({
                   <td className="px-2 py-1 tabular-nums">{fmtNum(h.amount, 2, locale)}</td>
                   <td className="px-2 py-1 text-right tabular-nums">
                     {fmtMoney(h.value_in_base, base, locale)}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums subtle">
+                    {h.flow_in_base != null ? fmtMoney(h.flow_in_base, base, locale) : "—"}
                   </td>
                 </tr>
               ))}

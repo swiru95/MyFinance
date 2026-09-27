@@ -27,6 +27,11 @@ class Asset(Base):
     icon: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     units: Mapped[str] = mapped_column(String(10), nullable=False, default="")
     # units: e.g. "BTC", "SOL", "g"
+    # Polish tax-advantaged retirement wrapper this holding sits in, if any:
+    # "" | ike | ikze | ppk | oipe. Each is penalised before a different age
+    # (see fire.ACCESS_AGE), which is why FIRE math needs to know about it and
+    # allocation does not otherwise care.
+    wrapper: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self) -> str:  # pragma: no cover

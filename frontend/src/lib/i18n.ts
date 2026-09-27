@@ -1,4 +1,6 @@
 import { createContext, useContext } from "react";
+import * as fireStrings from "./strings/fire";
+import * as incomeStrings from "./strings/income";
 
 export type Language = "en" | "pl";
 
@@ -24,6 +26,9 @@ const en: Dict = {
   "nav.positions": "Positions",
   "nav.expenses": "Expenses",
   "nav.monthly": "Monthly",
+  "nav.income": "Income",
+  "nav.tax": "Tax",
+  "nav.fire": "FIRE",
   "nav.settings": "Settings",
 
   "auth.prompt": "Sign in with your work account to continue.",
@@ -154,7 +159,9 @@ const en: Dict = {
   "exp.name": "Name",
   "exp.namePlaceholder": "e.g. Rent, Netflix, Car loan",
   "exp.howOften": "How often?",
-  "exp.everyMonthOption": "Every month",
+  "exp.everyMonthOption": "Monthly",
+  "exp.quarterlyOption": "Quarterly",
+  "exp.yearlyOption": "Yearly",
   "exp.onceOption": "One-off",
   "exp.firstPayment": "First payment",
   "exp.dueDate": "Due date",
@@ -307,6 +314,9 @@ const pl: Dict = {
   "nav.positions": "Pozycje",
   "nav.expenses": "Wydatki",
   "nav.monthly": "Miesięcznie",
+  "nav.income": "Dochody",
+  "nav.tax": "Podatki",
+  "nav.fire": "FIRE",
   "nav.settings": "Ustawienia",
 
   "auth.prompt": "Zaloguj się kontem służbowym, aby kontynuować.",
@@ -438,7 +448,9 @@ const pl: Dict = {
   "exp.name": "Nazwa",
   "exp.namePlaceholder": "np. Czynsz, Netflix, Kredyt samochodowy",
   "exp.howOften": "Jak często?",
-  "exp.everyMonthOption": "Co miesiąc",
+  "exp.everyMonthOption": "Miesięcznie",
+  "exp.quarterlyOption": "Kwartalnie",
+  "exp.yearlyOption": "Rocznie",
   "exp.onceOption": "Jednorazowo",
   "exp.firstPayment": "Pierwsza płatność",
   "exp.dueDate": "Termin płatności",
@@ -592,7 +604,10 @@ const pl: Dict = {
   "rep.tlsPlain": "Połączenie z {model} nie jest weryfikowane certyfikatem.",
 };
 
-const DICTS: Record<Language, Dict> = { en, pl };
+const DICTS: Record<Language, Dict> = {
+  en: { ...en, ...incomeStrings.en, ...fireStrings.en },
+  pl: { ...pl, ...incomeStrings.pl, ...fireStrings.pl },
+};
 
 /**
  * Asset names, classes and the backend's "Uncategorised" bucket are stored in

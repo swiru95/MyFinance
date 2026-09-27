@@ -38,7 +38,7 @@ export default function ExpensesPage() {
   const visible = expenses.filter((e) =>
     filter === "all" ? true : e.status !== "ended"
   );
-  const monthly = visible.filter((e) => e.period === "monthly");
+  const recurring = visible.filter((e) => e.period !== "once");
   const oneOffs = visible.filter((e) => e.period === "once");
 
   async function remove(expense: Expense) {
@@ -185,13 +185,13 @@ export default function ExpensesPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {monthly.length > 0 && (
+          {recurring.length > 0 && (
             <div className="card p-0">
               <h2 className="border-b border-slate-200 dark:border-slate-800 px-4 py-3 text-lg font-semibold">
                 {t("exp.everyMonth")}
               </h2>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {monthly.map((e) => (
+                {recurring.map((e) => (
                   <ExpenseRow
                     key={e.id}
                     expense={e}

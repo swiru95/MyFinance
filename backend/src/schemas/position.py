@@ -11,6 +11,9 @@ class PositionIn(BaseModel):
     currency: str = "PLN"
     notes: str = ""
     accrues_from: date | None = None
+    # Money moved into (+) or out of (-) the asset for this snapshot. See
+    # routes/positions.py for how it is interpreted per asset kind.
+    flow: float | None = None
 
 
 class PositionUpdate(BaseModel):
@@ -18,6 +21,7 @@ class PositionUpdate(BaseModel):
     currency: str = "PLN"
     notes: str = ""
     accrues_from: date | None = None
+    flow: float | None = None
 
 
 class PositionOut(BaseModel):
@@ -32,6 +36,7 @@ class PositionOut(BaseModel):
     base_currency: str
     notes: str
     accrues_from: date | None
+    flow_in_base: float | None
     timestamp: datetime
 
     @field_serializer("timestamp")
