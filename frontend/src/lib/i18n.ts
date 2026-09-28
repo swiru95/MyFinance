@@ -220,7 +220,7 @@ const en: Dict = {
 
   "exp.monthly.title": "Month by month",
   "exp.monthly.subtitle":
-    "Record what you actually spent each month. Committed spend is computed from your recurring expenses, so you never retype it.",
+    "Once a month, tick off the commitments you paid and add what else you spent. That shows how much you really save and whether you keep to your budget.",
   "exp.monthly.incomeLabel": "Income",
   "exp.monthly.incomeHint": "Total income for the month, including other income.",
   "exp.monthly.incomeLink": "Manage on Income →",
@@ -229,9 +229,21 @@ const en: Dict = {
   "mon.month": "Month",
   "mon.notFilled": " — not filled in",
   "mon.income": "Income",
-  "mon.actualSpent": "Actually spent",
-  "mon.actualSpentHint":
-    "Do not include JDG ZUS, health insurance or PIT — they are already taken out of that income.",
+  "mon.commitmentsTitle": "Commitments — {month}",
+  "mon.commitmentsHint":
+    "Untick anything you did not pay. Change the amount if the bill was different this time (e.g. electricity).",
+  "mon.commitmentsEmpty": "No commitments due this month.",
+  "mon.jdgNote":
+    "ZUS and health contribution from your JDG are not listed — they are already taken out of your net income.",
+  "mon.otherTitle": "Everything else you spent",
+  "mon.otherHint":
+    "Food, fuel, shopping, going out, unexpected costs — everything outside the list above. An estimate is fine.",
+  "mon.otherHelper":
+    "Not sure? Your accounts show about {effective} left them this month; minus the paid commitments that leaves about {rest}.",
+  "mon.otherHelperButton": "Use {rest}",
+  "mon.totalLine": "Spent in {month}: {paid} commitments + {other} other = {total}",
+  "mon.legacyNote":
+    "Saved earlier as one total ({x}). Saving now replaces it with the breakdown below.",
   "mon.saveMonth": "Save {month}",
   "mon.saved": "Saved {month}.",
   "mon.committedThis": "Committed this month",
@@ -545,7 +557,7 @@ const pl: Dict = {
 
   "exp.monthly.title": "Miesiąc po miesiącu",
   "exp.monthly.subtitle":
-    "Zapisuj, ile faktycznie wydałeś w danym miesiącu. Zobowiązania są liczone automatycznie z wydatków cyklicznych.",
+    "Raz w miesiącu odhacz zapłacone zobowiązania i dopisz pozostałe wydatki. Zobaczysz, ile naprawdę odkładasz i czy trzymasz się budżetu.",
   "exp.monthly.incomeLabel": "Przychód",
   "exp.monthly.incomeHint": "Łączny przychód za miesiąc, wraz z innymi dochodami.",
   "exp.monthly.incomeLink": "Zarządzaj w Dochodach →",
@@ -554,9 +566,21 @@ const pl: Dict = {
   "mon.month": "Miesiąc",
   "mon.notFilled": " — nieuzupełniony",
   "mon.income": "Przychód",
-  "mon.actualSpent": "Faktycznie wydane",
-  "mon.actualSpentHint":
-    "Nie uwzględniaj tu ZUS, składki zdrowotnej ani PIT z JDG — są już odjęte od tego przychodu.",
+  "mon.commitmentsTitle": "Stałe zobowiązania — {month}",
+  "mon.commitmentsHint":
+    "Odznacz to, czego nie zapłaciłeś(-aś). Popraw kwotę, jeśli rachunek był inny niż zwykle (np. prąd).",
+  "mon.commitmentsEmpty": "W tym miesiącu nie ma stałych zobowiązań.",
+  "mon.jdgNote":
+    "ZUS i składki zdrowotnej z JDG tu nie ma — są już odjęte od Twojego dochodu netto.",
+  "mon.otherTitle": "Pozostałe wydatki",
+  "mon.otherHint":
+    "Jedzenie, paliwo, zakupy, wyjścia, niespodziewane wydatki — wszystko poza listą powyżej. Wystarczy szacunek.",
+  "mon.otherHelper":
+    "Nie wiesz? Z Twoich kont zeszło w tym miesiącu około {effective}; po odjęciu opłaconych zobowiązań zostaje około {rest}.",
+  "mon.otherHelperButton": "Wpisz {rest}",
+  "mon.totalLine": "Wydane — {month}: {paid} zobowiązania + {other} pozostałe = {total}",
+  "mon.legacyNote":
+    "Zapisano wcześniej jako jedną kwotę ({x}). Zapisanie teraz zastąpi ją poniższym rozbiciem.",
   "mon.saveMonth": "Zapisz {month}",
   "mon.saved": "Zapisano {month}.",
   "mon.committedThis": "Zobowiązania w tym miesiącu",

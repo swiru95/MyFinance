@@ -21,7 +21,14 @@ const currentMonthKey = () => {
  *  income moved to /income and there is nothing else left to give it its own
  *  page. `id="monthly"` is the target of the /monthly -> /expenses#monthly
  *  redirect that keeps old links working. */
-export default function MonthlySection() {
+interface Props {
+  /** Whether an active B2B income source exists - reuses the same figure
+   *  BusinessContributions.tsx is shown from (ExpenseSummary.business_
+   *  contributions), so the checklist's JDG note and that card agree. */
+  hasBusinessIncome: boolean;
+}
+
+export default function MonthlySection({ hasBusinessIncome }: Props) {
   const { t } = useI18n();
   const { portfolio } = useFeatures();
   const [months, setMonths] = useState<MonthlyRecord[]>([]);
@@ -70,6 +77,7 @@ export default function MonthlySection() {
         record={record}
         base={base}
         onSaved={refresh}
+        hasBusinessIncome={hasBusinessIncome}
       />
 
       <Disclosure title={t("exp.monthly.showAnalysis")} storageKey="myfinance-expenses-analysis-open">

@@ -251,7 +251,9 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      <MonthlySection />
+      <MonthlySection
+        hasBusinessIncome={(summary?.business_contributions.length ?? 0) > 0}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-20 grid place-items-center overflow-y-auto bg-black/40 p-4">

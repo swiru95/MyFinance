@@ -27,6 +27,14 @@ class MonthlyRecord(Base):
     )
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # The "month checklist" breakdown behind actual_spent (WP-M): which
+    # commitments were paid, at what amount, plus whatever else was spent.
+    # JSON list of {"expense_id", "name", "amount", "currency", "paid"} - the
+    # expense's own currency, not necessarily this record's. NULL on both
+    # this and other_spent means a legacy "one total" record, which keeps
+    # reading and writing exactly as before actual_spent became derived.
+    commitments_paid: Mapped[str | None] = mapped_column(Text, nullable=True)
+    other_spent: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),

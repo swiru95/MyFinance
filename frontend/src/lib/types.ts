@@ -249,6 +249,25 @@ export interface ExpenseSummary {
   business_contributions_total: number;
 }
 
+/** One row of the "month checklist" - GET /api/monthly/{month}/commitments.
+ *  `amount`/`currency` are the expense's own, not the record's. */
+export interface MonthCommitment {
+  expense_id: number;
+  name: string;
+  category: string;
+  amount: number;
+  currency: string;
+  paid: boolean;
+}
+
+/** What PUT/PATCH send back for one checklist row - just enough to derive
+ *  actual_spent server-side (see backend routes/monthly.py). */
+export interface CommitmentInput {
+  expense_id: number;
+  amount: number;
+  paid: boolean;
+}
+
 export interface MonthlyRecord {
   month: string;
   income: number;
@@ -256,6 +275,12 @@ export interface MonthlyRecord {
   currency: string;
   notes: string;
   base_currency: string;
+  /** The checklist breakdown behind actual_spent, in this record's own
+   *  currency. Null/null/false on a legacy "one total" record that was
+   *  never saved through the checklist - see models/monthly.py. */
+  commitments_paid_total: number | null;
+  other_spent: number | null;
+  breakdown: boolean;
   income_in_base: number;
   /** Net income from income sources that month; income_in_base already
    *  includes it on top of the typed `income`. */
@@ -288,16 +313,20 @@ export interface MonthlyInput {
   actual_spent: number;
   currency: string;
   notes: string;
+  commitments?: CommitmentInput[] | null;
+  other_spent?: number | null;
 }
 
 /** Every field optional - PATCH /api/monthly/{month} touches only what is
- *  sent, so Expenses (actual_spent/notes/currency) and Income
- *  (income/currency) can edit the same row without overwriting each other. */
+ *  sent, so Expenses (the checklist/notes) and Income (income/currency) can
+ *  edit the same row without overwriting each other. */
 export interface MonthlyPatch {
   income?: number;
   actual_spent?: number;
   currency?: string;
   notes?: string;
+  commitments?: CommitmentInput[];
+  other_spent?: number;
 }
 
 export interface TimelinePoint {

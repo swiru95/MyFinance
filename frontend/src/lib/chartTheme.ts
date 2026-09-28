@@ -127,3 +127,12 @@ export function monthLabel(month: string, locale = "en-US"): string {
   );
   return `${name} ${year.slice(2)}`;
 }
+
+/** "2026-09" -> "September 2026" / "wrzesień 2026", following the active language. */
+export function monthLabelLong(month: string, locale = "en-US"): string {
+  const [year, mon] = month.split("-");
+  return new Date(Number(year), Number(mon) - 1, 1).toLocaleDateString(
+    locale,
+    { month: "long", year: "numeric" }
+  );
+}
