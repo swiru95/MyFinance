@@ -17,6 +17,43 @@ export type AssetWithWrapper = Asset & { wrapper: Wrapper };
 /** Every Position the API returns already carries `flow_in_base`. */
 export type PositionWithFlow = Position & { flow_in_base: number | null };
 
+/** Mirrors backend/src/schemas/position.py::GrowthLast. */
+export interface GrowthLast {
+  change: number;
+  flow: number | null;
+  growth: number;
+  since: string;
+  at: string;
+}
+
+/** Mirrors backend/src/schemas/position.py::AssetGrowth. */
+export interface AssetGrowth {
+  asset_id: number;
+  opening_value: number;
+  contributed: number;
+  untracked_updates: number;
+  invested: number;
+  value: number;
+  growth: number;
+  growth_pct: number | null;
+  last: GrowthLast | null;
+}
+
+/** Mirrors backend/src/schemas/position.py::PortfolioGrowthOut. */
+export interface PortfolioGrowth {
+  base_currency: string;
+  assets: AssetGrowth[];
+  total: {
+    opening_value: number;
+    contributed: number;
+    invested: number;
+    value: number;
+    growth: number;
+    growth_pct: number | null;
+    untracked_updates: number;
+  };
+}
+
 export interface FireSettings {
   birth_year: number | null;
   target_fi_age: number | null;
