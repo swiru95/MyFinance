@@ -11,6 +11,7 @@ import PositionCard from "@/components/PositionCard";
 import AssetForm from "@/components/fire/AssetForm";
 import FeatureOffCard from "@/components/FeatureOffCard";
 import InfoTip from "@/components/InfoTip";
+import PdfReportCard from "@/components/PdfReportCard";
 import {
   WRAPPER_STYLES,
   wrapperAccessKey,
@@ -185,6 +186,8 @@ export default function PositionsPage() {
           </div>
         </div>
       )}
+
+      <PdfReportCard />
 
       {groups.map((group) => (
         <section key={group.name} className="space-y-3">

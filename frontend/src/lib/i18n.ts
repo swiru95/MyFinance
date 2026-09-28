@@ -5,6 +5,7 @@ import * as incomeStrings from "./strings/income";
 import * as insightsStrings from "./strings/insights";
 import * as glossaryStrings from "./strings/glossary";
 import * as startStrings from "./strings/start";
+import * as pdfReportStrings from "./strings/pdfReport";
 
 export type Language = "en" | "pl";
 
@@ -709,10 +710,12 @@ const DICTS: Record<Language, Dict> = {
   en: {
     ...en, ...incomeStrings.en, ...fireStrings.en, ...insightsStrings.en,
     ...featuresStrings.en, ...glossaryStrings.en, ...startStrings.en,
+    ...pdfReportStrings.en,
   },
   pl: {
     ...pl, ...incomeStrings.pl, ...fireStrings.pl, ...insightsStrings.pl,
     ...featuresStrings.pl, ...glossaryStrings.pl, ...startStrings.pl,
+    ...pdfReportStrings.pl,
   },
 };
 

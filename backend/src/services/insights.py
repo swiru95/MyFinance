@@ -1,4 +1,5 @@
-"""Insight jobs: profile analysis, monthly digest, next-best-step ranking.
+"""Insight jobs: profile analysis, monthly digest, next-best-step ranking,
+and the optional AI commentary for the wallet PDF report.
 
 Same shape as services/assessment.py - deterministic snapshot in, model text
 out - except profile and next_steps ask for structured JSON (llm.complete's
@@ -6,6 +7,13 @@ out - except profile and next_steps ask for structured JSON (llm.complete's
 pills/cards/ranked lists rather than just rendering. Every generated number
 is checked against its own snapshot afterwards (services/grounding.py)
 before the row is marked done; nothing here ever computes a figure itself.
+
+wallet_pdf is the odd one out in where its snapshot comes from: it reuses
+services/wallet_report.py's build_snapshot/render_snapshot rather than
+building its own, because that snapshot is also exactly what
+routes/report_pdf.py prints into the PDF's own tables - the model narrates
+the same numbers the PDF shows, never a second, possibly-drifted set of
+them.
 """
 from __future__ import annotations
 
@@ -168,6 +176,35 @@ description given for them - never quote an internal key or field name \
 (e.g. write "stale data", never "stale_data").
 - This is analysis of their own figures, not regulated financial advice - \
 you should not add a disclaimer, the application shows one already."""
+
+_WALLET_PDF_SYSTEM = """You are writing a short commentary on one person's \
+wallet and how efficiently it grew over one reporting period, from their \
+own recorded figures, for a section of a PDF report they are downloading.
+
+Write the commentary in English as Markdown, using exactly these sections:
+
+## Summary
+Two or three sentences: what the wallet holds and the single most \
+important thing about how it did over "{period_label}".
+
+## What stood out
+Two to four bullets, each tied to a figure from the data below - a \
+concentration, a large deposit or withdrawal, an asset whose return stood \
+out either way.
+
+## Reading the numbers
+One short paragraph explaining, in plain language, what "deposits" and \
+"growth" mean for this period, and - only if an annualised figure is given \
+below - what it adds on top of the plain return percentage.
+
+Rules you must follow:
+- Use only the figures given below. Never invent a number, a holding or a date.
+- Quote amounts in {currency}, formatted the way they appear in the data.
+- This narrates figures already computed elsewhere - never suggest an \
+action or a change to the portfolio, and never recommend specific tickers, \
+funds or products.
+- This is analysis of their own figures, not regulated financial advice, \
+and you should not add a disclaimer - the application shows one already."""
 
 _LOCALIZE_SYSTEM = """You are a professional financial translator. You are \
 given a JSON array of English strings. Translate each one to natural \
@@ -947,6 +984,34 @@ def run_next_steps(snapshot: dict) -> tuple[dict, str, str, list[str]]:
     return ranked.model_dump(), _render_next_steps_markdown(ranked), model, discarded_notes
 
 
+# --- Wallet PDF commentary --------------------------------------------------
+
+def build_wallet_pdf_snapshot(db: Session, period: str) -> dict:
+    """The wallet report's own snapshot (services/wallet_report.py) - not
+    rebuilt here, so the AI commentary and the PDF's tables can never
+    disagree about a figure."""
+    from . import wallet_report
+
+    return wallet_report.build_snapshot(db, period)
+
+
+def run_wallet_pdf(snapshot: dict) -> tuple[str, str]:
+    """Ask Thinker to narrate the wallet report snapshot. Returns
+    (content_en, model)."""
+    from . import wallet_report
+
+    model = settings.llm_model
+    system = _WALLET_PDF_SYSTEM.format(
+        period_label=snapshot["efficiency"]["period_label"],
+        currency=snapshot["base_currency"],
+    )
+    text = llm.complete(
+        model, system, wallet_report.render_snapshot(snapshot),
+        temperature=0.3, max_tokens=settings.llm_max_tokens,
+    )
+    return text, model
+
+
 # --- Job orchestration -----------------------------------------------------
 
 def generate(db: Session, insight) -> None:
@@ -970,6 +1035,12 @@ def generate(db: Session, insight) -> None:
         elif insight.kind == "next_steps":
             snapshot = build_next_steps_snapshot(db)
             data, content_en, model, extra_ungrounded = run_next_steps(snapshot)
+        elif insight.kind == "wallet_pdf":
+            period = insight.period or "all"
+            insight.period = period
+            snapshot = build_wallet_pdf_snapshot(db, period)
+            content_en, model = run_wallet_pdf(snapshot)
+            data = {}
         else:
             raise ValueError(f"unknown insight kind {insight.kind!r}")
 

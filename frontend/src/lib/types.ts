@@ -396,3 +396,11 @@ export const REPORT_STYLES: ReportStyle[] = [
 
 export const INPUT_CURRENCIES = ["PLN", "EUR", "USD", "CHF"] as const;
 export const BASE_CURRENCIES = ["PLN", "EUR", "USD", "CHF"] as const;
+
+/** Reporting periods the PDF report's efficiency section can be scoped to -
+ *  mirrors backend/src/services/efficiency.py's PERIODS exactly (same
+ *  short keys, since they round-trip through the `insights.period` column -
+ *  see schemas/insight.py there). */
+export type PdfReportPeriod = "1m" | "3m" | "ytd" | "12m" | "all";
+
+export const PDF_REPORT_PERIODS: PdfReportPeriod[] = ["1m", "3m", "ytd", "12m", "all"];

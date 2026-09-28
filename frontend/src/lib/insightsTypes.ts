@@ -5,7 +5,7 @@
  *  backend work was still in progress, so shapes here are the contract, not
  *  a read of the implementation. */
 
-export type InsightKind = "profile" | "digest" | "next_steps";
+export type InsightKind = "profile" | "digest" | "next_steps" | "wallet_pdf";
 
 /** pending -> running -> translating -> done, or failed from any of them -
  *  the same job shape /reports uses (services/llm.complete underneath). */

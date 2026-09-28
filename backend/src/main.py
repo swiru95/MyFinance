@@ -27,6 +27,7 @@ from .routes import insights as insights_routes
 from .routes import monthly as monthly_routes
 from .routes import prices as prices_routes
 from .routes import reports as reports_routes
+from .routes import report_pdf as report_pdf_routes
 from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
@@ -94,6 +95,11 @@ protected = [
     insights_routes.router,
     monthly_routes.router,
     prices_routes.router,
+    # Registered before reports_routes: that router's GET /{report_id}
+    # would otherwise swallow /pdf as report_id="pdf" (Starlette matches
+    # routes in registration order, and the two live under the same
+    # /api/reports prefix - see routes/report_pdf.py).
+    report_pdf_routes.router,
     reports_routes.router,
     statistics_routes.router,
     settings_routes.router,

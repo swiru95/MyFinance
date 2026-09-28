@@ -39,13 +39,24 @@ def get_features(db: Session) -> "FeatureFlags":
     return FeatureFlags.model_validate(json.loads(s.value))
 
 
+def now_in(db: Session) -> datetime:
+    """Current time in the configured zone, tz-aware.
+
+    today_in() is this with .date() taken off it - kept as a separate
+    function because some callers (the PDF report's "data as of" line, the
+    AI commentary's generation time) need the time of day too, not just the
+    date.
+    """
+    return datetime.now(ZoneInfo(get_timezone(db)))
+
+
 def today_in(db: Session) -> date:
     """Current date in the configured zone.
 
     Using the server's own date would roll an expense over to "ended" (or a new
     month over) at UTC midnight rather than the user's.
     """
-    return datetime.now(ZoneInfo(get_timezone(db))).date()
+    return now_in(db).date()
 
 
 def get_asset(db: Session, asset_id: int) -> Asset | None:

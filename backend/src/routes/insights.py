@@ -154,8 +154,11 @@ def create_insight(kind: str, payload: InsightIn, db: Session = Depends(get_db))
 
 
 @router.get("/{kind}/latest", response_model=InsightOut)
-def latest_insight(kind: str, language: str = "en", db: Session = Depends(get_db)):
-    """The newest `kind` insight in `language`, whatever its status.
+def latest_insight(
+    kind: str, language: str = "en", period: str | None = None, db: Session = Depends(get_db)
+):
+    """The newest `kind` insight in `language` (and, when given, `period`),
+    whatever its status.
 
     Not filtered to "done": the Profile and Next steps tabs call this on
     mount to resume whatever job is already on screen after a tab switch
@@ -163,14 +166,20 @@ def latest_insight(kind: str, language: str = "en", db: Session = Depends(get_db
     filtering to "done" here meant a pending, translating or failed job was
     invisible until it happened to finish, with no way to see it was even
     running or that it had failed.
+
+    `period` is optional and only meaningful for kinds that carry one
+    ("digest" months, "wallet_pdf" reporting periods) - profile/next_steps
+    never pass it, and omitting it keeps the previous "newest in this
+    language, any period" behaviour those two rely on. The wallet PDF report
+    (PdfReportCard) passes it so resuming a job on mount only picks up one
+    matching the period currently selected, not an unrelated job for a
+    different period that also happens to be newer.
     """
     _validate_kind(kind)
-    row = (
-        db.query(Insight)
-        .filter(Insight.kind == kind, Insight.language == language)
-        .order_by(Insight.created_at.desc(), Insight.id.desc())
-        .first()
-    )
+    query = db.query(Insight).filter(Insight.kind == kind, Insight.language == language)
+    if period is not None:
+        query = query.filter(Insight.period == period)
+    row = query.order_by(Insight.created_at.desc(), Insight.id.desc()).first()
     if row is None:
         raise HTTPException(404, f"No {kind} insight in {language} yet")
     return row

@@ -12,3 +12,7 @@ python-multipart==0.0.32
 # Entra ID access-token validation. The [crypto] extra pulls in `cryptography`,
 # which PyJWT needs for RS256 - Microsoft's signing keys are RSA.
 pyjwt[crypto]==2.15.0
+# PDF report generation (services/wallet_report.py). Pure Python - Pillow and
+# fonttools are its only real dependencies and both ship manylinux wheels, so
+# no extra system packages are needed in the Docker image.
+fpdf2==2.8.8
