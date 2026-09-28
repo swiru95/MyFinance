@@ -70,6 +70,9 @@ def migrate() -> None:
         ("monthly_records", "other_spent",
          "ALTER TABLE monthly_records ADD COLUMN other_spent NUMERIC(20,2)",
          None),
+        ("assets", "archived_at",
+         "ALTER TABLE assets ADD COLUMN archived_at TIMESTAMP",
+         None),
     ]
     for table, column, add_sql, index_sql in wanted:
         if table not in tables:

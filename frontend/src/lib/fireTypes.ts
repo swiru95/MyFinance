@@ -9,10 +9,12 @@ import type { Asset, Position } from "./types";
  *  oki carries no age lock at all (see backend/src/tax/pl/wrappers.py). */
 export type Wrapper = "" | "ike" | "ikze" | "ppk" | "oipe" | "oki";
 
-/** Every Asset the API returns already carries `wrapper` (see AssetOut) -
- *  lib/types.ts just does not declare it, so this extends rather than
- *  redeclares. */
-export type AssetWithWrapper = Asset & { wrapper: Wrapper };
+/** Every Asset the API returns already carries `wrapper` and `archived_at`
+ *  (see AssetOut) - lib/types.ts just does not declare them, so this extends
+ *  rather than redeclares. `archived_at` is set when the asset was archived
+ *  (soft delete - see backend routes/assets.py::archive_asset), null while
+ *  active. */
+export type AssetWithWrapper = Asset & { wrapper: Wrapper; archived_at: string | null };
 
 /** Every Position the API returns already carries `flow_in_base`. */
 export type PositionWithFlow = Position & { flow_in_base: number | null };
@@ -29,6 +31,10 @@ export interface GrowthLast {
 /** Mirrors backend/src/schemas/position.py::AssetGrowth. */
 export interface AssetGrowth {
   asset_id: number;
+  /** Mirrors the asset's own `archived_at` (see AssetWithWrapper) so a
+   *  consumer of just the growth endpoint can skip an archived asset's row
+   *  without a second lookup against /assets. */
+  archived: boolean;
   opening_value: number;
   contributed: number;
   untracked_updates: number;

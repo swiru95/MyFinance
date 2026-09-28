@@ -151,7 +151,11 @@ def portfolio_growth(db: Session) -> dict:
         if growth is None:
             continue
         value_raw += current_value
-        assets.append({"asset_id": asset_id, **growth})
+        assets.append({
+            "asset_id": asset_id,
+            "archived": asset.archived_at is not None,
+            **growth,
+        })
 
     return {
         "base_currency": base_currency,

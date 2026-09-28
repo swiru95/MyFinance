@@ -181,6 +181,15 @@ export const en: Record<string, string> = {
   "fire.asset.addTitle": "Add asset",
   "fire.asset.editTitle": "Edit asset",
   "fire.asset.editButton": "Edit",
+  "fire.asset.archiveButton": "Archive",
+  "fire.asset.archiveConfirm":
+    "Archive “{name}”? It disappears from your assets; its history stays on the charts. Use this when you sold it or closed the account.",
+  "fire.asset.deleteButton": "Delete permanently",
+  "fire.asset.deleteConfirm":
+    "Delete “{name}” permanently, with its whole history? The charts will look as if you never had it. Use this only for something added by mistake. This cannot be undone.",
+  "fire.asset.archivedSection": "Archived ({n})",
+  "fire.asset.archivedDate": "archived {date}",
+  "fire.asset.restore": "Restore",
   "fire.asset.name": "Name",
   "fire.asset.kind": "Type",
   "fire.asset.kind.currency": "Cash / savings / investment",
@@ -404,6 +413,15 @@ export const pl: Record<string, string> = {
   "fire.asset.addTitle": "Dodaj aktywo",
   "fire.asset.editTitle": "Edytuj aktywo",
   "fire.asset.editButton": "Edytuj",
+  "fire.asset.archiveButton": "Archiwizuj",
+  "fire.asset.archiveConfirm":
+    "Zarchiwizować „{name}”? Zniknie z listy aktywów, a jego historia zostanie na wykresach. Użyj tego, gdy aktywo sprzedałeś(-aś) albo zamknąłeś(-aś) konto.",
+  "fire.asset.deleteButton": "Usuń na stałe",
+  "fire.asset.deleteConfirm":
+    "Usunąć „{name}” na stałe, razem z całą historią? Wykresy będą wyglądać, jakbyś nigdy go nie miał(-a). Używaj tylko dla czegoś dodanego przez pomyłkę. Tego nie da się cofnąć.",
+  "fire.asset.archivedSection": "Zarchiwizowane ({n})",
+  "fire.asset.archivedDate": "zarchiwizowane {date}",
+  "fire.asset.restore": "Przywróć",
   "fire.asset.name": "Nazwa",
   "fire.asset.kind": "Rodzaj",
   "fire.asset.kind.currency": "Gotówka / oszczędności / inwestycja",

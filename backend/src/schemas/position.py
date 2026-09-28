@@ -60,6 +60,9 @@ class GrowthLast(BaseModel):
 
 class AssetGrowth(BaseModel):
     asset_id: int
+    # Mirrors Asset.archived_at (see models/asset.py) so the frontend can
+    # skip an archived asset's row without a second lookup against /assets.
+    archived: bool
     opening_value: float
     contributed: float
     untracked_updates: int

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtMoney, fmtSigned, fmtSignedPct, request } from "@/lib/api";
+import { api, fmtDateTime, fmtMoney, fmtSigned, fmtSignedPct, request } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useFeatures } from "@/lib/features";
+import { useSettings } from "@/components/SettingsProvider";
 import { fireApi } from "@/lib/fireApi";
 import type { Prices } from "@/lib/types";
 import type { AssetWithWrapper, PortfolioGrowth, PositionWithFlow } from "@/lib/fireTypes";
@@ -21,6 +22,7 @@ import {
 export default function PositionsPage() {
   const { t, td, locale } = useI18n();
   const { portfolio } = useFeatures();
+  const { timeZone } = useSettings();
   // The API always returns `wrapper` / `flow_in_base` (see AssetOut /
   // PositionOut on the backend); lib/types.ts just does not declare them, so
   // the fetched rows are cast rather than re-fetched through a second call.
@@ -65,11 +67,17 @@ export default function PositionsPage() {
   const growthByAsset = new Map((growth?.assets ?? []).map((g) => [g.asset_id, g]));
   const base = prices?.base_currency ?? "PLN";
 
+  // Archived assets (sold / account closed) keep their history on the charts
+  // but drop out of the everyday cards/totals - they get their own collapsed
+  // section further down instead, with a way back in.
+  const activeAssets = assets.filter((a) => !a.archived_at);
+  const archivedAssets = assets.filter((a) => a.archived_at);
+
   // Group the asset cards by class, preserving the order the classes first
   // appear in. An asset with no category forms a group of its own so nothing
   // is hidden under a nameless heading.
   const groups: { name: string; assets: AssetWithWrapper[] }[] = [];
-  for (const asset of assets) {
+  for (const asset of activeAssets) {
     const key = asset.category || asset.name;
     const existing = groups.find((g) => g.name === key);
     if (existing) existing.assets.push(asset);
@@ -100,6 +108,11 @@ export default function PositionsPage() {
   async function remove(pos: PositionWithFlow) {
     if (!confirm(t("pos.confirmDelete"))) return;
     await api.deletePosition(pos.id);
+    refresh();
+  }
+
+  async function restore(asset: AssetWithWrapper) {
+    await fireApi.unarchiveAsset(asset.id);
     refresh();
   }
 
@@ -257,6 +270,40 @@ export default function PositionsPage() {
           </div>
         </section>
       ))}
+
+      {archivedAssets.length > 0 && (
+        <details className="card">
+          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide subtle">
+            {t("fire.asset.archivedSection", { n: archivedAssets.length })}
+          </summary>
+          <div className="mt-3 divide-y divide-slate-200 dark:divide-slate-700">
+            {archivedAssets.map((asset) => (
+              <div
+                key={asset.id}
+                className="flex items-center justify-between gap-3 py-2"
+              >
+                <span className="flex items-center gap-2 text-sm">
+                  <span className="text-lg">{asset.icon}</span>
+                  <span>
+                    {td(asset.name)}
+                    <span className="ml-2 text-xs subtle">
+                      {t("fire.asset.archivedDate", {
+                        date: fmtDateTime(asset.archived_at!, locale, timeZone),
+                      })}
+                    </span>
+                  </span>
+                </span>
+                <button
+                  onClick={() => restore(asset)}
+                  className="text-xs font-medium text-brand-600 hover:underline"
+                >
+                  {t("fire.asset.restore")}
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {openFor != null && prices && (
         <div className="fixed inset-0 z-20 grid place-items-center bg-black/40 p-4">

@@ -107,6 +107,34 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
     }
   }
 
+  async function handleArchive() {
+    if (!confirm(t("fire.asset.archiveConfirm", { name }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await fireApi.archiveAsset(existing!.id);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.failedSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(t("fire.asset.deleteConfirm", { name }))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await fireApi.deleteAsset(existing!.id);
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.failedSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {!existing && (
@@ -261,6 +289,27 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
               : t("fire.asset.addTitle")}
         </button>
       </div>
+
+      {existing && (
+        <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={handleArchive}
+            className="btn-ghost w-full"
+            disabled={busy}
+          >
+            {t("fire.asset.archiveButton")}
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="block w-full text-center text-xs font-medium text-red-600 hover:underline"
+            disabled={busy}
+          >
+            {t("fire.asset.deleteButton")}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

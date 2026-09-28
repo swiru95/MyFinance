@@ -116,10 +116,15 @@ def held_symbols(db: Session) -> tuple[set[str], set[str]]:
     always pricing the whole catalogue - most wallets hold at most one or two
     of the five coins, and pricing the rest would just be wasted upstream
     calls against a shared, rate-limited API.
+
+    Archived assets are excluded - they are not held any more (see
+    routes/assets.archive_asset), so a symbol only an archived asset used
+    drops out unless another asset still holds it.
     """
     metals: set[str] = set()
     crypto: set[str] = set()
-    for kind, units in db.query(Asset.kind, Asset.units).all():
+    query = db.query(Asset.kind, Asset.units).filter(Asset.archived_at.is_(None))
+    for kind, units in query.all():
         if kind == "metal" and units:
             metals.add(units.upper())
         elif kind == "crypto" and units:

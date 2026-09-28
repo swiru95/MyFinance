@@ -41,6 +41,11 @@ class Asset(Base):
     # about it and allocation does not otherwise care.
     wrapper: Mapped[str] = mapped_column(String(8), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # When this asset was archived (soft delete - see routes/assets.py). NULL
+    # while active. Archiving writes a closing snapshot (amount/value 0) so
+    # the asset drops out of "currently held" everywhere without rewriting
+    # its history on the portfolio-over-time chart.
+    archived_at: Mapped["datetime | None"] = mapped_column(DateTime, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Asset {self.name} ({self.kind})>"
