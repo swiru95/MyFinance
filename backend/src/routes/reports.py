@@ -1,14 +1,14 @@
 """Wallet assessment endpoints.
 
-Generation runs on a worker thread rather than in the request. The router on
-the model server holds one model in memory at a time, so a request can be
-waiting several minutes on a 76 GB model being loaded before the first token
-appears - far longer than the gateway will hold a connection open. POST
-therefore returns a pending row immediately and the frontend polls it.
+Generation runs off the request, on the process-wide LLM queue (see
+services/llm_queue.py) rather than in a thread of its own: the router on the
+model server holds one model in memory at a time, so two generations firing
+together thrash it, and a single request can be waiting several minutes on a
+76 GB model being loaded before the first token appears - far longer than the
+gateway will hold a connection open. POST therefore returns a pending row
+immediately and the frontend polls it.
 """
 from __future__ import annotations
-
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -17,13 +17,13 @@ from ..config import settings
 from ..database import SessionLocal, get_db
 from ..models.report import Report
 from ..schemas.report import ReportIn, ReportOut, ReportStatus, ReportSummary
-from ..services import assessment, llm
+from ..services import assessment, llm, llm_queue
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 def _generate(report_id: int) -> None:
-    """Write one report, start to finish, on a worker thread.
+    """Write one report, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since returned
     and closed its own.
@@ -51,9 +51,17 @@ def _generate(report_id: int) -> None:
                 report.content = english
                 report.status = "translating"
                 db.commit()
-                polish, translator = assessment.translate_to_polish(english)
-                report.content = polish
-                report.translator = translator
+                try:
+                    polish, translator = assessment.translate_to_polish(english)
+                    report.content = polish
+                    report.translator = translator
+                except llm.LLMUnavailable as exc:
+                    # The English report is already a finished, useful
+                    # result - losing it to a translation hiccup would throw
+                    # away a good assessment over one extra model call, so
+                    # this degrades to English-with-a-note rather than
+                    # failing the whole job.
+                    report.error = f"Could not translate to Polish, showing English: {exc}"
             else:
                 report.content = english
 
@@ -64,7 +72,7 @@ def _generate(report_id: int) -> None:
             report.error = str(exc)
             db.commit()
         except Exception as exc:  # pragma: no cover - defensive
-            # A worker thread that dies silently would leave the row stuck on
+            # A job that dies silently would leave the row stuck on
             # "running" and the page polling forever.
             report.status = "failed"
             report.error = f"Unexpected error: {exc}"
@@ -110,9 +118,12 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(report)
 
-    # Daemon so a shutdown is never held up by a generation in flight; the row
-    # stays "running" in that case and the page offers to generate again.
-    threading.Thread(target=_generate, args=(report.id,), daemon=True).start()
+    # Queued rather than started immediately - see services/llm_queue.py for
+    # why. The row stays "pending" until the shared worker actually picks it
+    # up, then "running" in that case if a shutdown cuts it off mid-job, and
+    # the page offers to generate again either way.
+    report_id = report.id
+    llm_queue.enqueue(lambda: _generate(report_id))
     return report
 
 

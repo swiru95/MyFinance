@@ -68,33 +68,6 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
   const [styleApplied, setStyleApplied] = useState(false);
   const pollId = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    async function load() {
-      try {
-        const a = await insightsApi.getAnswers();
-        if (alive) setAnswers({ ...EMPTY_PROFILE_ANSWERS, ...a });
-      } catch (e) {
-        if (!isNotFound(e) && alive) {
-          setError(e instanceof Error ? e.message : t("common.failedLoad"));
-        }
-      }
-      try {
-        const latest = await insightsApi.latest("profile", lang);
-        if (alive) setInsight(latest);
-      } catch (e) {
-        if (!isNotFound(e) && alive) {
-          setError(e instanceof Error ? e.message : t("common.failedLoad"));
-        }
-      }
-      if (alive) setLoaded(true);
-    }
-    load();
-    return () => {
-      alive = false;
-    };
-  }, [lang, t]);
-
   const stopPolling = useCallback(() => {
     if (pollId.current) {
       clearInterval(pollId.current);
@@ -123,6 +96,43 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
     },
     [stopPolling, t],
   );
+
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const a = await insightsApi.getAnswers();
+        if (alive) setAnswers({ ...EMPTY_PROFILE_ANSWERS, ...a });
+      } catch (e) {
+        if (!isNotFound(e) && alive) {
+          setError(e instanceof Error ? e.message : t("common.failedLoad"));
+        }
+      }
+      try {
+        // Not filtered to "done" any more (see routes/insights.py:
+        // latest_insight) - resume whatever the newest profile job is doing
+        // after a tab switch remounts this component, rather than only ever
+        // showing one that happened to already finish.
+        const latest = await insightsApi.latest("profile", lang);
+        if (alive) {
+          setInsight(latest);
+          if (PENDING.includes(latest.status)) {
+            setBusy(true);
+            watch(latest.id);
+          }
+        }
+      } catch (e) {
+        if (!isNotFound(e) && alive) {
+          setError(e instanceof Error ? e.message : t("common.failedLoad"));
+        }
+      }
+      if (alive) setLoaded(true);
+    }
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [lang, t, watch]);
 
   function toggleGoal(goal: Goal) {
     setAnswers((a) => ({
@@ -424,7 +434,13 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
       {!pending && data ? (
         <div className="card space-y-4">
           {translationUnavailable && (
-            <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
+            <p className="text-xs subtle">
+              {t("ins.data.translationUnavailable")}
+              {/* insight.error carries *why* it failed (a stored model/
+               *  network reason from services/insights.py:localize_data) -
+               *  the generic note above used to be all that showed. */}
+              {insight?.error ? ` ${insight.error}` : ""}
+            </p>
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             {(

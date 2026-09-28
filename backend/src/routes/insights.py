@@ -1,15 +1,14 @@
 """LLM insight endpoints: profile analysis, monthly digest, next-best-step
 ranking, and the deterministic ladder they rank against.
 
-Generation runs on a worker thread for the same reason as routes/reports.py:
-the model server holds one model in memory at a time, so a request can wait
-minutes on a model being loaded - far longer than the gateway holds a
-connection open. POST returns a pending row immediately and the frontend
-polls it.
+Generation runs off the request, on the process-wide LLM queue (see
+services/llm_queue.py) for the same reason as routes/reports.py: the model
+server holds one model in memory at a time, so two generations firing
+together thrash it, and a request can wait minutes on a model being loaded -
+far longer than the gateway holds a connection open. POST returns a pending
+row immediately and the frontend polls it.
 """
 from __future__ import annotations
-
-import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -29,7 +28,7 @@ from ..schemas.insight import (
 )
 from ..services import insights
 from ..services import ladder as ladder_service
-from ..services import llm
+from ..services import llm, llm_queue
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -41,7 +40,7 @@ def _validate_kind(kind: str) -> str:
 
 
 def _generate(insight_id: int) -> None:
-    """Write one insight, start to finish, on a worker thread.
+    """Write one insight, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since
     returned and closed its own.
@@ -145,21 +144,33 @@ def create_insight(kind: str, payload: InsightIn, db: Session = Depends(get_db))
     db.commit()
     db.refresh(row)
 
-    # Daemon so a shutdown is never held up by a generation in flight; the
-    # row stays "running" in that case and the page offers to generate again.
-    threading.Thread(target=_generate, args=(row.id,), daemon=True).start()
+    # Queued rather than started immediately - see services/llm_queue.py for
+    # why. The row stays "pending" until the shared worker actually picks it
+    # up, then "running" in that case if a shutdown cuts it off mid-job, and
+    # the page offers to generate again either way.
+    row_id = row.id
+    llm_queue.enqueue(lambda: _generate(row_id))
     return row
 
 
 @router.get("/{kind}/latest", response_model=InsightOut)
 def latest_insight(kind: str, language: str = "en", db: Session = Depends(get_db)):
+    """The newest `kind` insight in `language`, whatever its status.
+
+    Not filtered to "done": the Profile and Next steps tabs call this on
+    mount to resume whatever job is already on screen after a tab switch
+    remounts them, same as the wallet-assessment tab's own history lookup -
+    filtering to "done" here meant a pending, translating or failed job was
+    invisible until it happened to finish, with no way to see it was even
+    running or that it had failed.
+    """
     _validate_kind(kind)
     row = (
         db.query(Insight)
-        .filter(Insight.kind == kind, Insight.status == "done", Insight.language == language)
+        .filter(Insight.kind == kind, Insight.language == language)
         .order_by(Insight.created_at.desc(), Insight.id.desc())
         .first()
     )
     if row is None:
-        raise HTTPException(404, f"No completed {kind} insight in {language}")
+        raise HTTPException(404, f"No {kind} insight in {language} yet")
     return row

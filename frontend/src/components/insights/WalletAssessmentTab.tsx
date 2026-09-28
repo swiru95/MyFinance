@@ -63,13 +63,6 @@ export default function WalletAssessmentTab({ style, onStyleChange }: Props) {
     loadHistory();
   }, [loadHistory]);
 
-  // Load the newest finished report so the page is not empty on arrival.
-  useEffect(() => {
-    if (report || history.length === 0) return;
-    const newest = history.find((h) => h.status === "done");
-    if (newest) api.report(newest.id).then(setReport).catch(() => {});
-  }, [history, report]);
-
   const stopPolling = useCallback(() => {
     if (pollId.current) {
       clearInterval(pollId.current);
@@ -100,6 +93,29 @@ export default function WalletAssessmentTab({ style, onStyleChange }: Props) {
     },
     [loadHistory, stopPolling, t],
   );
+
+  // Resume the newest report on arrival, whatever its status - `history` is
+  // already newest-first (api.reports() orders by created_at desc), so this
+  // used to only pick up the newest *done* one, which meant switching away
+  // from this tab mid-generation (unmounting it, since /report only renders
+  // the active tab) and back lost the pending job entirely, and a report
+  // that had failed was simply never shown. Now a pending/running/
+  // translating report resumes polling and a failed one shows its error,
+  // same as opening it from the history list below.
+  useEffect(() => {
+    if (report || history.length === 0) return;
+    const newest = history[0];
+    api
+      .report(newest.id)
+      .then((r) => {
+        setReport(r);
+        if (PENDING.includes(r.status)) {
+          setBusy(true);
+          watch(r.id);
+        }
+      })
+      .catch(() => {});
+  }, [history, report, watch]);
 
   async function generate() {
     setBusy(true);
@@ -259,6 +275,14 @@ export default function WalletAssessmentTab({ style, onStyleChange }: Props) {
                 : t("rep.modelLine", { model: report.model })}
             </p>
           </header>
+          {/* A "pl" report that finished with English content and a note -
+           *  services/assessment translation failed but the job still
+           *  completed rather than losing an already-good report (see
+           *  routes/reports.py:_generate). report.error carries the reason
+           *  even though status is "done" in this case. */}
+          {report.error && (
+            <p className="mb-4 banner-error">{report.error}</p>
+          )}
           <Markdown text={report.content} />
           <p className="mt-6 border-t border-slate-200 pt-3 text-xs subtle dark:border-slate-800">
             {t("rep.disclaimer")} ·{" "}
@@ -294,7 +318,6 @@ export default function WalletAssessmentTab({ style, onStyleChange }: Props) {
                 <button
                   onClick={() => open(h.id)}
                   className="min-w-0 text-left"
-                  disabled={h.status === "failed"}
                 >
                   <span className="block text-sm font-medium">
                     {t(STYLE_KEYS[h.style].label)}
