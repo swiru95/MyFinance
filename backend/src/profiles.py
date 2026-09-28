@@ -26,6 +26,10 @@ BY_CATEGORY = {
     "Retirement": MODERATE,
     "TFI": MODERATE,
     "Gold": MODERATE,
+    # Same band as Gold: the other three precious metals (silver, platinum,
+    # palladium) share its liquidity/volatility profile closely enough that
+    # a separate band would be a distinction without a difference.
+    "Metals": MODERATE,
     "Stocks": RISKY,
     "Crypto": RISKY,
     "Watches": ILLIQUID,

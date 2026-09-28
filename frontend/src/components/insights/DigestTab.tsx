@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { insightsApi } from "@/lib/insightsApi";
-import { fmtDateTime } from "@/lib/api";
+import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useSettings } from "@/components/SettingsProvider";
 import type { Insight, InsightSummary } from "@/lib/insightsTypes";
@@ -8,6 +8,51 @@ import Markdown from "@/components/Markdown";
 
 const POLL_MS = 3000;
 const PENDING: Insight["status"][] = ["pending", "running", "translating"];
+
+/** Which fields of build_digest_snapshot (backend/src/services/insights.py)
+ *  are worth a row in the readable table, how to format each, and the
+ *  i18n key for its label. Deliberately a whitelist rather than "every key
+ *  in the dict": `income_sources`, `ladder` and `anomalies` are nested
+ *  structures the model's prose already covers in full sentences, not
+ *  standalone figures, and `period`/`base_currency`/the two `*_enabled`
+ *  flags are context the table itself doesn't need to repeat. */
+const SNAPSHOT_FIELDS: {
+  key: string;
+  labelKey: string;
+  format: "money" | "percent" | "number";
+}[] = [
+  { key: "income_total", labelKey: "ins.digest.snap.incomeTotal", format: "money" },
+  { key: "typed_spend", labelKey: "ins.digest.snap.typedSpend", format: "money" },
+  { key: "effective_spend", labelKey: "ins.digest.snap.effectiveSpend", format: "money" },
+  { key: "savings_rate", labelKey: "ins.digest.snap.savingsRate", format: "percent" },
+  { key: "avg_savings_rate_12m", labelKey: "ins.digest.snap.avgSavingsRate12m", format: "percent" },
+  { key: "wallet_change", labelKey: "ins.digest.snap.walletChange", format: "money" },
+  { key: "flows", labelKey: "ins.digest.snap.flows", format: "money" },
+  { key: "market_change", labelKey: "ins.digest.snap.marketChange", format: "money" },
+  { key: "fi_progress_pct", labelKey: "ins.digest.snap.fiProgress", format: "percent" },
+  { key: "years_to_fi", labelKey: "ins.digest.snap.yearsToFi", format: "number" },
+];
+
+// month_out.savings_rate, hist.avg_savings_rate and fi_progress are all
+// already 0-100 by the time they reach the snapshot (see routes/monthly.py
+// and services/insights.py:build_digest_snapshot's `round(... * 100, 1)`),
+// so "percent" here only ever adds the "%" sign, never rescales.
+function formatSnapshotValue(
+  raw: unknown,
+  format: (typeof SNAPSHOT_FIELDS)[number]["format"],
+  currency: string,
+  locale: string,
+): string {
+  if (typeof raw !== "number") return "—";
+  switch (format) {
+    case "money":
+      return fmtMoney(raw, currency, locale);
+    case "percent":
+      return `${fmtNum(raw, 1, locale)}%`;
+    case "number":
+      return fmtNum(raw, 1, locale);
+  }
+}
 
 /** The last fully completed calendar month - matches the "default the last
  *  completed one" digest period from the spec. */
@@ -206,9 +251,25 @@ export default function DigestTab({ status }: Props) {
           {insight.snapshot && (
             <details className="mt-4 text-xs subtle">
               <summary className="cursor-pointer">{t("ins.digest.snapshot")}</summary>
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-slate-100 p-3 dark:bg-slate-800">
-                {JSON.stringify(insight.snapshot, null, 2)}
-              </pre>
+              <table className="mt-2 w-full text-left text-xs">
+                <tbody>
+                  {SNAPSHOT_FIELDS.map((f) => (
+                    <tr key={f.key} className="border-t border-slate-200 dark:border-slate-800">
+                      <td className="py-1 pr-3">{t(f.labelKey)}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {formatSnapshotValue(
+                          insight.snapshot![f.key],
+                          f.format,
+                          typeof insight.snapshot!.base_currency === "string"
+                            ? insight.snapshot!.base_currency
+                            : "PLN",
+                          locale,
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </details>
           )}
 

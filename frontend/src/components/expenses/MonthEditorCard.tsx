@@ -68,7 +68,7 @@ export default function MonthEditorCard({
   const incomeTotal = record?.income_in_base ?? 0;
 
   return (
-    <form onSubmit={save} className="card space-y-3 lg:col-span-1">
+    <form onSubmit={save} className="card max-w-xl space-y-3">
       <div>
         <label className="label" htmlFor="m-month">{t("mon.month")}</label>
         <select

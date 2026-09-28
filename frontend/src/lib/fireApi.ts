@@ -2,6 +2,7 @@
  *  so feature work does not collide there. Uses the same `request` helper
  *  api.ts exports, so auth headers and error handling stay identical. */
 import { request } from "./api";
+import type { Catalogue } from "./types";
 import type {
   AssetWithWrapper,
   FireResponse,
@@ -41,6 +42,9 @@ export interface PositionFlowIn {
 
 export const fireApi = {
   get: () => request<FireResponse>("/fire"),
+  /** The metals/crypto AssetForm can offer when adding a "metal" or
+   *  "crypto" asset (name/icon/category/profile/units per symbol). */
+  catalogue: () => request<Catalogue>("/prices/catalogue"),
   getSettings: () => request<FireSettings>("/fire/settings"),
   saveSettings: (data: FireSettings) =>
     request<FireSettings>("/fire/settings", {

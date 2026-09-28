@@ -25,6 +25,7 @@ import { fireApi } from "@/lib/fireApi";
 import type { FireResponse } from "@/lib/fireTypes";
 import NextStepTile from "@/components/insights/NextStepTile";
 import BaseSummary from "@/components/dashboard/BaseSummary";
+import StartCard from "@/components/dashboard/StartCard";
 import InfoTip from "@/components/InfoTip";
 
 export default function Dashboard() {
@@ -136,6 +137,33 @@ export default function Dashboard() {
   // is assumed, which is why it is spelled out under the chart.
   const PROJECT_MONTHS = 24;
   const expected = useMemo(() => blendedRate(allocation), [allocation]);
+
+  // One row per metal/coin actually held (not the fixed catalogue) - a
+  // wallet holding only Bitcoin should not see four empty metal rows. Priced
+  // per gram (metal) or per coin (crypto); XAU is priced through the legacy
+  // "gold" kind exactly like "metal" units="XAU" would be.
+  const priceTiles = useMemo(() => {
+    if (!allocation || !prices) return [];
+    const seen = new Set<string>();
+    const tiles: { key: string; icon: string; name: string; price: number; perUnit: string }[] = [];
+    for (const item of allocation.items) {
+      if (item.kind !== "metal" && item.kind !== "gold" && item.kind !== "crypto") continue;
+      const symbol = item.kind === "gold" ? "XAU" : item.units;
+      if (!symbol || seen.has(symbol)) continue;
+      seen.add(symbol);
+      const price =
+        item.kind === "crypto" ? prices.crypto[symbol] : prices.metals[symbol];
+      if (price == null) continue;
+      tiles.push({
+        key: symbol,
+        icon: item.icon,
+        name: item.name,
+        price,
+        perUnit: item.kind === "crypto" ? symbol : t("dash.pricesPerGram"),
+      });
+    }
+    return tiles;
+  }, [allocation, prices, t]);
   const projection = useMemo(() => {
     if (!summary || !analytics || summary.total_value <= 0) return [];
     const recorded = analytics.timeline.filter((p) => p.income != null);
@@ -276,6 +304,8 @@ export default function Dashboard() {
         </div>
       )}
 
+      <StartCard />
+
       <BaseSummary />
 
       {(portfolio || fireEnabled || insights) && (
@@ -308,18 +338,27 @@ export default function Dashboard() {
                       : t("dash.runwayFrom")}
                 </p>
               </div>
-              <div className="card">
-                <p className="text-sm muted">{t("dash.goldPerGram")}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {prices ? fmtMoney(prices.gold_per_gram, currency, locale) : "—"}
-                </p>
-              </div>
-              <div className="card">
-                <p className="text-sm muted">{t("dash.btcSol")}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">
-                  {prices ? `${fmtMoney(prices.crypto.BTC, currency, locale)} · ${fmtMoney(prices.crypto.SOL, currency, locale)}` : "—"}
-                </p>
-              </div>
+              {priceTiles.length > 0 && (
+                <div className="card">
+                  <p className="text-sm muted">{t("dash.prices")}</p>
+                  <div className="mt-1 space-y-1">
+                    {priceTiles.map((tile) => (
+                      <p
+                        key={tile.key}
+                        className="flex items-baseline justify-between gap-2 text-sm tabular-nums"
+                      >
+                        <span className="truncate">
+                          {tile.icon} {td(tile.name)}
+                        </span>
+                        <span className="font-semibold">
+                          {fmtMoney(tile.price, currency, locale)}
+                          <span className="font-normal subtle">/{tile.perUnit}</span>
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
           {fireEnabled && <FireTile data={fire} />}

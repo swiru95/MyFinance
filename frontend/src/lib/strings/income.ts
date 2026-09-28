@@ -107,6 +107,7 @@ export const en: Record<string, string> = {
   "inc.form.netMonthly": "Net monthly",
   "inc.form.otherHint":
     "No tax is calculated for this source — it's already net (rental, 800+, and similar).",
+  "inc.form.moreOptions": "More options",
   "inc.form.addButton": "Add source",
   "inc.form.saveChanges": "Save changes",
   "inc.form.amountPositive": "Enter an amount of zero or more.",
@@ -386,6 +387,7 @@ export const pl: Record<string, string> = {
   "inc.form.netMonthly": "Netto miesięcznie",
   "inc.form.otherHint":
     "Dla tego źródła nie liczymy podatku — kwota jest już netto (najem, 800+ itp.).",
+  "inc.form.moreOptions": "Więcej opcji",
   "inc.form.addButton": "Dodaj źródło",
   "inc.form.saveChanges": "Zapisz zmiany",
   "inc.form.amountPositive": "Podaj kwotę zero lub większą.",

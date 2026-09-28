@@ -25,6 +25,7 @@ import type {
   SuggestedStyle,
 } from "@/lib/insightsTypes";
 import Markdown from "@/components/Markdown";
+import InfoTip from "@/components/InfoTip";
 
 const POLL_MS = 3000;
 const PENDING: Insight["status"][] = ["pending", "running", "translating"];
@@ -34,6 +35,22 @@ const STYLE_LABEL_KEY: Record<SuggestedStyle, string> = {
   balanced: "rep.style.balanced",
   risky: "rep.style.risky",
   long_term: "rep.style.longTerm",
+};
+
+/** One-line plain-language gloss for each of the three risk-tolerance pills
+ *  (round 2 spec item 9) plus the InfoTip that carries the fuller
+ *  behavioural-finance explanation - the pill labels themselves ("Stated",
+ *  "Capacity", "Revealed") are real terms of art with no everyday meaning,
+ *  so both a plain hint and a tap-through explanation earn their place. */
+const PILL_HINT_KEY: Record<"stated" | "capacity" | "revealed", string> = {
+  stated: "ins.profile.statedHint",
+  capacity: "ins.profile.capacityHint",
+  revealed: "ins.profile.revealedHint",
+};
+const PILL_GLOSS_KEY: Record<"stated" | "capacity" | "revealed", string> = {
+  stated: "gloss.statedTolerance",
+  capacity: "gloss.capacityTolerance",
+  revealed: "gloss.revealedTolerance",
 };
 
 interface Props {
@@ -409,16 +426,24 @@ export default function ProfileTab({ status, onUseStyle }: Props) {
           {translationUnavailable && (
             <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
           )}
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium dark:bg-slate-800">
-              {t("ins.profile.stated")}: {t(`ins.profile.level.${data.stated_tolerance}`)}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium dark:bg-slate-800">
-              {t("ins.profile.capacity")}: {t(`ins.profile.level.${data.capacity}`)}
-            </span>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium dark:bg-slate-800">
-              {t("ins.profile.revealed")}: {t(`ins.profile.level.${data.revealed}`)}
-            </span>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(
+              [
+                ["stated", data.stated_tolerance] as const,
+                ["capacity", data.capacity] as const,
+                ["revealed", data.revealed] as const,
+              ]
+            ).map(([kind, level]) => (
+              <div key={kind}>
+                <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-medium dark:bg-slate-800">
+                  {t(`ins.profile.${kind}`)}: {t(`ins.profile.level.${level}`)}
+                </span>
+                <p className="mt-1 flex items-start text-xs muted">
+                  {t(PILL_HINT_KEY[kind])}
+                  <InfoTip text={t(PILL_GLOSS_KEY[kind])} label={t(`ins.profile.${kind}`)} />
+                </p>
+              </div>
+            ))}
           </div>
 
           <div>

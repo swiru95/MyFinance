@@ -102,7 +102,7 @@ def summary() -> dict:
     from .database import SessionLocal
     from .models.asset import Asset
     from .models.settings import Setting
-    from .routes.helpers import latest_positions_by_asset, value_of_position
+    from .routes.helpers import held_symbols, latest_positions_by_asset, value_of_position
 
     db = SessionLocal()
     try:
@@ -112,7 +112,13 @@ def summary() -> dict:
         latest = latest_positions_by_asset(db)
         ps = PriceService(base_currency)
         gold_price = ps.gold_price()
-        crypto_prices = {u: ps.crypto_price(u) for u in ("BTC", "SOL")}
+        held_metals, held_crypto = held_symbols(db)
+        # Only what the wallet holds (plus XAU/BTC/SOL for the pre-existing
+        # gold_price / crypto_prices fields) - see routes/prices.py for why.
+        metal_prices = {"XAU": round(gold_price, 4)}
+        for sym in held_metals:
+            metal_prices.setdefault(sym, round(ps.metal_price(sym), 4))
+        crypto_prices = {u: ps.crypto_price(u) for u in ({"BTC", "SOL"} | held_crypto)}
         total = sum(
             value_of_position(db, assets[asset_id], p) for asset_id, p in latest.items()
         )
@@ -122,6 +128,7 @@ def summary() -> dict:
             "positions": len(latest),
             "gold_price": gold_price,
             "crypto_prices": crypto_prices,
+            "metals": metal_prices,
         }
     finally:
         db.close()

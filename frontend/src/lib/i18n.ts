@@ -4,6 +4,7 @@ import * as fireStrings from "./strings/fire";
 import * as incomeStrings from "./strings/income";
 import * as insightsStrings from "./strings/insights";
 import * as glossaryStrings from "./strings/glossary";
+import * as startStrings from "./strings/start";
 
 export type Language = "en" | "pl";
 
@@ -58,8 +59,8 @@ const en: Dict = {
   "dash.baseCurrency": "Base currency",
   "dash.addPosition": "+ Add position",
   "dash.total": "Total portfolio",
-  "dash.goldPerGram": "Gold (per gram)",
-  "dash.btcSol": "BTC / SOL",
+  "dash.prices": "Prices",
+  "dash.pricesPerGram": "g",
   "dash.valueOverTime": "Portfolio value over time",
   "dash.allocation": "Allocation",
   "dash.noHistory": "No history yet — update a position to start tracking.",
@@ -112,6 +113,8 @@ const en: Dict = {
   "pos.updatedAt": "Updated {when}",
   "pos.amountLabel": "{name} amount ({unit})",
   "pos.grams": "grams (g)",
+  "pos.troyOz": "troy oz",
+  "pos.ozHint": "1 troy oz = 31.1034768 g — converted to grams before saving.",
   "pos.units": "units",
   "pos.livePrice": "Live price",
   "pos.estimate": "≈ {value} in base currency",
@@ -207,6 +210,7 @@ const en: Dict = {
   "exp.monthly.incomeLabel": "Income",
   "exp.monthly.incomeHint": "Total income for the month, including other income.",
   "exp.monthly.incomeLink": "Manage on Income →",
+  "exp.monthly.showAnalysis": "Show analysis",
 
   "mon.month": "Month",
   "mon.notFilled": " — not filled in",
@@ -367,8 +371,8 @@ const pl: Dict = {
   "dash.baseCurrency": "Waluta bazowa",
   "dash.addPosition": "+ Dodaj pozycję",
   "dash.total": "Wartość portfela",
-  "dash.goldPerGram": "Złoto (za gram)",
-  "dash.btcSol": "BTC / SOL",
+  "dash.prices": "Ceny",
+  "dash.pricesPerGram": "g",
   "dash.valueOverTime": "Wartość portfela w czasie",
   "dash.allocation": "Struktura portfela",
   "dash.noHistory":
@@ -422,6 +426,8 @@ const pl: Dict = {
   "pos.updatedAt": "Zaktualizowano {when}",
   "pos.amountLabel": "{name} — ilość ({unit})",
   "pos.grams": "gramy (g)",
+  "pos.troyOz": "uncje (oz t)",
+  "pos.ozHint": "1 uncja (oz t) = 31,1034768 g — przeliczane na gramy przed zapisem.",
   "pos.units": "jednostki",
   "pos.livePrice": "Cena bieżąca",
   "pos.estimate": "≈ {value} w walucie bazowej",
@@ -518,6 +524,7 @@ const pl: Dict = {
   "exp.monthly.incomeLabel": "Przychód",
   "exp.monthly.incomeHint": "Łączny przychód za miesiąc, wraz z innymi dochodami.",
   "exp.monthly.incomeLink": "Zarządzaj w Dochodach →",
+  "exp.monthly.showAnalysis": "Pokaż analizę",
 
   "mon.month": "Miesiąc",
   "mon.notFilled": " — nieuzupełniony",
@@ -652,11 +659,11 @@ const pl: Dict = {
 const DICTS: Record<Language, Dict> = {
   en: {
     ...en, ...incomeStrings.en, ...fireStrings.en, ...insightsStrings.en,
-    ...featuresStrings.en, ...glossaryStrings.en,
+    ...featuresStrings.en, ...glossaryStrings.en, ...startStrings.en,
   },
   pl: {
     ...pl, ...incomeStrings.pl, ...fireStrings.pl, ...insightsStrings.pl,
-    ...featuresStrings.pl, ...glossaryStrings.pl,
+    ...featuresStrings.pl, ...glossaryStrings.pl, ...startStrings.pl,
   },
 };
 
@@ -681,9 +688,12 @@ const DATA_PL: Dict = {
   Bitcoin: "Bitcoin",
   Solana: "Solana",
   Savings: "Oszczędności",
+  Silver: "Srebro",
+  Ethereum: "Ethereum",
   // Asset classes (Asset.category), including the ones only profiles.py names.
   TFI: "TFI",
   Bonds: "Obligacje",
+  Metals: "Metale",
   Crypto: "Kryptowaluty",
   Retirement: "Emerytura",
   "Fixed Assets": "Środki trwałe",

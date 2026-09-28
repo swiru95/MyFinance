@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import type { FireSettings } from "@/lib/fireTypes";
 import InfoTip from "@/components/InfoTip";
+import Disclosure from "@/components/Disclosure";
 
 interface Props {
   settings: FireSettings;
@@ -136,111 +137,6 @@ export default function SettingsCard({
               </p>
             </div>
             <div>
-              <label className="label" htmlFor="fs-swr">
-                {t("fire.settings.swr")} (%)
-                <InfoTip text={t("gloss.swr")} label={t("fire.settings.swr")} />
-              </label>
-              <input
-                id="fs-swr"
-                className="input"
-                type="number"
-                step="0.1"
-                min="2"
-                max="6"
-                value={toPct(form.swr)}
-                onChange={(e) => set("swr", Number(e.target.value) / 100)}
-                required
-              />
-              <p className="mt-1 text-xs muted">{t("fire.settings.swrHint")}</p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="fs-inflation">
-                {t("fire.settings.inflation")} (%)
-              </label>
-              <input
-                id="fs-inflation"
-                className="input"
-                type="number"
-                step="0.1"
-                min="0"
-                value={toPct(form.inflation)}
-                onChange={(e) => set("inflation", Number(e.target.value) / 100)}
-                required
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="fs-real-return">
-                {t("fire.settings.realReturnOverride")} (%)
-                <InfoTip text={t("gloss.realReturn")} label={t("fire.settings.realReturnOverride")} />
-              </label>
-              <input
-                id="fs-real-return"
-                className="input"
-                type="number"
-                step="0.1"
-                value={
-                  form.real_return_override === null
-                    ? ""
-                    : toPct(form.real_return_override)
-                }
-                onChange={(e) =>
-                  set(
-                    "real_return_override",
-                    (e.target.value.trim() === ""
-                      ? null
-                      : Number(e.target.value) / 100) as never
-                  )
-                }
-              />
-              <p className="mt-1 text-xs muted">
-                {t("fire.settings.realReturnOverrideHint")}
-              </p>
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="fs-spend-override">
-                {t("fire.settings.monthlySpendOverride")}
-              </label>
-              <input
-                id="fs-spend-override"
-                className="input"
-                type="number"
-                step="0.01"
-                min="0"
-                value={numOrEmpty(form.monthly_spend_override)}
-                onChange={(e) =>
-                  setOptionalNumber("monthly_spend_override", e.target.value)
-                }
-              />
-              <p className="mt-1 text-xs muted">
-                {t("fire.settings.monthlySpendOverrideHint")}
-              </p>
-            </div>
-            <div>
-              <label className="label" htmlFor="fs-barista">
-                {t("fire.settings.baristaIncome")}
-              </label>
-              <input
-                id="fs-barista"
-                className="input"
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.barista_income_monthly}
-                onChange={(e) =>
-                  set("barista_income_monthly", Number(e.target.value))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
               <label className="label" htmlFor="fs-zus">
                 {t("fire.settings.zusPension")}
               </label>
@@ -259,59 +155,169 @@ export default function SettingsCard({
                 {t("fire.settings.zusPensionHint")}
               </p>
             </div>
-            <div>
-              <label className="label" htmlFor="fs-gain-share">
-                {t("fire.settings.gainShare")} (%)
-                <InfoTip text={t("gloss.belka")} label={t("fire.settings.gainShare")} />
-              </label>
-              <input
-                id="fs-gain-share"
-                className="input"
-                type="number"
-                step="1"
-                min="0"
-                max="100"
-                value={toPct(form.gain_share)}
-                onChange={(e) => set("gain_share", Number(e.target.value) / 100)}
-              />
-              <p className="mt-1 text-xs muted">
-                {t("fire.settings.gainShareHint")}
-              </p>
-            </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="fs-emergency">
-                {t("fire.settings.emergencyMonths")}
-              </label>
-              <input
-                id="fs-emergency"
-                className="input"
-                type="number"
-                step="0.5"
-                min="0"
-                value={form.emergency_months}
-                onChange={(e) => set("emergency_months", Number(e.target.value))}
-              />
-            </div>
-            <div className="flex items-end pb-2">
-              <div className="flex items-center gap-2">
-                <input
-                  id="fs-health"
-                  type="checkbox"
-                  checked={form.include_health_cost}
-                  onChange={(e) => set("include_health_cost", e.target.checked)}
-                />
-                <label
-                  htmlFor="fs-health"
-                  className="text-sm font-medium text-slate-700 dark:text-slate-200"
-                >
-                  {t("fire.settings.includeHealthCost")}
+          <Disclosure
+            title={t("fire.settings.advanced")}
+            storageKey="myfinance-fire-settings-advanced"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fs-swr">
+                  {t("fire.settings.swr")} (%)
+                  <InfoTip text={t("gloss.swr")} label={t("fire.settings.swr")} />
                 </label>
+                <input
+                  id="fs-swr"
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  min="2"
+                  max="6"
+                  value={toPct(form.swr)}
+                  onChange={(e) => set("swr", Number(e.target.value) / 100)}
+                  required
+                />
+                <p className="mt-1 text-xs muted">{t("fire.settings.swrHint")}</p>
+              </div>
+              <div>
+                <label className="label" htmlFor="fs-inflation">
+                  {t("fire.settings.inflation")} (%)
+                </label>
+                <input
+                  id="fs-inflation"
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={toPct(form.inflation)}
+                  onChange={(e) => set("inflation", Number(e.target.value) / 100)}
+                  required
+                />
               </div>
             </div>
-          </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fs-real-return">
+                  {t("fire.settings.realReturnOverride")} (%)
+                  <InfoTip text={t("gloss.realReturn")} label={t("fire.settings.realReturnOverride")} />
+                </label>
+                <input
+                  id="fs-real-return"
+                  className="input"
+                  type="number"
+                  step="0.1"
+                  value={
+                    form.real_return_override === null
+                      ? ""
+                      : toPct(form.real_return_override)
+                  }
+                  onChange={(e) =>
+                    set(
+                      "real_return_override",
+                      (e.target.value.trim() === ""
+                        ? null
+                        : Number(e.target.value) / 100) as never
+                    )
+                  }
+                />
+                <p className="mt-1 text-xs muted">
+                  {t("fire.settings.realReturnOverrideHint")}
+                </p>
+              </div>
+              <div>
+                <label className="label" htmlFor="fs-spend-override">
+                  {t("fire.settings.monthlySpendOverride")}
+                </label>
+                <input
+                  id="fs-spend-override"
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={numOrEmpty(form.monthly_spend_override)}
+                  onChange={(e) =>
+                    setOptionalNumber("monthly_spend_override", e.target.value)
+                  }
+                />
+                <p className="mt-1 text-xs muted">
+                  {t("fire.settings.monthlySpendOverrideHint")}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fs-barista">
+                  {t("fire.settings.baristaIncome")}
+                </label>
+                <input
+                  id="fs-barista"
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.barista_income_monthly}
+                  onChange={(e) =>
+                    set("barista_income_monthly", Number(e.target.value))
+                  }
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="fs-gain-share">
+                  {t("fire.settings.gainShare")} (%)
+                  <InfoTip text={t("gloss.belka")} label={t("fire.settings.gainShare")} />
+                </label>
+                <input
+                  id="fs-gain-share"
+                  className="input"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={toPct(form.gain_share)}
+                  onChange={(e) => set("gain_share", Number(e.target.value) / 100)}
+                />
+                <p className="mt-1 text-xs muted">
+                  {t("fire.settings.gainShareHint")}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="fs-emergency">
+                  {t("fire.settings.emergencyMonths")}
+                </label>
+                <input
+                  id="fs-emergency"
+                  className="input"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={form.emergency_months}
+                  onChange={(e) => set("emergency_months", Number(e.target.value))}
+                />
+              </div>
+              <div className="flex items-end pb-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="fs-health"
+                    type="checkbox"
+                    checked={form.include_health_cost}
+                    onChange={(e) => set("include_health_cost", e.target.checked)}
+                  />
+                  <label
+                    htmlFor="fs-health"
+                    className="text-sm font-medium text-slate-700 dark:text-slate-200"
+                  >
+                    {t("fire.settings.includeHealthCost")}
+                  </label>
+                </div>
+              </div>
+            </div>
+          </Disclosure>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 

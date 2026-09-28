@@ -30,6 +30,10 @@ CATEGORY_RETURNS: dict[str, float] = {
     "Retirement": 0.06,
     "Stocks": 0.08,
     "Gold": 0.03,
+    # Silver/platinum/palladium: same rate as Gold (see profiles.py - they
+    # share its risk band too), rather than inventing a separate guess for
+    # three metals with no more forecastability than gold has.
+    "Metals": 0.03,
     "Crypto": 0,
     "Watches": 0,
     "Fixed Assets": 0,

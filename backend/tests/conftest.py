@@ -35,8 +35,8 @@ def offline_prices(monkeypatch):
         lambda self, c: (ps._FALLBACK_FX.get(c, 1.0), True),
     )
     monkeypatch.setattr(
-        ps.PriceService, "_fetch_gold_usd_per_oz",
-        lambda self: (ps._FALLBACK_GOLD_USD_PER_OZ, True),
+        ps.PriceService, "_fetch_metal_usd_per_oz",
+        lambda self, s: (ps._FALLBACK_METAL_USD_PER_OZ.get(s.upper(), 0.0), True),
     )
     monkeypatch.setattr(
         ps.PriceService, "_fetch_crypto_usd",

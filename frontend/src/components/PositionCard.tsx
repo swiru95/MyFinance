@@ -26,10 +26,15 @@ export default function PositionCard({
   const { t, locale } = useI18n();
   const { timeZone } = useSettings();
   const isInterest = asset.kind === "interest";
+  // "gold" is the pre-existing kind (always XAU); "metal" generalises it to
+  // the other three precious metals - both are held in grams.
+  const isMetal = asset.kind === "gold" || asset.kind === "metal";
+  const isCrypto = asset.kind === "crypto";
+  const symbol = asset.kind === "gold" ? "XAU" : asset.units;
   const unit =
     asset.kind === "currency"
       ? pos.currency
-      : asset.kind === "gold"
+      : isMetal
         ? "g"
         : isInterest
           ? pos.currency
@@ -61,6 +66,11 @@ export default function PositionCard({
           </p>
         ) : (
           <p className="text-sm muted">= {fmtMoney(pos.value_in_base, base, locale)}</p>
+        )}
+        {(isMetal || isCrypto) && pos.price_used > 0 && (
+          <p className="text-xs subtle">
+            {symbol} · {fmtMoney(pos.price_used, base, locale)}/{isMetal ? "g" : symbol}
+          </p>
         )}
         {isInterest && pos.accrues_from && (
           <p className="text-xs subtle">

@@ -62,7 +62,11 @@ def compute_value(
     """Return (value_in_base, price_used, base_currency) for a position.
 
     - currency asset: amount converted from `currency` to base.
-    - gold: amount (grams) * gold price (base per gram).
+    - gold: amount (grams) * XAU price (base per gram). Legacy kind, kept
+      working exactly as before - always priced as gold regardless of
+      `asset.units`.
+    - metal: amount (grams) * price of `asset.units` (XAU/XAG/XPT/XPD, base
+      per gram). The generalised successor to "gold" for the other metals.
     - crypto: amount (coin qty) * crypto price (base per coin).
     - interest: principal + statutory interest accrued since `accrues_from`.
       `price_used` carries the effective annual rate so the stored snapshot
@@ -86,6 +90,11 @@ def compute_value(
         price = ps.gold_price()
         value = amount * price
         return value, price, base
+    if asset.kind == "metal":
+        symbol = (asset.units or "XAU").upper()
+        price = ps.metal_price(symbol)
+        value = amount * price
+        return value, price, base
     if asset.kind == "crypto":
         price = ps.crypto_price(asset.units)
         value = amount * price
@@ -97,6 +106,25 @@ def compute_value(
     rate = float(ps.fx_rate(base)) / float(ps.fx_rate(currency))
     value = amount * rate
     return value, rate, base
+
+
+def held_symbols(db: Session) -> tuple[set[str], set[str]]:
+    """Distinct (metal_symbols, crypto_symbols) actually held.
+
+    Used by the price endpoints so they only fetch/report prices for symbols
+    the wallet holds (plus gold for backward compatibility), rather than
+    always pricing the whole catalogue - most wallets hold at most one or two
+    of the five coins, and pricing the rest would just be wasted upstream
+    calls against a shared, rate-limited API.
+    """
+    metals: set[str] = set()
+    crypto: set[str] = set()
+    for kind, units in db.query(Asset.kind, Asset.units).all():
+        if kind == "metal" and units:
+            metals.add(units.upper())
+        elif kind == "crypto" and units:
+            crypto.add(units.upper())
+    return metals, crypto
 
 
 def convert_currency(ps: PriceService, amount: float, currency: str, base: str) -> float:
