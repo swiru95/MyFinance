@@ -1,11 +1,14 @@
-fastapi==0.115.13
+fastapi==0.133.0
+# Pinned explicitly: fastapi >= 0.133 no longer caps starlette, so without a
+# pin every image build could resolve a different (major) version.
+starlette==1.7.0
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.38
 psycopg[binary]==3.2.3
 pydantic==2.11.7
 pydantic-settings==2.9.1
 httpx==0.28.1
-python-multipart==0.0.20
+python-multipart==0.0.32
 # Entra ID access-token validation. The [crypto] extra pulls in `cryptography`,
 # which PyJWT needs for RS256 - Microsoft's signing keys are RSA.
-pyjwt[crypto]==2.10.1
+pyjwt[crypto]==2.15.0
