@@ -81,7 +81,8 @@ class AssetOut(BaseModel):
     units: str
     wrapper: str
     created_at: datetime
+    archived_at: datetime | None = None
 
-    @field_serializer("created_at")
+    @field_serializer("created_at", "archived_at")
     def _utc(self, value):
         return as_utc(value)

@@ -175,7 +175,11 @@ export interface Rung {
   key: RungKey;
   order: number;
   status: RungStatus;
-  figures: Record<string, number | string | null>;
+  /** A handful of keys (services/ladder.py) carry a list rather than a
+   *  scalar - e.g. data_fresh's stale_assets - so this stays a union rather
+   *  than narrowing to number | string. See LadderChecklist's FIGURE_KIND
+   *  for how each key is rendered. */
+  figures: Record<string, number | string | string[] | null>;
   /** A server-computed explanation key. Titles and one-line "why" copy are
    *  instead owned client-side in components/insights/ladderCopy.ts, keyed
    *  by (rung key, status) - see that file for why. `why_key` is kept on the

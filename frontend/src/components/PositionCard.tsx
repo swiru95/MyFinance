@@ -8,7 +8,8 @@ interface Props {
   pos: PositionWithFlow;
   asset: Asset;
   base: string;
-  /** Null when there is only one snapshot yet, or the growth call failed. */
+  /** Null only when the growth call failed; an asset with a single snapshot
+   *  still gets a row (growth 0, no `last`). */
   growth: AssetGrowth | null;
   historyFor: number | null;
   history: PositionWithFlow[];
@@ -44,13 +45,19 @@ export default function PositionCard({
           : asset.units;
   // For a debt the headline is what it is worth today; the principal it grew
   // from matters just as much, so show both rather than one bare figure.
-  const accrued = isInterest ? pos.value_in_base - pos.amount : 0;
+  // Today's value (see valueNow on the Assets page); the snapshot's stored
+  // value is only the fallback when the growth call failed.
+  const valueNow = growth?.value ?? pos.value_in_base;
+  const accrued = isInterest ? valueNow - pos.amount : 0;
+  // Per gram / per coin at today's price, implied by today's value rather
+  // than the price stored with the last update.
+  const unitPriceNow = pos.amount > 0 ? valueNow / pos.amount : 0;
   return (
     <>
       <div>
         <p className="text-2xl font-semibold tabular-nums">
           {isInterest
-            ? fmtMoney(pos.value_in_base, base, locale)
+            ? fmtMoney(valueNow, base, locale)
             : fmtNum(pos.amount, pos.amount % 1 === 0 ? 0 : 2, locale)}
           {!isInterest && (
             <span className="ml-1 text-sm font-normal subtle">{unit}</span>
@@ -68,7 +75,7 @@ export default function PositionCard({
             )}
           </p>
         ) : (
-          <p className="text-sm muted">= {fmtMoney(pos.value_in_base, base, locale)}</p>
+          <p className="text-sm muted">= {fmtMoney(valueNow, base, locale)}</p>
         )}
         {growth?.last && (
           <p className="text-sm">
@@ -101,9 +108,9 @@ export default function PositionCard({
                 })}
           </p>
         )}
-        {(isMetal || isCrypto) && pos.price_used > 0 && (
+        {(isMetal || isCrypto) && unitPriceNow > 0 && (
           <p className="text-xs subtle">
-            {symbol} · {fmtMoney(pos.price_used, base, locale)}/{isMetal ? "g" : symbol}
+            {symbol} · {fmtMoney(unitPriceNow, base, locale)}/{isMetal ? "g" : symbol}
           </p>
         )}
         {isInterest && pos.accrues_from && (

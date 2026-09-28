@@ -352,7 +352,8 @@ def build_ladder(db: Session) -> list[dict]:
     if features.portfolio:
         relevant = [
             a for a in db.query(Asset).all()
-            if (a.profile or for_category(a.category)) != "illiquid"
+            if a.archived_at is None
+            and (a.profile or for_category(a.category)) != "illiquid"
         ]
         latest = _latest_positions(db)
         cutoff = today - timedelta(days=45)

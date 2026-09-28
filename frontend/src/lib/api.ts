@@ -6,6 +6,7 @@ import type {
   ExpenseInput,
   ExpenseSummary,
   FeatureFlags,
+  MonthCommitment,
   MonthlyAnalytics,
   MonthlyInput,
   MonthlyPatch,
@@ -137,6 +138,9 @@ export const api = {
     request<void>(`/expenses/${id}`, { method: "DELETE" }),
   months: () => request<MonthlyRecord[]>("/monthly"),
   getMonth: (month: string) => request<MonthlyRecord>(`/monthly/${month}`),
+  // The month checklist's rows - see backend routes/monthly.month_commitments.
+  monthCommitments: (month: string) =>
+    request<MonthCommitment[]>(`/monthly/${month}/commitments`),
   monthlyAnalytics: (back = 11, ahead = 12) =>
     request<MonthlyAnalytics>(
       `/monthly/analytics?months_back=${back}&months_ahead=${ahead}`

@@ -211,6 +211,30 @@ export const en: Record<string, string> = {
 
   "ins.data.translationUnavailable":
     "Translation unavailable — showing the English original.",
+
+  // Plain-language labels for the ladder's figures{} keys (services/
+  // ladder.py) - see LadderChecklist.tsx's FIGURE_KIND for which keys
+  // exist and how each is formatted.
+  "ins.fig.safe_assets": "Safe assets",
+  "ins.fig.target": "Target",
+  "ins.fig.business_contributions_total": "Business contributions (ZUS + health)",
+  "ins.fig.envelope_outstanding": "Taxes and contributions still to pay",
+  "ins.fig.required": "Required",
+  "ins.fig.flows_ytd": "Paid in this year",
+  "ins.fig.limit": "Annual limit",
+  "ins.fig.tax_saved": "Tax saved",
+  "ins.fig.marginal_rate": "Marginal tax rate",
+  "ins.fig.ppk_employee": "PPK — your contribution",
+  "ins.fig.ppk_employer": "PPK — employer contribution",
+  "ins.fig.current_savings_rate": "Current savings rate",
+  "ins.fig.required_savings_rate": "Required savings rate",
+  "ins.fig.target_months": "Target months",
+  "ins.fig.target_fi_age": "Target FI age",
+  "ins.fig.birth_year": "Birth year",
+  "ins.fig.stale_assets": "Stale assets",
+  "ins.fig.missing_months": "Missing months",
+  "ins.fig.unit.months": "months",
+  "ins.fig.unit.age": "years old",
 };
 
 export const pl: Record<string, string> = {
@@ -412,4 +436,25 @@ export const pl: Record<string, string> = {
 
   "ins.data.translationUnavailable":
     "Tłumaczenie niedostępne — pokazujemy oryginał po angielsku.",
+
+  "ins.fig.safe_assets": "Aktywa bezpieczne",
+  "ins.fig.target": "Cel",
+  "ins.fig.business_contributions_total": "Składki firmowe (ZUS + zdrowotna)",
+  "ins.fig.envelope_outstanding": "Podatki i składki do zapłaty",
+  "ins.fig.required": "Wymagane",
+  "ins.fig.flows_ytd": "Wpłacono w tym roku",
+  "ins.fig.limit": "Limit roczny",
+  "ins.fig.tax_saved": "Zaoszczędzony podatek",
+  "ins.fig.marginal_rate": "Krańcowa stawka podatku",
+  "ins.fig.ppk_employee": "PPK — Twoja składka",
+  "ins.fig.ppk_employer": "PPK — składka pracodawcy",
+  "ins.fig.current_savings_rate": "Obecna stopa oszczędzania",
+  "ins.fig.required_savings_rate": "Wymagana stopa oszczędzania",
+  "ins.fig.target_months": "Docelowa liczba miesięcy",
+  "ins.fig.target_fi_age": "Docelowy wiek FI",
+  "ins.fig.birth_year": "Rok urodzenia",
+  "ins.fig.stale_assets": "Nieaktualne aktywa",
+  "ins.fig.missing_months": "Brakujące miesiące",
+  "ins.fig.unit.months": "mies.",
+  "ins.fig.unit.age": "lat",
 };

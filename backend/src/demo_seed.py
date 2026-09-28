@@ -7,6 +7,7 @@ purposes. Refuses to run unless: (1) database is SQLite, (2) database is empty
 Run as: MYFINANCE_DATA_DIR=<dir> python -m src.demo_seed
 """
 
+import json
 import sys
 import os
 from datetime import datetime, date, timezone as tz, timedelta
@@ -259,8 +260,11 @@ def _create_income_entries(db: Session, sources: dict[str, IncomeSource]) -> Non
     db.add(entry2)
 
 
-def _create_expenses(db: Session) -> None:
-    """Create recurring expenses."""
+def _create_expenses(db: Session) -> list[Expense]:
+    """Create recurring expenses. Returns the rows so the month-checklist
+    breakdown below (_create_monthly_records) can look up which commitments
+    applied to which seeded month - their ids are only assigned once the
+    caller flushes the session."""
     expenses_data = [
         ("Mortgage installment", 3400.0, "monthly", "Housing", date(2021, 5, 10), date(2046, 5, 10)),
         ("Utilities", 650.0, "monthly", "Housing", date(2021, 5, 15), None),
@@ -274,6 +278,7 @@ def _create_expenses(db: Session) -> None:
         ("Laptop", 7800.0, "once", "Business", date(2026, 5, 20), None),
     ]
 
+    created = []
     for name, amount, period, category, starts_on, ends_on in expenses_data:
         exp = Expense(
             name=name,
@@ -286,10 +291,22 @@ def _create_expenses(db: Session) -> None:
             notes="",
         )
         db.add(exp)
+        created.append(exp)
+    return created
 
 
-def _create_monthly_records(db: Session) -> None:
-    """Create monthly records for M0 to current month."""
+def _create_monthly_records(db: Session, expenses: list[Expense]) -> None:
+    """Create monthly records for M0 to current month.
+
+    Written the new "month checklist" way (WP-M): every commitment charged
+    that month marked paid at its listed amount, plus other_spent making up
+    the rest of the month's story-driven total - so the demo shows the new
+    form already filled in rather than the old single "actual spent" figure.
+    All expenses and records here are PLN, so no currency conversion is
+    needed to total them.
+    """
+    from .services.budget import expenses_applying_in_month
+
     now = _now_warsaw()
     current_month_date = date(now.year, now.month, 1)
     m0_date = _add_months(current_month_date, -12)
@@ -303,17 +320,37 @@ def _create_monthly_records(db: Session) -> None:
 
     for idx, month_str in enumerate(months):
         wiggle = wiggle_by_month[int(month_str[5:7])]
-        actual_spent = 8200.0 + wiggle
+        target_total = 8200.0 + wiggle
 
         # December gets special notes
         notes = "Christmas" if month_str.endswith("-12") else ""
 
+        applying = expenses_applying_in_month(expenses, month_str)
+        committed = sum(float(e.amount) for e in applying)
+        # max(0, ...): the story-driven target can in principle fall below
+        # what the commitments alone add up to (e.g. a yearly bill landing
+        # in a low-wiggle month) - other_spent floors at 0 rather than going
+        # negative, so actual_spent can be >= the old target in that case.
+        other_spent = round(max(0.0, target_total - committed), 2)
+        commitments_paid = [
+            {
+                "expense_id": e.id,
+                "name": e.name,
+                "amount": float(e.amount),
+                "currency": e.currency,
+                "paid": True,
+            }
+            for e in applying
+        ]
+
         record = MonthlyRecord(
             month=month_str,
             income=0.0,
-            actual_spent=actual_spent,
+            actual_spent=round(committed + other_spent, 2),
             currency="PLN",
             notes=notes,
+            commitments_paid=json.dumps(commitments_paid),
+            other_spent=other_spent,
         )
         db.add(record)
 
@@ -635,10 +672,11 @@ def main() -> int:
         _create_income_entries(db, sources)
 
         print("demo_seed: creating expenses")
-        _create_expenses(db)
+        expenses = _create_expenses(db)
+        db.flush()  # assign expense ids before the month checklist needs them
 
         print("demo_seed: creating monthly records")
-        _create_monthly_records(db)
+        _create_monthly_records(db, expenses)
 
         print("demo_seed: creating extra assets (IKE, IKZE, PPK, Silver, Ethereum)")
         extra_assets = _create_extra_assets(db)

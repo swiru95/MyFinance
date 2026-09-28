@@ -63,6 +63,20 @@ export const fireApi = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+  deleteAsset: (id: number) =>
+    request<void>(`/assets/${id}`, {
+      method: "DELETE",
+    }),
+  /** Soft delete: the asset disappears from current holdings but keeps its
+   *  history (see backend routes/assets.py::archive_asset). */
+  archiveAsset: (id: number) =>
+    request<AssetWithWrapper>(`/assets/${id}/archive`, {
+      method: "POST",
+    }),
+  unarchiveAsset: (id: number) =>
+    request<AssetWithWrapper>(`/assets/${id}/unarchive`, {
+      method: "POST",
+    }),
 
   createPosition: (data: PositionFlowIn) =>
     request<PositionWithFlow>("/positions", {

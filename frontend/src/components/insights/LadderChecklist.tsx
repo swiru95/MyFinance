@@ -1,5 +1,6 @@
 import { useI18n } from "@/lib/i18n";
-import { fmtNum } from "@/lib/api";
+import { fmtMoney, fmtNum } from "@/lib/api";
+import { useSettings } from "@/components/SettingsProvider";
 import type { Rung, StepFeedback, StepFeedbackState } from "@/lib/insightsTypes";
 import {
   RUNG_TITLE_KEY,
@@ -11,10 +12,107 @@ import Markdown from "@/components/Markdown";
 
 const FEEDBACK_STATES: StepFeedbackState[] = ["done", "dismissed", "later"];
 
-function formatFigureValue(value: number | string | null, locale: string): string {
-  if (value == null) return "—";
-  if (typeof value === "number") return fmtNum(value, 2, locale);
-  return value;
+type FigureKind = "money" | "percent" | "months" | "age" | "year" | "list";
+
+/** Every figures{} key services/ladder.py can emit, mapped to how it reads
+ *  to a person - a raw key like "marginal_rate_source: liniowy" means
+ *  nothing without this. Kept as one flat table (rather than per-rung
+ *  tables) because several rungs share keys (safe_assets, business_
+ *  contributions_total, ...) and should read the same way wherever they
+ *  show up. */
+const FIGURE_KIND: Record<string, FigureKind> = {
+  safe_assets: "money",
+  target: "money",
+  business_contributions_total: "money",
+  envelope_outstanding: "money",
+  required: "money",
+  flows_ytd: "money",
+  limit: "money",
+  tax_saved: "money",
+  marginal_rate: "percent",
+  ppk_employee: "percent",
+  ppk_employer: "percent",
+  current_savings_rate: "percent",
+  required_savings_rate: "percent",
+  target_months: "months",
+  target_fi_age: "age",
+  birth_year: "year",
+  stale_assets: "list",
+  missing_months: "list",
+};
+
+/** Internal plumbing, not shown: `target_source`/`marginal_rate_source` say
+ *  *where* a number came from rather than something to act on, and `note`
+ *  is an unlocalised fallback message the rung's own "why" text (status
+ *  "unknown"/"not_applicable") already covers. */
+const DROPPED_FIGURE_KEYS = new Set(["target_source", "marginal_rate_source", "note"]);
+
+/** "some_new_key" -> "Some new key", for a figure this table doesn't know
+ *  about yet - shows something readable instead of crashing or printing
+ *  the raw key untranslated. */
+function humaniseKey(key: string): string {
+  const words = key.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function formatFigureValue(
+  value: number | string | string[] | null,
+  kind: FigureKind | undefined,
+  t: (key: string) => string,
+  locale: string,
+  baseCurrency: string,
+): string | null {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    // Empty (e.g. data_fresh once nothing is stale) says nothing worth a
+    // line - same treatment as a null figure.
+    return value.length > 0 ? value.join(", ") : null;
+  }
+  switch (kind) {
+    case "money":
+      return typeof value === "number" ? fmtMoney(value, baseCurrency, locale) : String(value);
+    case "percent":
+      return typeof value === "number"
+        ? new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 }).format(
+            value,
+          )
+        : String(value);
+    case "months":
+      return typeof value === "number"
+        ? `${fmtNum(value, 0, locale)} ${t("ins.fig.unit.months")}`
+        : String(value);
+    case "age":
+      return typeof value === "number"
+        ? `${fmtNum(value, 0, locale)} ${t("ins.fig.unit.age")}`
+        : String(value);
+    case "year":
+      // A calendar year, not a duration - no unit word, no thousands
+      // separator (fmtNum would otherwise write 1990 as "1,990").
+      return typeof value === "number" ? String(Math.round(value)) : String(value);
+    default:
+      return typeof value === "number" ? fmtNum(value, 2, locale) : value;
+  }
+}
+
+/** One rung's figures{} reduced to the "label: value" strings the row
+ *  joins with " · ". Drops plumbing keys and empty values; unknown keys
+ *  fall back to a humanised label formatted as a plain number/string. */
+function figureLines(
+  figures: Rung["figures"],
+  t: (key: string) => string,
+  locale: string,
+  baseCurrency: string,
+): string[] {
+  const lines: string[] = [];
+  for (const [key, value] of Object.entries(figures)) {
+    if (DROPPED_FIGURE_KEYS.has(key)) continue;
+    const kind = FIGURE_KIND[key];
+    const formatted = formatFigureValue(value, kind, t, locale, baseCurrency);
+    if (formatted == null) continue;
+    const label = kind ? t(`ins.fig.${key}`) : humaniseKey(key);
+    lines.push(`${label}: ${formatted}`);
+  }
+  return lines;
 }
 
 /** One AI-ranked step, keyed by the same RungKey the ladder itself uses -
@@ -43,6 +141,7 @@ interface Props {
  *  question. */
 export default function LadderChecklist({ rungs, aiByKey, feedback, onFeedback }: Props) {
   const { t, locale } = useI18n();
+  const { baseCurrency } = useSettings();
 
   if (rungs.length === 0) {
     return <p className="text-sm subtle">{t("ins.next.checklistEmpty")}</p>;
@@ -51,9 +150,7 @@ export default function LadderChecklist({ rungs, aiByKey, feedback, onFeedback }
   return (
     <ul className="divide-y divide-slate-100 dark:divide-slate-800">
       {rungs.map((r) => {
-        const figureEntries = Object.entries(r.figures).filter(
-          ([, v]) => v != null,
-        );
+        const figureLinesForRow = figureLines(r.figures, t, locale, baseCurrency);
         const ai = aiByKey.get(r.key);
         const rowFeedback = feedback[r.key];
         return (
@@ -68,11 +165,9 @@ export default function LadderChecklist({ rungs, aiByKey, feedback, onFeedback }
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{t(RUNG_TITLE_KEY[r.key])}</p>
               <p className="text-xs muted">{t(rungWhyKey(r.key, r.status))}</p>
-              {figureEntries.length > 0 && (
+              {figureLinesForRow.length > 0 && (
                 <p className="mt-1 text-xs subtle tabular-nums">
-                  {figureEntries
-                    .map(([k, v]) => `${k}: ${formatFigureValue(v, locale)}`)
-                    .join(" · ")}
+                  {figureLinesForRow.join(" · ")}
                 </p>
               )}
 

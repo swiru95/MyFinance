@@ -1,4 +1,5 @@
 """Monthly budget + analytics endpoints."""
+import json
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +10,8 @@ from ..models.expense import Expense
 from ..models.income import IncomeSource
 from ..models.monthly import MonthlyRecord
 from ..schemas.monthly import (
+    CommitmentInput,
+    CommitmentOut,
     MonthlyAnalytics,
     MonthlyIn,
     MonthlyOut,
@@ -19,6 +22,7 @@ from ..services.budget import (
     MONTH_RE,
     committed_for_month,
     effective_spend,
+    expenses_applying_in_month,
     month_key,
     shift_month,
     wallet_window,
@@ -40,6 +44,24 @@ def _validate_month(month: str) -> str:
     if not _MONTH_PATTERN.match(month):
         raise HTTPException(422, "month must be in YYYY-MM form")
     return month
+
+
+def _compute_actual_from_breakdown(
+    commitments_paid_json: str,
+    other_spent: float,
+    target_currency: str,
+    ps: PriceService,
+) -> float:
+    """Compute actual_spent from the breakdown (commitments + other) in a
+    given target currency. Uses the same currency conversion logic as the
+    breakdown path itself - see routes/monthly.py for usage."""
+    saved_entries = json.loads(commitments_paid_json)
+    paid_total = sum(
+        convert_currency(ps, e["amount"], e["currency"], target_currency)
+        for e in saved_entries
+        if e.get("paid")
+    )
+    return round(paid_total + float(other_spent), 2)
 
 
 def _wallet_for_months(
@@ -81,6 +103,26 @@ def _build(
     income_total = income_base_typed + income_from_sources
 
     surplus = income_total - actual_base
+
+    # The checklist breakdown behind actual_spent, in the record's own
+    # currency - see models/monthly.MonthlyRecord. Both columns are always
+    # written together (routes.monthly._apply_month_write), so either being
+    # set means this is a breakdown record, not a legacy one-total record.
+    commitments_paid_total = None
+    other_spent_out = None
+    breakdown = False
+    if record is not None and record.commitments_paid is not None and record.other_spent is not None:
+        breakdown = True
+        entries = json.loads(record.commitments_paid)
+        commitments_paid_total = round(
+            sum(
+                convert_currency(ps, e["amount"], e["currency"], currency)
+                for e in entries
+                if e.get("paid")
+            ),
+            2,
+        )
+        other_spent_out = round(float(record.other_spent), 2)
     wallet_start, wallet_end = wallet
     change = (
         round(wallet_end - wallet_start, 2)
@@ -95,6 +137,9 @@ def _build(
         currency=currency,
         notes=record.notes if record else "",
         base_currency=base,
+        commitments_paid_total=commitments_paid_total,
+        other_spent=other_spent_out,
+        breakdown=breakdown,
         income_in_base=round(income_total, 2),
         income_from_sources_in_base=round(income_from_sources, 2),
         income_sources=source_income["sources"],
@@ -114,6 +159,92 @@ def _build(
         ),
         saved=record is not None,
         updated_at=record.updated_at if record else None,
+    )
+
+
+def _apply_month_write(
+    record: MonthlyRecord,
+    *,
+    income: float | None,
+    actual_spent: float | None,
+    currency: str | None,
+    notes: str | None,
+    commitments: list[CommitmentInput] | None,
+    other_spent: float | None,
+    db: Session,
+    ps: PriceService,
+) -> None:
+    """Write the given fields onto `record`.
+
+    Shared by PUT (always sends every MonthlyIn field) and PATCH (sends only
+    what changed) - the caller passes None for anything it does not want
+    touched. When `commitments` or `other_spent` is given, actual_spent is
+    derived from the checklist and any `actual_spent` passed in is ignored;
+    otherwise actual_spent is written as given, exactly like before this
+    checklist existed (the legacy "one total" path).
+    """
+    if currency is not None:
+        record.currency = currency
+    if income is not None:
+        record.income = income
+    if notes is not None:
+        record.notes = notes
+
+    breakdown_write = commitments is not None or other_spent is not None
+    if not breakdown_write:
+        if actual_spent is not None:
+            record.actual_spent = actual_spent
+            # Legacy write onto a breakdown record: clear the breakdown columns
+            # so the plain total becomes the single source of truth, otherwise
+            # stale breakdown data would stay in the DB (see models/monthly.py).
+            record.commitments_paid = None
+            record.other_spent = None
+        elif (
+            currency is not None
+            and record.commitments_paid is not None
+            and record.other_spent is not None
+        ):
+            # Currency-only change on a breakdown record: recompute actual_spent
+            # in the new currency using the saved breakdown, keeping the
+            # breakdown data intact (see models/monthly.py).
+            record.actual_spent = _compute_actual_from_breakdown(
+                record.commitments_paid,
+                float(record.other_spent),
+                record.currency,
+                ps,
+            )
+        return
+
+    if commitments is not None:
+        entries = []
+        for c in commitments:
+            expense = db.query(Expense).filter(Expense.id == c.expense_id).first()
+            if expense is None:
+                raise HTTPException(422, f"Unknown expense_id: {c.expense_id}")
+            entries.append({
+                "expense_id": c.expense_id,
+                "name": expense.name,
+                "amount": c.amount,
+                "currency": expense.currency,
+                "paid": c.paid,
+            })
+        record.commitments_paid = json.dumps(entries)
+    elif record.commitments_paid is None:
+        # Entering breakdown mode via other_spent alone (no commitments sent
+        # this call) - keep the columns paired so "breakdown" (both non-null)
+        # stays a reliable signal, per models/monthly.py.
+        record.commitments_paid = "[]"
+
+    if other_spent is not None:
+        record.other_spent = other_spent
+    elif record.other_spent is None:
+        record.other_spent = 0.0
+
+    record.actual_spent = _compute_actual_from_breakdown(
+        record.commitments_paid,
+        float(record.other_spent),
+        record.currency,
+        ps,
     )
 
 
@@ -288,21 +419,98 @@ def get_month(month: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{month}/commitments", response_model=list[CommitmentOut])
+def month_commitments(month: str, db: Session = Depends(get_db)):
+    """The commitments charged in `month` - the month checklist's rows.
+
+    Every Expense for which applies_in_month is true (cash view - a yearly
+    bill appears in full in its charge month), defaulted to "paid as usual"
+    at its own amount. Once the month has a saved breakdown, paid/amount
+    come from it instead, and an expense that was saved but no longer
+    applies (period/dates edited since, or the expense deleted) is still
+    listed, from the saved data, so a previous save is never silently lost
+    from the checklist. JDG ZUS/health are never Expense rows (they live in
+    services/business_costs.py) and so never appear here.
+    """
+    _validate_month(month)
+    record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
+    expenses = db.query(Expense).all()
+    expense_by_id = {e.id: e for e in expenses}
+    applying = expenses_applying_in_month(expenses, month)
+    applying_ids = {e.id for e in applying}
+
+    saved_entries = (
+        json.loads(record.commitments_paid)
+        if record is not None and record.commitments_paid is not None
+        else None
+    )
+    saved_by_id = {e["expense_id"]: e for e in saved_entries} if saved_entries else {}
+
+    rows: list[CommitmentOut] = []
+    for e in applying:
+        s = saved_by_id.get(e.id)
+        if saved_entries is not None and s is not None:
+            rows.append(CommitmentOut(
+                expense_id=e.id,
+                name=s.get("name") or e.name,
+                category=e.category,
+                amount=s["amount"],
+                currency=s.get("currency", e.currency),
+                paid=s["paid"],
+            ))
+        else:
+            rows.append(CommitmentOut(
+                expense_id=e.id,
+                name=e.name,
+                category=e.category,
+                amount=float(e.amount),
+                currency=e.currency,
+                paid=True,
+            ))
+
+    if saved_entries is not None:
+        for eid, s in saved_by_id.items():
+            if eid in applying_ids:
+                continue
+            e = expense_by_id.get(eid)
+            rows.append(CommitmentOut(
+                expense_id=eid,
+                name=s.get("name") or "",
+                category=e.category if e else "",
+                amount=s["amount"],
+                currency=s.get("currency", "PLN"),
+                paid=s["paid"],
+            ))
+
+    rows.sort(key=lambda r: (r.category, r.name))
+    return rows
+
+
 @router.put("/{month}", response_model=MonthlyOut)
 def upsert_month(month: str, payload: MonthlyIn, db: Session = Depends(get_db)):
     """Create or overwrite the figures for one month."""
     _validate_month(month)
-    record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
-    if record is None:
-        record = MonthlyRecord(month=month, **payload.model_dump())
-        db.add(record)
-    else:
-        for field, value in payload.model_dump().items():
-            setattr(record, field, value)
-    db.commit()
-    db.refresh(record)
     base = get_base_currency(db)
     ps = PriceService(base)
+    record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
+    if record is None:
+        record = MonthlyRecord(
+            month=month, income=0, actual_spent=0, currency=payload.currency, notes=""
+        )
+        db.add(record)
+    _apply_month_write(
+        record,
+        income=payload.income,
+        actual_spent=payload.actual_spent,
+        currency=payload.currency,
+        notes=payload.notes,
+        commitments=payload.commitments,
+        other_spent=payload.other_spent,
+        db=db,
+        ps=ps,
+    )
+    db.commit()
+    db.refresh(record)
     wallet = _wallet_for_months(db, [month], today_in(db))[month]
     source_income = income_by_month(db, [month], ps, base)
     return _build(
@@ -321,23 +529,30 @@ def patch_month(month: str, payload: MonthlyPatch, db: Session = Depends(get_db)
     """
     _validate_month(month)
     base = get_base_currency(db)
+    ps = PriceService(base)
     record = db.query(MonthlyRecord).filter(MonthlyRecord.month == month).first()
-    fields = payload.model_dump(exclude_unset=True, exclude_none=True)
     if record is None:
         record = MonthlyRecord(
             month=month,
-            income=fields.get("income", 0),
-            actual_spent=fields.get("actual_spent", 0),
-            currency=fields.get("currency", base),
-            notes=fields.get("notes", ""),
+            income=payload.income or 0,
+            actual_spent=0,
+            currency=payload.currency or base,
+            notes=payload.notes or "",
         )
         db.add(record)
-    else:
-        for field, value in fields.items():
-            setattr(record, field, value)
+    _apply_month_write(
+        record,
+        income=payload.income,
+        actual_spent=payload.actual_spent,
+        currency=payload.currency,
+        notes=payload.notes,
+        commitments=payload.commitments,
+        other_spent=payload.other_spent,
+        db=db,
+        ps=ps,
+    )
     db.commit()
     db.refresh(record)
-    ps = PriceService(base)
     wallet = _wallet_for_months(db, [month], today_in(db))[month]
     source_income = income_by_month(db, [month], ps, base)
     return _build(

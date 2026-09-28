@@ -99,6 +99,17 @@ def applies_in_month(e: Expense, first: date, last: date) -> bool:
     return False
 
 
+def expenses_applying_in_month(expenses: list[Expense], month: str) -> list[Expense]:
+    """Every expense charged at all during `month` (cash view).
+
+    Shared by the month-checklist endpoint (GET .../commitments) and
+    demo_seed, so both agree with committed_for_month on which expenses a
+    given month covers.
+    """
+    first, last = month_bounds(month)
+    return [e for e in expenses if applies_in_month(e, first, last)]
+
+
 def monthly_equivalent(e: Expense) -> float:
     """Monthly equivalent of a recurring expense.
 
