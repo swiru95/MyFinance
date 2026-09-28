@@ -17,16 +17,28 @@ so it stays on stored snapshot values.
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 
 from sqlalchemy.orm import Session
 
-from ..routes.helpers import get_base_currency, value_of_position
 from ..models.asset import Asset
 from ..models.position import Position
 
+# Imported lazily inside portfolio_growth() rather than at module level:
+# routes/positions.py imports portfolio_growth from here, so an eager import
+# of routes.helpers up here becomes circular the moment something imports
+# this module before anything has imported the routes package - see
+# services/efficiency.py and services/wallet_report.py, which now do exactly
+# that from a standalone script or a test file collected early.
 
-def asset_growth(snapshots: list[Position], current_value: float | None = None) -> dict | None:
-    """Growth summary for one asset's full snapshot history.
+
+def asset_growth(
+    snapshots: list[Position],
+    current_value: float | None = None,
+    since: date | None = None,
+) -> dict | None:
+    """Growth summary for one asset's full snapshot history, or for just the
+    activity after `since` when given.
 
     None for an empty list - there is nothing to report. Snapshots are
     sorted here (by timestamp, then id to break same-timestamp ties) rather
@@ -37,13 +49,37 @@ def asset_growth(snapshots: list[Position], current_value: float | None = None) 
     when given (portfolio_growth passes today's live-priced value; callers
     that only have snapshots on hand - e.g. tests - can leave it out and get
     the stored figure back).
+
+    `since` scopes this to one reporting period (see services/efficiency.py):
+    it is the last day still treated as "before" the period, exactly like
+    Position.timestamp.date() elsewhere in this codebase compares against a
+    cutoff day. A snapshot at or before `since` never contributes to
+    `contributed` - the most recent one of those instead becomes the
+    period's own `opening_value` (the value the asset was carried in at),
+    the same role ordered[0] plays for the whole-history case below. An
+    asset with no snapshot at or before `since` (it was opened during the
+    period) falls back to that whole-history behaviour: its first-ever
+    snapshot is the opening, exactly as if `since` were None.
     """
     if not snapshots:
         return None
     ordered = sorted(snapshots, key=lambda p: (p.timestamp, p.id))
-    later = ordered[1:]
 
-    opening_value = float(ordered[0].value_in_base)
+    if since is not None:
+        before = [p for p in ordered if p.timestamp.date() <= since]
+        after = [p for p in ordered if p.timestamp.date() > since]
+        if before:
+            opening_value = float(before[-1].value_in_base)
+            later = after
+        elif after:
+            opening_value = float(after[0].value_in_base)
+            later = after[1:]
+        else:  # pragma: no cover - unreachable, `ordered` is non-empty
+            return None
+    else:
+        later = ordered[1:]
+        opening_value = float(ordered[0].value_in_base)
+
     # Stored None means "not entered" (see routes/positions.py::_flow_in_base);
     # here it counts as nothing added, because leaving the field blank in a
     # month with no deposit is the normal case. untracked_updates says how
@@ -90,10 +126,19 @@ def _totals(assets: list[dict], value_raw: float | None = None) -> dict:
     dashboard total to the grosz; summing per-asset figures already rounded
     to 2 dp can drift by one. Growth is then value - invested, so the three
     summary figures always add up on screen.
+
+    `invested` is deliberately opening_value + contributed (both already
+    rounded above), not a separate sum of each asset's own already-rounded
+    `invested` field: summing N independently-rounded per-asset figures can
+    drift from the sum of their two rounded parts by a grosz or two once N
+    is large enough, which used to make opening_value + contributed + growth
+    disagree with value by a cent on a real, many-asset wallet - the PDF
+    report's reconciliation line (services/wallet_report.py) needs this to
+    hold exactly, not just usually.
     """
     opening_value = round(sum(a["opening_value"] for a in assets), 2)
     contributed = round(sum(a["contributed"] for a in assets), 2)
-    invested = round(sum(a["invested"] for a in assets), 2)
+    invested = round(opening_value + contributed, 2)
     value = round(value_raw if value_raw is not None else sum(a["value"] for a in assets), 2)
     growth = round(value - invested, 2)
     untracked_updates = sum(a["untracked_updates"] for a in assets)
@@ -109,14 +154,21 @@ def _totals(assets: list[dict], value_raw: float | None = None) -> dict:
     }
 
 
-def portfolio_growth(db: Session) -> dict:
+def portfolio_growth(db: Session, since: date | None = None) -> dict:
     """Growth for every asset plus the portfolio total.
 
     One query for all positions, grouped by asset in Python, so this costs
     the same single round-trip regardless of how many assets are held.
     Assets are loaded once up front and reused for every value_of_position
     call rather than queried per asset.
+
+    `since` scopes every asset's figures to one reporting period - see
+    asset_growth's own docstring for exactly what that cuts off. None (the
+    default) is the whole history, unchanged from before this parameter
+    existed.
     """
+    from ..routes.helpers import get_base_currency, value_of_position
+
     rows = (
         db.query(Position)
         .order_by(Position.asset_id, Position.timestamp.asc(), Position.id.asc())
@@ -147,7 +199,7 @@ def portfolio_growth(db: Session) -> dict:
             continue
         latest = max(snapshots, key=lambda p: (p.timestamp, p.id))
         current_value = value_of_position(db, asset, latest)
-        growth = asset_growth(snapshots, current_value=current_value)
+        growth = asset_growth(snapshots, current_value=current_value, since=since)
         if growth is None:
             continue
         value_raw += current_value

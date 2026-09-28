@@ -11,6 +11,7 @@ import type {
   MonthlyInput,
   MonthlyPatch,
   MonthlyRecord,
+  PdfReportPeriod,
   Prices,
   Position,
   Report,
@@ -59,9 +60,13 @@ export class AuthError extends Error {
   }
 }
 
-export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/** Shared by request() and requestBlob(): attaches the bearer token (with a
+ *  one-shot silent-refresh retry on a 401), and turns a non-2xx response
+ *  into the same AuthError/Error split every caller already handles. Kept
+ *  as one function so a PDF download (which needs the raw bytes, not
+ *  res.json()) never has to reimplement the auth dance. */
+async function fetchWithAuth(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...((options?.headers as Record<string, string>) ?? {}),
   };
   if (getToken) {
@@ -100,10 +105,41 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     }
     throw new Error(`API ${res.status}: ${body || res.statusText}`);
   }
+  return res;
+}
+
+export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetchWithAuth(path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...((options?.headers as Record<string, string>) ?? {}) },
+  });
   if (res.status === 204) {
     return undefined as T;
   }
   return res.json();
+}
+
+/** Same auth handling as request(), but returns the raw body - for the PDF
+ *  report download (application/pdf), which res.json() cannot parse. */
+export async function requestBlob(path: string): Promise<Blob> {
+  const res = await fetchWithAuth(path);
+  return res.blob();
+}
+
+/** Triggers a browser "Save As" for `blob` named `filename`, the same way a
+ *  plain `<a href download>` would for a same-origin URL - needed here
+ *  because the PDF has to be fetched with an Authorization header first
+ *  (see requestBlob), so a plain anchor pointing at the API path directly
+ *  cannot be used. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -174,6 +210,15 @@ export const api = {
     }),
   deleteReport: (id: number) =>
     request<void>(`/reports/${id}`, { method: "DELETE" }),
+  /** The wallet PDF report - see backend/src/routes/report_pdf.py. Returns
+   *  the raw bytes; callers hand them to saveBlob() to trigger the
+   *  download. `aiInsightId` embeds a finished "wallet_pdf" insight's
+   *  commentary (see insightsApi.create("wallet_pdf", ...)) when given. */
+  reportPdf: (period: PdfReportPeriod, language: string, aiInsightId?: number) =>
+    requestBlob(
+      `/reports/pdf?period=${period}&language=${encodeURIComponent(language)}` +
+        (aiInsightId ? `&ai_insight_id=${aiInsightId}` : "")
+    ),
   getSettings: () => request<Settings>("/settings"),
   setSettings: (base_currency: string, timezone?: string, features?: FeatureFlags) =>
     request<Settings>("/settings", {

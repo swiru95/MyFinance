@@ -8,16 +8,21 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from ..services.efficiency import PERIODS as PDF_PERIODS
 from ..timeutils import as_utc
 
-INSIGHT_KINDS = ("profile", "digest", "next_steps")
+INSIGHT_KINDS = ("profile", "digest", "next_steps", "wallet_pdf")
 INSIGHT_LANGUAGES = ("en", "pl")
+
+# A digest's period is a "YYYY-MM" month; a wallet_pdf's is one of
+# services.efficiency.PERIODS (both fit the `insights.period` column's
+# String(7) - see models/insight.py). profile/next_steps ignore this field.
+_PERIOD_PATTERN = r"^(\d{4}-(0[1-9]|1[0-2])|" + "|".join(PDF_PERIODS) + r")$"
 
 
 class InsightIn(BaseModel):
     language: str = Field("en", pattern="^(" + "|".join(INSIGHT_LANGUAGES) + ")$")
-    # Required for a digest (a "YYYY-MM" month); ignored for profile/next_steps.
-    period: str | None = Field(None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    period: str | None = Field(None, pattern=_PERIOD_PATTERN)
 
 
 class InsightOut(BaseModel):

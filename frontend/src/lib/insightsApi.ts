@@ -24,11 +24,15 @@ export const insightsApi = {
 
   list: () => request<InsightSummary[]>("/insights"),
   item: (id: number) => request<Insight>(`/insights/item/${id}`),
-  /** Newest done row of a kind; the backend 404s when there is none yet - see
-   *  isNotFound below for how callers should treat that. */
-  latest: (kind: InsightKind, language: string) =>
+  /** Newest row of a kind, whatever its status; the backend 404s when there
+   *  is none yet - see isNotFound below for how callers should treat that.
+   *  `period` narrows it to a matching period too (digest months,
+   *  wallet_pdf reporting periods) - profile/next_steps never pass it, and
+   *  omitting it keeps "newest in this language, any period". */
+  latest: (kind: InsightKind, language: string, period?: string) =>
     request<Insight>(
-      `/insights/${kind}/latest?language=${encodeURIComponent(language)}`,
+      `/insights/${kind}/latest?language=${encodeURIComponent(language)}` +
+        (period ? `&period=${encodeURIComponent(period)}` : ""),
     ),
   create: (kind: InsightKind, language: string, period?: string) =>
     request<Insight>(`/insights/${kind}`, {
