@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MyFinance — self-hosted budget &amp; portfolio tracker</title>
-<meta name="description" content="Track every asset you own in one currency, see what you really spend, and get a private portfolio review from a model on your own hardware. Self-hosted, open source.">
+<meta name="description" content="A self-hosted budget and portfolio tracker built for Poland: what you own in its real unit, what you really spend, and when you could stop working. Self-hosted, open source.">
 <meta property="og:title" content="MyFinance — your whole net worth, one honest number">
-<meta property="og:description" content="A self-hosted budget and portfolio tracker for everything you own, from cash and bonds to gold and Bitcoin.">
+<meta property="og:description" content="A self-hosted budget and portfolio tracker for everything you own, from cash and bonds to precious metals and crypto, with Polish tax and retirement calculators.">
 <meta property="og:image" content="img/dashboard.webp">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235B54E8'/%3E%3Ctext x='32' y='45' font-family='Arial' font-size='36' font-weight='700' fill='white' text-anchor='middle'%3E%E2%82%A3%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -173,7 +173,7 @@
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#effective">Effective spend</a>
-      <a href="#ai">AI analyst</a>
+      <a href="#ai">Insights</a>
       <a href="#security">Security</a>
       <a href="#start">Get started</a>
     </div>
@@ -184,15 +184,15 @@
 <header class="hero dark" id="top">
   <div class="wrap">
     <div>
-      <p class="eyebrow">Self-hosted · Open source</p>
+      <p class="eyebrow">Self-hosted · Open source · Built for Poland</p>
       <h1>Your whole net worth. One honest number.</h1>
-      <p class="lead">A budget and portfolio tracker for everything you own, from cash and bonds to gold and Bitcoin. Everything is valued live in a single currency, it shows what you really spend, and a private AI analyst on your own GPU reviews it all.</p>
+      <p class="lead">A budget and portfolio tracker for everything you own, from cash and bonds to precious metals and crypto, all valued live in one currency. It works out what you really spend and, with the Polish tax and retirement calculators switched on, when you could afford to stop working. A private AI analyst on your own GPU explains all three.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#start">Run it in one command</a>
         <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">View on GitHub</a>
       </div>
     </div>
-    <div class="hero-shot"><img src="img/dashboard.webp" width="2880" height="1800" alt="MyFinance dashboard: total portfolio, monthly commitment, reserve cover, and live gold and crypto prices"></div>
+    <div class="hero-shot"><img src="img/dashboard.webp" width="2880" height="1800" alt="MyFinance dashboard: total portfolio, monthly commitment, reserve cover, and live precious-metal and crypto prices"></div>
   </div>
 </header>
 
@@ -208,23 +208,46 @@
   </div>
 </section>
 
+<section id="start-simple">
+  <div class="wrap">
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Start simple</p>
+        <h2>Start with a budget. Turn on the rest when you want it.</h2>
+        <p class="muted">A new wallet opens with just Dashboard, Income, Expenses and Settings — enough to see what comes in and what goes out. Assets, Retirement, Insights and Calculators stay off until you switch them on, one at a time, in Settings.</p>
+        <p class="muted">Plain language throughout, with a small info tip next to anything that needs a definition — what KUP is, what a safe withdrawal rate means, why a market drop counts as spending.</p>
+      </div>
+      <figure class="frame"><img src="img/features.webp" width="898" height="784" loading="lazy" alt="Settings page: toggles for Assets, Retirement, Insights and Calculators, each off by default with a one-line description"></figure>
+    </div>
+  </div>
+</section>
+
 <section id="features" style="padding-top:0">
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Positions</p>
+        <p class="eyebrow">Assets</p>
         <h2>Track each asset in its real unit</h2>
-        <p class="muted">Enter gold in grams and crypto in coins. MyFinance fetches live prices and converts everything into your base currency.</p>
+        <p class="muted">Enter gold, silver, platinum or palladium in grams or troy ounces, and crypto in coins. MyFinance fetches live prices and converts everything into your base currency, with offline fallbacks if a price API is unreachable.</p>
         <table class="units">
-          <tr><td>Cash, savings, bonds</td><td>PLN, EUR, USD or CHF</td></tr>
-          <tr><td>Gold</td><td>grams, at the live price per gram</td></tr>
-          <tr><td>Bitcoin, Solana</td><td>coin quantity, priced live</td></tr>
+          <tr><td>Cash, savings, bonds</td><td>PLN, EUR, USD or CHF; bonds carry their own interest rate</td></tr>
+          <tr><td>Gold, silver, platinum, palladium</td><td>grams or troy ounces, at the live price per gram</td></tr>
+          <tr><td>Bitcoin, Ethereum, Solana, XRP, BNB</td><td>coin quantity, priced live</td></tr>
           <tr><td>Stocks, funds, pensions</td><td>value in any currency</td></tr>
           <tr><td>Watches, vehicles</td><td>revalue whenever you like</td></tr>
         </table>
-        <p class="muted">Every update is timestamped, so your history builds itself.</p>
+        <p class="muted">IKE, IKZE, PPK, OIPE and OKI wrappers get their own coloured frame and show the age you can access them without a penalty. Every update is timestamped, so your history builds itself.</p>
       </div>
-      <figure class="frame"><img src="img/positions.webp" width="2880" height="2000" loading="lazy" alt="Positions page listing cash, gold in grams, stocks, funds and bonds, each with Update and History"></figure>
+      <figure class="frame"><img src="img/positions.webp" width="2880" height="1800" loading="lazy" alt="Assets page: the Your money, Growth and Value now summary above cards for cash, gold in grams, stocks and a coloured IKE wrapper"></figure>
+    </div>
+
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Your money vs growth</p>
+        <h2>Tell your own deposits apart from market growth</h2>
+        <p class="muted">When you update a position you can say how much you paid in — for metals and crypto, leaving it blank works it out from the change in quantity at today's price. MyFinance splits every change into deposit and growth, per asset and for the whole portfolio, so "Your money" and "Growth" show up as two numbers instead of one that mixes them.</p>
+      </div>
+      <figure class="frame"><img src="img/growth-update.webp" width="770" height="1228" loading="lazy" alt="Update modal on the Stocks card: amount changed by +120, paid in 100, live preview reads +120 = paid in +100 + growth +20"></figure>
     </div>
 
     <div class="feature flip">
@@ -238,8 +261,8 @@
         </ul>
       </div>
       <div class="stack-v">
-        <figure class="frame"><img src="img/chart-classes.webp" width="2240" height="924" loading="lazy" alt="Stacked area chart of portfolio value over a year, split by asset class"></figure>
-        <figure class="frame"><img src="img/chart-risk.webp" width="2240" height="876" loading="lazy" alt="Stacked area chart of portfolio value split by risk band"></figure>
+        <figure class="frame"><img src="img/chart-classes.webp" width="2242" height="924" loading="lazy" alt="Stacked area chart of portfolio value over a year, split by asset class"></figure>
+        <figure class="frame"><img src="img/chart-risk.webp" width="2242" height="876" loading="lazy" alt="Stacked area chart of portfolio value split by risk band"></figure>
       </div>
     </div>
   </div>
@@ -259,7 +282,7 @@
           <div><b>Illiquid</b><span class="muted">watches, vehicles, receivables: slow to sell</span></div>
         </div>
       </div>
-      <figure class="frame"><img src="img/breakdown.webp" width="2240" height="1204" loading="lazy" alt="Allocation and risk-profile donut charts with the percentage for each class and band"></figure>
+      <figure class="frame"><img src="img/breakdown.webp" width="2242" height="1204" loading="lazy" alt="Allocation and risk-profile donut charts with the percentage for each class and band"></figure>
     </div>
     <div class="cards dark-cards">
       <div class="card"><h3>Two axes, not one</h3><p>Volatility and liquidity are measured separately. A watch collection won't crash, but it can't pay next month's rent either, so it gets its own band instead of inflating "risky".</p></div>
@@ -277,39 +300,92 @@
   </div>
 </section>
 
-<section id="monthly">
+<section id="expenses">
   <div class="wrap">
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">Monthly</p>
-        <h2>Monthly budgets you never have to retype</h2>
-        <p class="muted">Record income and spend once a month. Committed spend comes from your recurring expenses, so fixing an expense also corrects every past month it applies to.</p>
+        <p class="eyebrow">Expenses</p>
+        <h2>Plan for what you've already committed to</h2>
+        <p class="muted">Rent, leases, subscriptions and one-off bills, in any currency, on a monthly, quarterly, yearly or one-off schedule. Upcoming payments and contracts ending soon are highlighted, and fixing an expense corrects every past month it applies to.</p>
         <ul class="ticks">
-          <li>Savings rate and surplus for every month</li>
-          <li>Typed-in spend next to effective spend</li>
-          <li>Commitments broken down by category</li>
+          <li>Reserve cover projects how many months your safe assets last, including the bills already booked</li>
         </ul>
       </div>
       <div class="stack-v">
-        <figure class="frame"><img src="img/monthly-top.webp" width="2880" height="1120" loading="lazy" alt="Monthly page for July 2026 showing income, actual spend, committed spend, surplus and effective spend"></figure>
-        <figure class="frame"><img src="img/monthly-chart.webp" width="2240" height="900" loading="lazy" alt="Chart comparing committed, income, actual and effective spend over two years"></figure>
+        <figure class="frame"><img src="img/expenses.webp" width="2880" height="1800" loading="lazy" alt="Expenses page with the monthly commitment, a breakdown by category and the recurring expense list"></figure>
+        <figure class="frame"><img src="img/reserve.webp" width="2242" height="636" loading="lazy" alt="Reserve cover over time, with a six-month target line and a dashed projection"></figure>
       </div>
     </div>
 
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Expenses &amp; reserve</p>
-        <h2>Plan for what you've already committed to</h2>
+        <p class="eyebrow">Expenses</p>
+        <h2>Tick off what you actually paid</h2>
+        <p class="muted">Every month the app lists the commitments due and asks which ones went out — untick anything skipped, and correct the amount right there if a bill came in different from usual, like a higher electricity charge. Add one figure for everything else that left your accounts; next to it is a hint worked out from your income and how the portfolio moved, so you're not starting from nothing. The total for the month is computed from the checklist, never typed in directly.</p>
         <ul class="ticks">
-          <li>Rent, leases, subscriptions and one-off bills, in any currency</li>
-          <li>Upcoming payments and contracts ending soon are highlighted</li>
-          <li>Reserve cover projects how many months your safe assets last, including the bills already booked</li>
+          <li>Untick a commitment you didn't pay, or edit its amount for the month</li>
+          <li>One number for everything else, with a suggested figure to start from</li>
         </ul>
       </div>
-      <div class="stack-v">
-        <figure class="frame"><img src="img/expenses.webp" width="2880" height="2000" loading="lazy" alt="Expenses page with the monthly commitment, a breakdown by category and the recurring expense list"></figure>
-        <figure class="frame"><img src="img/reserve.webp" width="2240" height="636" loading="lazy" alt="Reserve cover over time, with a six-month target line and a dashed projection"></figure>
+      <figure class="frame"><img src="img/month-form.webp" width="1154" height="2392" loading="lazy" alt="Month editor on the Expenses page: commitments ticked off with their amounts, an everything-else figure with a hint, and the computed total"></figure>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <p class="eyebrow">Effective spend</p>
+        <h2>What a month really cost, not what you typed in</h2>
+        <p class="muted">Expand "Show analysis" on the same page and the checklist total sits next to effective spend — income minus the change in portfolio value — so anything that never got ticked off or typed in still shows up.</p>
+        <ul class="ticks">
+          <li>Savings rate and surplus for every month</li>
+          <li>Committed, actual and effective spend, side by side</li>
+        </ul>
       </div>
+      <figure class="frame"><img src="img/expenses-months.webp" width="2240" height="1256" loading="lazy" alt="Show analysis on the Expenses page, expanded: surplus, actual vs committed, effective spend and savings-rate stat tiles above the committed/income/actual chart"></figure>
+    </div>
+  </div>
+</section>
+
+<section id="income">
+  <div class="wrap">
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Income &amp; Polish tax</p>
+        <h2>Umowa o pracę or B2B, worked out to the grosz</h2>
+        <p class="muted">Recurring income sources — UoP, B2B through your own JDG, or anything already net — each get their own defaults and month-by-month exceptions. Every figure comes from a deterministic tax engine, not a rule of thumb: ZUS, the health contribution, PIT advances, PPK, VAT and a working-day calendar for day- and hour-billed rates, all computed year to date so annual thresholds are respected.</p>
+        <ul class="ticks">
+          <li>B2B: skala, liniowy or ryczałt, each with its own ZUS stage and health-contribution tier</li>
+          <li>UoP: ZUS, KUP, PIT-2, the under-26 relief, PPK and employer cost</li>
+        </ul>
+      </div>
+      <figure class="frame"><img src="img/income.webp" width="2880" height="1800" loading="lazy" alt="Income page: sources list plus the monthly net income and tax breakdown"></figure>
+    </div>
+
+    <div class="feature flip">
+      <div class="text">
+        <p class="eyebrow">Calculators</p>
+        <h2>UoP vs B2B, and working backwards from a target net</h2>
+        <p class="muted">Compare an umowa o pracę offer against a B2B invoice for the same net, including unpaid leave and the gap in what reaches your ZUS pension account, or run the reverse calculator from a target net income. Parameters are per year (2025, 2026), each with its source and the date it was checked.</p>
+        <p class="muted">These are planning estimates, not tax advice, and the page says so.</p>
+      </div>
+      <figure class="frame"><img src="img/tax.webp" width="2880" height="1800" loading="lazy" alt="Calculators page: UoP vs B2B comparison and the year's tax parameters"></figure>
+    </div>
+  </div>
+</section>
+
+<section id="retirement">
+  <div class="wrap">
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Retirement</p>
+        <h2>When you could afford to stop working</h2>
+        <p class="muted">The Retirement page answers two questions from your own data: how much to save to be financially independent by a target age, and how much you'd need to earn — as a UoP gross or a B2B invoice — to get there.</p>
+        <ul class="ticks">
+          <li>Lean, barista and coast variants, not just the full number</li>
+          <li>The ZUS pension covers the gap once it starts; the portfolio carries everything before it</li>
+          <li>Money in IKE, IKZE, PPK and OIPE counts, but the bridge check asks whether money you can reach before 60 (everything outside those four; OKI counts as reachable) carries you there</li>
+        </ul>
+      </div>
+      <figure class="frame"><img src="img/fire.webp" width="2880" height="1800" loading="lazy" alt="Retirement page: target age, monthly saving needed, and the lean, barista and coast variants"></figure>
     </div>
   </div>
 </section>
@@ -318,13 +394,28 @@
   <div class="wrap">
     <div class="ai-hook">
       <p class="eyebrow">AI inside</p>
-      <h2>Your own AI financial analyst, running on your own GPU.</h2>
+      <h2>Insights: next steps, a monthly digest and a portfolio review, all on your own GPU.</h2>
       <div class="hook-stats">
-        <div><b>122B</b><span>parameters in the model that writes your review</span></div>
+        <div><b>122B</b><span>parameters in the model that writes your insights</span></div>
         <div><b>4</b><span>investing styles to judge your portfolio against</span></div>
         <div><b>0</b><span>figures sent to a cloud AI provider</span></div>
       </div>
     </div>
+    <div class="feature">
+      <div class="text">
+        <p class="eyebrow">Insights</p>
+        <h2>A next-best-step list, a monthly digest, and a risk profile — no chat</h2>
+        <p class="lead">Nine standing questions about the wallet — from "do you have a starter buffer?" to "have you used this year's IKE and IKZE room?" — are answered deterministically from figures the app already computes. The model only orders them and explains why; it never decides what's done, and there's no chat box to type into.</p>
+        <ul class="ticks">
+          <li>Next steps: a ranked ladder from an emergency buffer to catching up on IKE/IKZE room</li>
+          <li>Monthly digest: a short written summary of the month just closed</li>
+          <li>Risk profile: a short questionnaire that suggests which of the four assessment styles fits you</li>
+          <li>Every number in the model's text is checked against the figures it was given (grounding), and flagged if it doesn't match</li>
+        </ul>
+      </div>
+      <figure class="frame"><img src="img/insights.webp" width="2880" height="1800" loading="lazy" alt="Insights page, Next steps tab: a ranked ladder of what to do next, from an emergency buffer to tax-advantaged accounts"></figure>
+    </div>
+
     <div class="feature flip">
       <div class="text">
         <p class="eyebrow">Wallet assessment</p>
@@ -403,6 +494,18 @@
   </div>
 </section>
 
+<section id="not-advice">
+  <div class="wrap">
+    <p class="eyebrow">Not advice</p>
+    <h2>A tracking tool, not a financial adviser</h2>
+    <p class="lead">MyFinance computes and explains what you already have; it never invests for you and never picks a security. Nothing here is investment, tax or legal advice — the tax, retirement and AI-review pages say so, and the AI review never recommends a specific ticker, fund or product.</p>
+    <div class="pair">
+      <p class="muted" style="align-self:center">Terms of use are versioned. Once signed in, a checkbox modal asks you to accept the current wording before you continue, and asks again whenever the wording changes.</p>
+      <figure class="frame"><img src="img/terms.webp" width="768" height="624" loading="lazy" alt="Before you start terms modal, with the acceptance checkbox, shown before it is accepted"></figure>
+    </div>
+  </div>
+</section>
+
 <section class="dark" id="start">
   <div class="wrap qs">
     <div>
@@ -416,11 +519,11 @@
       <p class="lead" style="margin-top:24px">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away.</p>
     </div>
     <table class="stack-table">
-      <tr><td>Frontend</td><td>Next.js 14, TypeScript, Tailwind, Recharts</td></tr>
+      <tr><td>Frontend</td><td>Next.js 15, TypeScript, Tailwind, Recharts</td></tr>
       <tr><td>Backend</td><td>Python, FastAPI, SQLAlchemy</td></tr>
       <tr><td>Database</td><td>SQLite, or PostgreSQL over mutual TLS</td></tr>
       <tr><td>Deploy</td><td>Docker Compose, or a Helm chart on Kubernetes with images on GHCR</td></tr>
-      <tr><td>Prices</td><td>Public FX, gold and crypto APIs, with offline fallbacks</td></tr>
+      <tr><td>Prices</td><td>Public FX, precious-metal and crypto APIs, with offline fallbacks</td></tr>
       <tr><td>Models</td><td>Any OpenAI-compatible server, such as llama-server</td></tr>
     </table>
   </div>
