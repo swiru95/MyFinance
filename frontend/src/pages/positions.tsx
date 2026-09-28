@@ -76,11 +76,15 @@ export default function PositionsPage() {
     else groups.push({ name: key, assets: [asset] });
   }
 
+  // Today's value of an asset: repriced by the growth endpoint the same way
+  // the dashboard total is, falling back to the value stored at the last
+  // update if that call failed. Without this the cards showed a metal or
+  // coin at the price of its last update while the dashboard used today's.
+  const valueNow = (assetId: number) =>
+    growthByAsset.get(assetId)?.value ?? positionByAsset.get(assetId)?.value_in_base ?? 0;
+
   const groupTotal = (group: AssetWithWrapper[]) =>
-    group.reduce(
-      (sum, a) => sum + (positionByAsset.get(a.id)?.value_in_base ?? 0),
-      0,
-    );
+    group.reduce((sum, a) => sum + valueNow(a.id), 0);
 
   async function toggleHistory(pos: PositionWithFlow) {
     if (historyFor === pos.id) {

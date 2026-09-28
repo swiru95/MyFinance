@@ -73,7 +73,10 @@ export default function RunwayChart({ points, projected = [], target }: Props) {
   return (
     <div className="h-48 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 8, right: 72, bottom: 0, left: 8 }}>
+        {/* Right margin has to fit the "N-month target" label past the
+            chart's own right edge (PortfolioChart's reserve label is the
+            same length and uses 96 at the same fontSize 10). */}
+        <LineChart data={data} margin={{ top: 8, right: 96, bottom: 0, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} vertical={false} />
           <XAxis
             dataKey="label"

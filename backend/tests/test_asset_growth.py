@@ -126,6 +126,36 @@ def test_totals_sum_across_two_assets(client):
     assert total["growth_pct"] == pytest.approx(total["growth"] / total["invested"])
 
 
+def test_value_follows_todays_price_not_the_snapshot_price(client, monkeypatch):
+    """`value` is revalued live (like /api/summary), not frozen at the price
+    recorded when the snapshot was written - so a BTC position bought at
+    65000 USD reads at 80000 USD once that's today's price, and the
+    portfolio total agrees with /api/summary's total_value."""
+    from src.services import price_service as ps
+
+    asset = _create_asset(client, name="Bitcoin", kind="crypto", units="BTC")
+    created = client.post(
+        "/api/positions", json={"asset_id": asset["id"], "amount": 1, "currency": "PLN"}
+    )
+    assert created.status_code == 201, created.text
+
+    # Price moves after the snapshot was written; clear the cache so the
+    # next lookup re-fetches instead of reusing the price above.
+    monkeypatch.setitem(ps._FALLBACK_CRYPTO_USD, "BTC", 80000.0)
+    ps._CACHE.clear()
+
+    body = _growth(client)
+    row = body["assets"][0]
+    expected_value = 1 * 80000.0 * 3.95  # amount * USD price * PLN-per-USD
+    assert row["value"] == pytest.approx(expected_value, rel=1e-4)
+    # value_in_base stored on the snapshot itself is untouched (still the
+    # 65000 price at write time) - only the growth view is revalued.
+    assert row["value"] != pytest.approx(65000.0 * 3.95, rel=1e-4)
+
+    summary = client.get("/api/summary").json()
+    assert body["total"]["value"] == pytest.approx(summary["total_value"], rel=1e-4)
+
+
 def test_crypto_quantity_increase_with_no_flow_derives_flow_and_excludes_it(client):
     """Quantity goes up with no flow typed: the value moves purely because
     of the added quantity (price is unchanged, offline), so once the
