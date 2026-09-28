@@ -41,6 +41,20 @@ const en: Dict = {
   "auth.signedInAs": "Signed in as",
   "auth.expired": "Your session expired. Sign in again to continue.",
 
+  // ---- footer, /terms and the acceptance modal - text is verbatim from the
+  // architect's terms-v1.md (see lib/terms.ts for the page body itself);
+  // do not rephrase.
+  "footer.disclaimer":
+    "MyFinance is a tool for tracking your own finances. It is not investment, tax or legal advice.",
+  "footer.termsLink": "Terms of use",
+  "terms.title": "Terms of use",
+  "termsModal.title": "Before you start",
+  "termsModal.body":
+    "MyFinance helps you track your finances, but it is not investment, tax or legal advice. Tax figures are estimates, projections are not guarantees, and AI texts may contain errors. You make the decisions — for important matters, consult a qualified adviser.",
+  "termsModal.link": "Read the full terms of use",
+  "termsModal.checkbox": "I have read and accept the terms of use.",
+  "termsModal.button": "Accept and continue",
+
   "common.add": "Add",
   "common.edit": "Edit",
   "common.delete": "Delete",
@@ -352,6 +366,17 @@ const pl: Dict = {
   "auth.signOut": "Wyloguj się",
   "auth.signedInAs": "Zalogowano jako",
   "auth.expired": "Sesja wygasła. Zaloguj się ponownie, aby kontynuować.",
+
+  "footer.disclaimer":
+    "MyFinance to narzędzie do śledzenia własnych finansów. Nie stanowi doradztwa inwestycyjnego, podatkowego ani prawnego.",
+  "footer.termsLink": "Zasady korzystania",
+  "terms.title": "Zasady korzystania",
+  "termsModal.title": "Zanim zaczniesz",
+  "termsModal.body":
+    "MyFinance pomaga śledzić Twoje finanse, ale nie jest doradztwem inwestycyjnym, podatkowym ani prawnym. Obliczenia podatkowe są szacunkami, prognozy nie są gwarancją, a teksty AI mogą zawierać błędy. Decyzje podejmujesz samodzielnie — przy ważnych sprawach skonsultuj się z uprawnionym doradcą.",
+  "termsModal.link": "Przeczytaj pełne zasady korzystania",
+  "termsModal.checkbox": "Przeczytałem(-am) i akceptuję zasady korzystania.",
+  "termsModal.button": "Akceptuję i przechodzę dalej",
 
   "common.add": "Dodaj",
   "common.edit": "Edytuj",

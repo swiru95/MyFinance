@@ -144,6 +144,34 @@ def test_put_settings_enabling_fire_without_portfolio_is_rejected_to_off(client)
     assert r.json()["features"]["portfolio"] is False
 
 
+# --- terms of use acceptance -------------------------------------------------
+
+def test_get_settings_exposes_terms_state_before_acceptance(client):
+    body = client.get("/api/settings").json()
+    assert body["terms"] == {
+        "current_version": 1,
+        "accepted_version": None,
+        "accepted_at": None,
+    }
+
+
+def test_post_terms_accept_with_current_version_records_it(client):
+    r = client.post("/api/settings/terms/accept", json={"version": 1})
+    assert r.status_code == 200, r.text
+    terms = r.json()["terms"]
+    assert terms["accepted_version"] == 1
+    assert terms["accepted_at"] is not None
+    # And it stuck.
+    assert client.get("/api/settings").json()["terms"] == terms
+
+
+def test_post_terms_accept_with_wrong_version_is_rejected(client):
+    r = client.post("/api/settings/terms/accept", json={"version": 2})
+    assert r.status_code == 422, r.text
+    # Nothing recorded.
+    assert client.get("/api/settings").json()["terms"]["accepted_version"] is None
+
+
 def test_put_settings_disabling_portfolio_disables_fire(client):
     client.put(
         "/api/settings",

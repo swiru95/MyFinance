@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { insightsApi } from "@/lib/insightsApi";
 import { fmtDateTime, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -274,7 +275,10 @@ export default function DigestTab({ status }: Props) {
           )}
 
           <p className="mt-6 border-t border-slate-200 pt-3 text-xs subtle dark:border-slate-800">
-            {t("rep.disclaimer")}
+            {t("rep.disclaimer")} ·{" "}
+            <Link href="/terms" className="underline hover:text-slate-500">
+              {t("footer.termsLink")}
+            </Link>
           </p>
         </article>
       ) : (

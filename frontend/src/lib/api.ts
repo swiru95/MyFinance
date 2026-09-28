@@ -176,6 +176,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ base_currency, timezone, features }),
     }),
+  acceptTerms: (version: number) =>
+    request<Settings>("/settings/terms/accept", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
 };
 
 export function fmtMoney(

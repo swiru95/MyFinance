@@ -163,6 +163,14 @@ export interface FeatureFlags {
   insights: boolean;
 }
 
+/** Terms-of-use acceptance state - see backend routes/settings.py. Both
+ *  accepted fields are null until the wallet has accepted any version. */
+export interface TermsState {
+  current_version: number;
+  accepted_version: number | null;
+  accepted_at: string | null;
+}
+
 export interface Settings {
   base_currency: string;
   allowed_currencies: string[];
@@ -170,6 +178,7 @@ export interface Settings {
   allowed_timezones: string[];
   default_timezone: string;
   features: FeatureFlags;
+  terms: TermsState;
 }
 
 export type ExpensePeriod = "monthly" | "quarterly" | "yearly" | "once";

@@ -37,3 +37,11 @@ class SettingsIn(BaseModel):
         if v is not None and v not in TIMEZONES:
             raise ValueError(f"timezone must be one of: {', '.join(TIMEZONES)}")
         return v
+
+
+class TermsAcceptIn(BaseModel):
+    """Body of POST /api/settings/terms/accept - the version the client is
+    accepting, checked against config.TERMS_VERSION server-side so an old tab
+    or a raced release can't record acceptance of the wrong text."""
+
+    version: int
