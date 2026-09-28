@@ -14,6 +14,11 @@ except PermissionError:
 
 BASE_CURRENCIES = ["PLN", "EUR", "USD", "CHF"]
 
+# Bumped whenever the terms text (frontend/src/lib/terms.ts) changes in a way
+# that needs re-acceptance. Every wallet with an older (or no) accepted
+# version is shown the acceptance modal again - see routes/settings.py.
+TERMS_VERSION = 1
+
 # Offered in Settings. A curated list beats the full IANA database here - it is
 # a dropdown a person reads, not a machine lookup.
 TIMEZONES = [

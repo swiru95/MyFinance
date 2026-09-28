@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useI18n } from "@/lib/i18n";
 
 /** Every response with tax figures carries `disclaimer_key: "tax.disclaimer"`
@@ -5,5 +6,12 @@ import { useI18n } from "@/lib/i18n";
  *  under a block of tax figures, per 00-architecture.md and the WP spec. */
 export default function TaxDisclaimer({ year }: { year: number }) {
   const { t } = useI18n();
-  return <p className="text-xs subtle">{t("tax.disclaimer", { year })}</p>;
+  return (
+    <p className="text-xs subtle">
+      {t("tax.disclaimer", { year })} ·{" "}
+      <Link href="/terms" className="underline hover:text-slate-500">
+        {t("footer.termsLink")}
+      </Link>
+    </p>
+  );
 }

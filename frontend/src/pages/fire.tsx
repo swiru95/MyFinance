@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useFeatures } from "@/lib/features";
@@ -119,7 +120,12 @@ export default function FirePage() {
             <InputsPanel inputs={data.inputs} base={base} />
           </Disclosure>
 
-          <p className="text-xs subtle">{t("fire.disclaimer")}</p>
+          <p className="text-xs subtle">
+            {t("fire.disclaimer")} ·{" "}
+            <Link href="/terms" className="underline hover:text-slate-500">
+              {t("footer.termsLink")}
+            </Link>
+          </p>
         </>
       )}
     </div>

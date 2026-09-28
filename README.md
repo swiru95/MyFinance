@@ -423,6 +423,26 @@ reach for `localStorage` does not apply here.
 | `401 Token is not an access token for this API` | An ID token was sent instead of an access token, or the scope name does not match `auth.apiScope` |
 | `503 Cannot reach the identity provider's signing keys` | The backend cannot reach `login.microsoftonline.com`. This is the service failing, not the caller, which is why it is not a `401` |
 
+## Terms of use
+
+The legal text (English and Polish, headings/paragraphs/bullets, plus the footer line and
+the acceptance-modal copy) lives in `frontend/src/lib/terms.ts` and `frontend/src/lib/i18n.ts`
+(`footer.*` and `termsModal.*` keys); it is rendered at `/terms`, linked from the footer on
+every page and appended to the existing tax/FIRE/assessment disclaimers.
+
+Acceptance is versioned. The backend's `TERMS_VERSION` constant
+(`backend/src/config.py`) is the single source of truth for what "current" means;
+`GET /api/settings` reports it alongside whatever version (if any) this wallet has
+accepted, and `POST /api/settings/terms/accept` records a new acceptance (422 if the
+version sent does not match `TERMS_VERSION`). Once signed in, the frontend shows a
+blocking modal — checkbox required, Escape does not dismiss it — whenever the accepted
+version does not match the current one; `/terms` itself stays readable while the modal
+is pending elsewhere in the app.
+
+**Bumping the version**: update the text in `terms.ts` (and the verbatim
+`versionLine`/date it carries) to the new wording, then increment `TERMS_VERSION` in
+`config.py` to match. Every wallet is asked to accept again on its next sign-in.
+
 ## Architecture
 | Service   | Tech                                        | Port |
 |-----------|---------------------------------------------|------|
