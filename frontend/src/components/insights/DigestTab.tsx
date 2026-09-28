@@ -38,13 +38,21 @@ const SNAPSHOT_FIELDS: {
 // already 0-100 by the time they reach the snapshot (see routes/monthly.py
 // and services/insights.py:build_digest_snapshot's `round(... * 100, 1)`),
 // so "percent" here only ever adds the "%" sign, never rescales.
+//
+// `raw` is `null` (not a number) both when the backend genuinely has
+// nothing to show (e.g. FIRE off) and - since services/insights.py:
+// build_digest_snapshot - when the month has no MonthlyRecord at all, so
+// typed spend/savings rate are "not recorded" rather than 0. Both cases
+// render the same "not recorded" copy here; the backend is the one place
+// that decides which figures are allowed to be null in the first place.
 function formatSnapshotValue(
   raw: unknown,
   format: (typeof SNAPSHOT_FIELDS)[number]["format"],
   currency: string,
   locale: string,
+  notRecorded: string,
 ): string {
-  if (typeof raw !== "number") return "—";
+  if (typeof raw !== "number") return notRecorded;
   switch (format) {
     case "money":
       return fmtMoney(raw, currency, locale);
@@ -55,12 +63,13 @@ function formatSnapshotValue(
   }
 }
 
-/** The last fully completed calendar month - matches the "default the last
- *  completed one" digest period from the spec. */
-function lastCompletedMonthKey(): string {
+/** The current calendar month - a digest defaults to "this month at a
+ *  glance", not a guaranteed-empty prior month for someone who only just
+ *  started using the app (see services/insights.py:_default_digest_period).
+ *  The month input still lets the person pick any other month. */
+function currentMonthKey(): string {
   const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
 interface Props {
@@ -70,7 +79,7 @@ interface Props {
 export default function DigestTab({ status }: Props) {
   const { t, lang, locale } = useI18n();
   const { timeZone } = useSettings();
-  const [month, setMonth] = useState(lastCompletedMonthKey());
+  const [month, setMonth] = useState(currentMonthKey());
   const [insight, setInsight] = useState<Insight | null>(null);
   const [history, setHistory] = useState<InsightSummary[]>([]);
   const [busy, setBusy] = useState(false);
@@ -265,6 +274,7 @@ export default function DigestTab({ status }: Props) {
                             ? insight.snapshot!.base_currency
                             : "PLN",
                           locale,
+                          t("ins.digest.notRecorded"),
                         )}
                       </td>
                     </tr>
@@ -308,7 +318,6 @@ export default function DigestTab({ status }: Props) {
                 <button
                   onClick={() => open(h.id)}
                   className="min-w-0 text-left"
-                  disabled={h.status === "failed"}
                 >
                   <span className="block text-sm font-medium">
                     {h.period}

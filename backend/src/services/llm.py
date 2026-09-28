@@ -18,6 +18,19 @@ class LLMUnavailable(RuntimeError):
     """No model is configured, or the server could not be reached."""
 
 
+class LLMBadRequest(LLMUnavailable):
+    """The server was reachable but rejected this specific request (HTTP
+    4xx) - typically because it does not understand `response_format`.
+
+    Kept distinct from the base LLMUnavailable (timeout, connection
+    failure, 5xx, an empty answer) because only this case is safe to retry:
+    a caller that sent `response_format` can retry once without it and get
+    a different outcome. Retrying a timeout or a 5xx instead just doubles an
+    already-long wait for the same failure - see _complete_json in
+    services/insights.py.
+    """
+
+
 def using_mtls() -> bool:
     """Whether a client certificate is configured and actually present.
 
@@ -138,7 +151,13 @@ def complete(
     if res.status_code != 200:
         # The body carries the server's own reason (an unknown model name, a
         # prompt past the context window); the status alone would not.
-        raise LLMUnavailable(f"Model server returned {res.status_code}: {res.text[:300]}")
+        reason = f"Model server returned {res.status_code}: {res.text[:300]}"
+        if 400 <= res.status_code < 500:
+            # A rejection of this specific request, e.g. an unsupported
+            # `response_format` - distinct from "could not reach it" or "it
+            # errored", see LLMBadRequest.
+            raise LLMBadRequest(reason)
+        raise LLMUnavailable(reason)
 
     try:
         choice = res.json()["choices"][0]

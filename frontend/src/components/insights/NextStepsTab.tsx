@@ -30,29 +30,6 @@ export default function NextStepsTab({ status }: Props) {
   const [error, setError] = useState<string | null>(null);
   const pollId = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const loadLadder = useCallback(async () => {
-    try {
-      setLadder(await insightsApi.ladder());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("common.failedLoad"));
-    }
-  }, [t]);
-
-  const loadLatest = useCallback(async () => {
-    try {
-      setInsight(await insightsApi.latest("next_steps", lang));
-    } catch (e) {
-      if (!isNotFound(e)) {
-        setError(e instanceof Error ? e.message : t("common.failedLoad"));
-      }
-    }
-  }, [lang, t]);
-
-  useEffect(() => {
-    loadLadder();
-    loadLatest();
-  }, [loadLadder, loadLatest]);
-
   const stopPolling = useCallback(() => {
     if (pollId.current) {
       clearInterval(pollId.current);
@@ -81,6 +58,38 @@ export default function NextStepsTab({ status }: Props) {
     },
     [stopPolling, t],
   );
+
+  const loadLadder = useCallback(async () => {
+    try {
+      setLadder(await insightsApi.ladder());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("common.failedLoad"));
+    }
+  }, [t]);
+
+  const loadLatest = useCallback(async () => {
+    try {
+      // Not filtered to "done" any more (see routes/insights.py:
+      // latest_insight) - resume whatever the newest next_steps job is
+      // doing after a tab switch remounts this component, rather than only
+      // ever showing one that happened to already finish.
+      const latest = await insightsApi.latest("next_steps", lang);
+      setInsight(latest);
+      if (PENDING.includes(latest.status)) {
+        setBusy(true);
+        watch(latest.id);
+      }
+    } catch (e) {
+      if (!isNotFound(e)) {
+        setError(e instanceof Error ? e.message : t("common.failedLoad"));
+      }
+    }
+  }, [lang, t, watch]);
+
+  useEffect(() => {
+    loadLadder();
+    loadLatest();
+  }, [loadLadder, loadLatest]);
 
   async function refresh() {
     setBusy(true);
@@ -189,7 +198,10 @@ export default function NextStepsTab({ status }: Props) {
       )}
 
       {translationUnavailable && (
-        <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
+        <p className="text-xs subtle">
+          {t("ins.data.translationUnavailable")}
+          {insight?.error ? ` ${insight.error}` : ""}
+        </p>
       )}
 
       <LadderChecklist

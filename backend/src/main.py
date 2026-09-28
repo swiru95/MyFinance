@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,7 @@ from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
 from .services.price_service import PriceService
+from .services import llm_queue
 
 
 # NOTE: the schema is deliberately NOT created here. The runtime role has no
@@ -38,7 +40,19 @@ from .services.price_service import PriceService
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="MyFinance", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup and shutdown.
+
+    Startup: Clean up orphaned LLM jobs (pending/running/translating) left by
+    a crash/restart of the previous instance.
+    """
+    llm_queue.cleanup_interrupted_jobs()
+    yield
+
+
+app = FastAPI(title="MyFinance", version="1.0.0", lifespan=lifespan)
 
 if not auth_enabled():
     # Loud on purpose. Leaving the tenant unset is the documented way to run

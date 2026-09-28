@@ -38,7 +38,15 @@ PROFILE_JSON_SCHEMA = {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
-                        "about": {"type": "string"},
+                        "about": {
+                            "type": "string",
+                            "description": (
+                                "A short plain-language phrase naming what "
+                                "disagrees, e.g. 'risk tolerance' or 'cash "
+                                "buffer size' - never a snake_case "
+                                "identifier or field name."
+                            ),
+                        },
                         "stated": {"type": "string"},
                         "actual": {"type": "string"},
                         "why_it_matters": {"type": "string"},
@@ -104,6 +112,10 @@ from the inputs given, not from their stated tolerance.
 risk appetite, independent of what they say they want.
 - List a mismatch only where stated, capacity and revealed genuinely \
 disagree - do not manufacture one to fill the list.
+- Each mismatch's "about" is a short plain-language phrase a person would \
+say out loud, e.g. "risk tolerance" or "how much cash you keep spare" - \
+never a snake_case identifier, a field name, or a copy of a key from the \
+data you were given.
 - priorities is at most 3 short phrases, ranked by importance.
 - summary_md is two or three plain sentences of Markdown, no heading.
 - This is analysis of their own figures, not regulated financial advice."""
@@ -144,28 +156,42 @@ What moved compared to the trailing average - income, spend, portfolio \
 value - each tied to a figure.
 
 ## One thing to focus on
-Exactly one action. Tie it to one ladder status key or one flagged item \
-given below, and say what to actually do about it.
+Exactly one action. Tie it to one flagged item or ladder line given below by \
+its plain-language description, and say what to actually do about it.
 
 Rules you must follow:
 - Use only the figures given below. Never invent a number.
 - Quote amounts in {currency}, formatted the way they appear in the data.
 - Be direct about what is flagged, if anything is.
+- Refer to ladder lines and flagged items only by the plain-language \
+description given for them - never quote an internal key or field name \
+(e.g. write "stale data", never "stale_data").
 - This is analysis of their own figures, not regulated financial advice - \
 you should not add a disclaimer, the application shows one already."""
 
-_LOCALIZE_SYSTEM = """You are a professional financial translator. Translate \
-every string value in the JSON object you are given from English to \
-natural Polish financial language.
+_LOCALIZE_SYSTEM = """You are a professional financial translator. You are \
+given a JSON array of English strings. Translate each one to natural \
+Polish financial language and answer with a JSON array of the same length, \
+in the same order - one translated string per input string.
 
 Rules you must follow:
-- Keep the same JSON keys and the same array lengths as given - never add, \
-remove or rename a key, and never add or drop an array item.
+- Return exactly as many strings as you were given, in the same order - \
+never add, remove, merge or reorder items.
 - Leave any number, percentage, date or currency amount inside a string \
 exactly as it is.
 - Keep Markdown formatting (headings, bullets, bold) exactly as it is - \
 translate only the prose around it.
-- Output only the JSON object. Do not add commentary, notes or a preamble."""
+- Output only the JSON array. Do not add commentary, notes or a preamble."""
+
+_LOCALIZE_LEAF_SYSTEM = """You are a professional financial translator. \
+Translate the user's message from English to natural Polish financial \
+language.
+
+Rules you must follow:
+- Leave any number, percentage, date or currency amount exactly as it is.
+- Keep Markdown formatting (headings, bullets, bold) exactly as it is - \
+translate only the prose around it.
+- Output only the translation. Do not add commentary, notes or a preamble."""
 
 
 # --- Polish localisation of `data` ------------------------------------
@@ -223,63 +249,158 @@ _LOCALIZABLE = {
 }
 
 
-def _json_schema_for(value) -> dict:
-    """A json_schema fragment shaped like `value`, for the translation
-    request's response_format - built from the payload itself so it always
-    matches, rather than hand-maintaining a schema per kind."""
-    if isinstance(value, list):
-        items = _json_schema_for(value[0]) if value else {"type": "string"}
-        return {"type": "array", "items": items}
+def _flatten_strings(value) -> list[str]:
+    """Every leaf string in `value`, depth-first, in the order a plain walk
+    of dicts (by insertion order) and lists visits them - the same order
+    `_unflatten_strings` reads them back in, so the two are always used as a
+    matched pair over the same-shaped `value`."""
     if isinstance(value, dict):
-        return {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {k: _json_schema_for(v) for k, v in value.items()},
-            "required": list(value.keys()),
-        }
-    return {"type": "string"}
+        out: list[str] = []
+        for v in value.values():
+            out.extend(_flatten_strings(v))
+        return out
+    if isinstance(value, list):
+        out = []
+        for v in value:
+            out.extend(_flatten_strings(v))
+        return out
+    return [value]
 
 
-def _validate_translation_shape(original, translated) -> bool:
-    """Same keys, same array lengths, every leaf a string - checked
-    recursively rather than trusting response_format, because not every
-    model behind the router enforces the schema it was given."""
-    if isinstance(original, dict):
-        return (
-            isinstance(translated, dict)
-            and set(translated.keys()) == set(original.keys())
-            and all(_validate_translation_shape(v, translated[k]) for k, v in original.items())
-        )
-    if isinstance(original, list):
-        return (
-            isinstance(translated, list)
-            and len(translated) == len(original)
-            and all(_validate_translation_shape(o, t) for o, t in zip(original, translated))
-        )
-    return isinstance(translated, str)
+def _unflatten_strings(value, strings: list[str], cursor: list[int]):
+    """Rebuild a structure shaped like `value`, with each leaf replaced by
+    the next string from `strings` (consumed in `_flatten_strings` order).
+    `cursor` is a one-element list used as a mutable position across the
+    recursion, since plain ints don't mutate through a call."""
+    if isinstance(value, dict):
+        return {k: _unflatten_strings(v, strings, cursor) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_unflatten_strings(v, strings, cursor) for v in value]
+    s = strings[cursor[0]]
+    cursor[0] += 1
+    return s
+
+
+def _first_json_array(text: str) -> list:
+    """The first top-level JSON array in `text` - see _first_json_object,
+    which this mirrors for the array-shaped translation response."""
+    start = text.find("[")
+    if start == -1:
+        raise ValueError("model did not return a JSON array")
+    obj, _ = json.JSONDecoder().raw_decode(text, start)
+    if not isinstance(obj, list):
+        raise ValueError("model did not return a JSON array")
+    return obj
+
+
+def _translate_leaf(model: str, leaf: str) -> str:
+    """Translate one string to Polish on its own. Raises LLMUnavailable if
+    the model is unreachable (timeout, connection error, 5xx), which stops
+    the per-leaf loop; other failures return an empty string so that a
+    single stubborn leaf never fails the whole fallback."""
+    try:
+        return llm.complete(
+            model, _LOCALIZE_LEAF_SYSTEM, leaf,
+            temperature=0.2, max_tokens=settings.llm_translate_max_tokens,
+        ).strip()
+    except llm.LLMUnavailable:
+        raise
+    except Exception:
+        # Any other error (malformed response, etc.) - fall back to English
+        # for this leaf only, don't stop the whole per-leaf loop.
+        return ""
+
+
+def _translate_leaves_individually(model: str, leaves: list[str]) -> tuple[list[str], int]:
+    """One small request per string rather than one big structured one -
+    the fallback when the bulk array call comes back the wrong shape.
+    Returns (translated leaves, how many fell back to their English
+    original because that individual request also failed). Stops at the
+    first LLMUnavailable (model is down) and keeps English for remaining."""
+    out: list[str] = []
+    failures = 0
+    for i, leaf in enumerate(leaves):
+        try:
+            translated = _translate_leaf(model, leaf)
+            if not translated:
+                failures += 1
+                out.append(leaf)
+            else:
+                out.append(translated)
+        except llm.LLMUnavailable:
+            # Model became unavailable; keep English for this and remaining leaves
+            out.append(leaf)
+            out.extend(leaves[i + 1:])
+            # Count the unavailable ones as failures so localize_data
+            # knows the result is not fully localized.
+            failures += len(leaves) - i
+            break
+    return out, failures
 
 
 def localize_data(data: dict, kind: str) -> tuple[dict | None, str | None]:
-    """Translate only `data`'s prose fields to Polish in one call, leaving
-    enums, keys and numbers untouched. Returns (data_localized, failure
-    reason) - never raises, because the English `data` and `content` have
-    already made the job usable and a translation problem should degrade to
-    a UI note rather than fail the whole insight."""
+    """Translate only `data`'s prose fields to Polish, leaving enums, keys
+    and numbers untouched. Returns (data_localized, note) - never raises,
+    because the English `data` and `content` have already made the job
+    usable and a translation problem should degrade to a UI note rather
+    than fail the whole insight.
+
+    The prose is sent as a flat JSON array of strings rather than as an
+    object mirroring `data`'s own keys: a model translating a nested object
+    has been observed translating (or otherwise mangling) the *keys* too,
+    which then fails validation and loses the whole translation. An array
+    has no keys to mangle, and position - not a key - says which leaf is
+    which, so `_unflatten_strings` can always put the answer back in the
+    right place as long as the length matches.
+
+    If that bulk call comes back malformed (wrong length, not a JSON array),
+    this falls back to translating each string on its own rather than giving
+    up on the whole thing. If the server is unreachable (LLMUnavailable),
+    gives up immediately with no per-leaf fallback. `note` is only ever set
+    when at least one string could not be translated at all, not merely
+    because the bulk attempt needed the fallback.
+    """
     extract, merge = _LOCALIZABLE[kind]
     payload = extract(data)
-    schema = {"name": "localized_prose", "schema": _json_schema_for(payload)}
+    leaves = _flatten_strings(payload)
+    if not leaves:
+        return merge(data, payload), None
+
+    model = settings.llm_translate_model
+    schema = {"name": "localized_strings", "schema": {"type": "array", "items": {"type": "string"}}}
+
+    translated_leaves: list[str] | None = None
+    bulk_failure: str | None = None
     try:
-        text = _complete_json(
-            settings.llm_translate_model, _LOCALIZE_SYSTEM, json.dumps(payload), schema,
-        )
-        translated = _first_json_object(text)
-    except (llm.LLMUnavailable, ValueError) as exc:
-        return None, f"could not translate the structured result: {exc}"
+        text = _complete_json(model, _LOCALIZE_SYSTEM, json.dumps(leaves), schema)
+        candidate = _first_json_array(text)
+        if len(candidate) == len(leaves) and all(isinstance(s, str) for s in candidate):
+            translated_leaves = candidate
+        else:
+            # Wrong shape from the model; try per-leaf fallback
+            bulk_failure = "translation returned an unexpected shape"
+    except llm.LLMUnavailable as exc:
+        # Model is down (timeout, connection error, 5xx); don't retry per-leaf
+        return None, f"could not reach the model server: {exc}"
+    except ValueError as exc:
+        # JSON parsing or other shape error; try per-leaf fallback
+        bulk_failure = f"could not translate the structured result: {exc}"
 
-    if not _validate_translation_shape(payload, translated):
-        return None, "translation returned an unexpected shape"
+    note = None
+    if translated_leaves is None:
+        try:
+            translated_leaves, failures = _translate_leaves_individually(model, leaves)
+            if failures == len(leaves):
+                return None, bulk_failure or "could not translate individual strings"
+            if failures:
+                note = f"{failures} of {len(leaves)} strings could not be translated and are shown in English"
+        except llm.LLMUnavailable as exc:
+            # This shouldn't happen (per-leaf stops on first unavailable),
+            # but if it does, give up rather than retry.
+            return None, f"model became unavailable during per-leaf translation: {exc}"
 
-    return merge(data, translated), None
+    translated = _unflatten_strings(payload, translated_leaves, [0])
+    return merge(data, translated), note
 
 
 # --- Questionnaire --------------------------------------------------------
@@ -305,13 +426,20 @@ def save_profile_answers(db: Session, answers: ProfileAnswers) -> None:
 
 def _complete_json(model: str, system: str, user: str, response_format: dict) -> str:
     """One structured completion, retried once without `response_format`
-    when the server does not understand it - see llm.complete's docstring."""
+    only when the server rejected the request outright (HTTP 4xx, e.g. it
+    does not understand `response_format`) - see llm.LLMBadRequest.
+
+    A timeout or connection failure (the base LLMUnavailable) is deliberately
+    not retried here: the caller already waited out settings.llm_timeout
+    once, and retrying would silently double an already-minutes-long wait
+    instead of surfacing the failure - see llm.complete's docstring.
+    """
     try:
         return llm.complete(
             model, system, user, temperature=0.2,
             max_tokens=settings.llm_max_tokens, response_format=response_format,
         )
-    except llm.LLMUnavailable:
+    except llm.LLMBadRequest:
         return llm.complete(
             model, system, user, temperature=0.2, max_tokens=settings.llm_max_tokens,
         )
@@ -332,11 +460,15 @@ def _first_json_object(text: str) -> dict:
 
 
 def _default_digest_period(db: Session) -> str:
-    from .budget import month_key, shift_month
+    """The month a digest opens on when none was requested: the current
+    calendar month, not the last completed one - a person who only started
+    using the app this month still wants "this month at a glance", not a
+    guaranteed-empty prior month with no MonthlyRecord (see
+    build_digest_snapshot for how that empty month is now represented)."""
+    from .budget import month_key
     from ..routes.helpers import today_in
 
-    today = today_in(db)
-    return shift_month(month_key(today), -1)
+    return month_key(today_in(db))
 
 
 # --- Profile ---------------------------------------------------------------
@@ -482,11 +614,48 @@ def run_profile(snapshot: dict) -> tuple[dict, str, str]:
 
 # --- Digest ------------------------------------------------------------
 
+# Human-readable labels for the ladder's rung keys and the digest's own
+# anomaly keys, for the digest prompt only - services/ladder.py's RUNG_KEYS
+# and this function's own anomaly keys are internal identifiers, and hand
+# ing one to the model as if it were prose got it echoed back verbatim (a
+# headline that read "stale_data"), which the Polish translator then further
+# mangled into something like "stale_dane" since it had no way to know the
+# word was not meant to be translated. Mirrors the (untranslated, English)
+# copy in frontend/src/lib/strings/insights.ts's `ins.ladder.<key>.title`.
+_RUNG_LABELS = {
+    "starter_buffer": "Starter buffer",
+    "envelope_covered": "Tax envelope covered",
+    "emergency_fund": "Emergency fund",
+    "ppk_on": "PPK contributions",
+    "ikze_used": "IKZE allowance",
+    "ike_used": "IKE allowance",
+    "fire_configured": "FIRE plan set up",
+    "savings_rate_on_track": "Savings rate on track",
+    "data_fresh": "Data up to date",
+}
+
+_ANOMALY_LABELS = {
+    "spend_spike": "Spend spike",
+    "typed_effective_gap": "Typed vs effective spend gap",
+    "envelope_not_covered": "Tax envelope not covered",
+    "stale_data": "Data needs updating",
+}
+
+
+def _rung_label(key: str) -> str:
+    return _RUNG_LABELS.get(key, key.replace("_", " "))
+
+
+def _anomaly_label(key: str) -> str:
+    return _ANOMALY_LABELS.get(key, key.replace("_", " "))
+
+
 def build_digest_snapshot(db: Session, period: str) -> dict:
     from ..models.position import Position
     from ..routes import monthly as monthly_routes
     from ..routes.fire import get_fire
     from ..routes.helpers import get_features, today_in
+    from ..routes.statistics import allocation as allocation_route
     from .budget import wallet_window
 
     today = today_in(db)
@@ -495,14 +664,25 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
     hist = monthly_routes.analytics(months_back=12, months_ahead=0, db=db)
     rungs = ladder.build_ladder(db)
 
+    # No MonthlyRecord for this month at all (`saved`) means nobody typed a
+    # spend figure into it - not that they spent nothing. Left as the
+    # record's own 0.0 defaults, this used to reach the model (and the
+    # DigestTab snapshot table) as "typed spend: 0.00" and "savings rate:
+    # 100%", which is actively wrong rather than merely unhelpful - a month
+    # that was never recorded needs to say so, not claim a number.
+    typed_spend = month_out.actual_in_base if month_out.saved else None
+    savings_rate = month_out.savings_rate if month_out.saved else None
+
     effective_hist = [
         p.effective for p in hist.timeline if p.month != period and p.effective is not None
     ]
     median_effective = statistics.median(effective_hist) if effective_hist else None
 
-    # Portfolio off => no flows/market-movement split to report.
+    # Portfolio off => no flows/market-movement split, and no holdings to
+    # summarise.
     flows = 0.0
     market_change = None
+    holdings_summary = None
     if features.portfolio:
         window = wallet_window(period, today)
         if window is not None and month_out.wallet_change is not None:
@@ -514,6 +694,20 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
             )
             market_change = round(month_out.wallet_change - flows, 2)
 
+        alloc = allocation_route(db=db)
+        top_holdings = sorted(alloc["items"], key=lambda i: i["value"], reverse=True)[:5]
+        holdings_summary = {
+            "total_value": alloc["total"],
+            "top_holdings": [
+                {"name": h["name"], "category": h["category"], "value": h["value"], "percent": h["percent"]}
+                for h in top_holdings
+            ],
+            "by_category": [
+                {"category": c["category"], "value": c["value"], "percent": c["percent"]}
+                for c in alloc["by_category"]
+            ],
+        }
+
     # Fire off => no FI progress to report.
     fi_progress = None
     years_to_fi = None
@@ -524,7 +718,7 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
         years_to_fi = result.get("simulate", {}).get("years") if result else None
 
     spend_figure = (
-        month_out.effective_spent if month_out.effective_spent is not None else month_out.actual_spent
+        month_out.effective_spent if month_out.effective_spent is not None else typed_spend
     )
     anomalies: list[dict] = []
     if median_effective and spend_figure is not None and spend_figure > 1.3 * median_effective:
@@ -563,13 +757,20 @@ def build_digest_snapshot(db: Session, period: str) -> dict:
         "base_currency": month_out.base_currency,
         "income_sources": month_out.income_sources,
         "income_total": month_out.income_in_base,
-        "typed_spend": month_out.actual_in_base,
+        "recorded": month_out.saved,
+        "typed_spend": typed_spend,
         "effective_spend": month_out.effective_spent,
-        "savings_rate": month_out.savings_rate,
+        "savings_rate": savings_rate,
         "avg_savings_rate_12m": hist.avg_savings_rate,
+        "committed": month_out.committed,
+        "committed_by_category": month_out.by_category,
+        "breakdown": month_out.breakdown,
+        "commitments_paid_total": month_out.commitments_paid_total,
+        "other_spent": month_out.other_spent,
         "wallet_change": month_out.wallet_change,
         "flows": round(flows, 2),
         "market_change": market_change,
+        "holdings_summary": holdings_summary,
         "fi_progress_pct": round(fi_progress * 100, 1) if fi_progress is not None else None,
         "years_to_fi": years_to_fi,
         "ladder": [{"key": r["key"], "status": r["status"], "figures": r["figures"]} for r in rungs],
@@ -588,7 +789,15 @@ def render_digest_snapshot(snap: dict) -> str:
     def money(v):
         return f"{v:,.2f} {cur}" if v is not None else "not recorded"
 
-    out = [f"# {snap['period']} at a glance\n", "## Income by source"]
+    out = [f"# {snap['period']} at a glance\n"]
+    if not snap.get("recorded", True):
+        out.append(
+            "No figures were saved for this month yet (no MonthlyRecord) - "
+            "typed spend and this month's savings rate are not recorded "
+            "below, not zero.\n"
+        )
+
+    out.append("## Income by source")
     if snap["income_sources"]:
         for s in snap["income_sources"]:
             out.append(f"- {s['name']} ({s['kind']}): {money(s['net_in_base'])}")
@@ -596,8 +805,17 @@ def render_digest_snapshot(snap: dict) -> str:
         out.append("- No income sources recorded.")
     out.append(f"\nTotal net income: {money(snap['income_total'])}\n")
 
+    out.append("## Committed spending")
+    out.append(f"Committed this month: {money(snap.get('committed'))}")
+    for c in snap.get("committed_by_category") or []:
+        out.append(f"- {c['category']}: {money(c['total'])}")
+    out.append("")
+
     out.append("## Spending")
     out.append(f"Typed spend: {money(snap['typed_spend'])}")
+    if snap.get("breakdown"):
+        out.append(f"- Of which recurring commitments paid: {money(snap.get('commitments_paid_total'))}")
+        out.append(f"- Of which other spending: {money(snap.get('other_spent'))}")
     out.append(f"Effective spend (income minus portfolio change): {money(snap['effective_spend'])}")
     out.append(
         f"Savings rate this month: {snap['savings_rate']}%"
@@ -614,6 +832,13 @@ def render_digest_snapshot(snap: dict) -> str:
         out.append(f"Total change: {money(snap['wallet_change'])}")
         out.append(f"From flows (money moved in/out): {money(snap['flows'])}")
         out.append(f"From market movement: {money(snap['market_change'])}")
+        hs = snap.get("holdings_summary")
+        if hs:
+            out.append(f"Current total portfolio value: {money(hs['total_value'])}")
+            if hs["top_holdings"]:
+                out.append("Largest holdings:")
+                for h in hs["top_holdings"]:
+                    out.append(f"- {h['name']} ({h['category']}): {money(h['value'])}, {h['percent']:.1f}%")
     out.append("")
 
     out.append("## FIRE progress")
@@ -630,13 +855,13 @@ def render_digest_snapshot(snap: dict) -> str:
 
     out.append("## Ladder status")
     for r in snap["ladder"]:
-        out.append(f"- {r['key']}: {r['status']}")
+        out.append(f"- {_rung_label(r['key'])}: {r['status']}")
     out.append("")
 
     out.append("## Flagged")
     if snap["anomalies"]:
         for a in snap["anomalies"]:
-            out.append(f"- {a['key']}: {a['detail']}")
+            out.append(f"- {_anomaly_label(a['key'])}: {a['detail']}")
     else:
         out.append("- Nothing flagged.")
     return "\n".join(out)
@@ -726,8 +951,8 @@ def run_next_steps(snapshot: dict) -> tuple[dict, str, str, list[str]]:
 
 def generate(db: Session, insight) -> None:
     """Write one insight, start to finish - the same pending -> running ->
-    (translating ->) done|failed lifecycle as Report, driven from a worker
-    thread by routes/insights.py."""
+    (translating ->) done|failed lifecycle as Report, driven from the shared
+    LLM queue's worker by routes/insights.py."""
     try:
         insight.status = "running"
         db.commit()
@@ -761,22 +986,39 @@ def generate(db: Session, insight) -> None:
             insight.content = content_en
             insight.status = "translating"
             db.commit()
-            polish, translator = assessment.translate_to_polish(content_en)
-            insight.content = polish
-            insight.translator = translator
+            translator_is_down = False
+            try:
+                polish, translator = assessment.translate_to_polish(content_en)
+                insight.content = polish
+                insight.translator = translator
+            except llm.LLMBadRequest as exc:
+                # Client error (e.g. model doesn't support response_format);
+                # try localize_data anyway, might work for simpler requests.
+                insight.error = f"Could not translate to Polish, showing English: {exc}"
+            except llm.LLMUnavailable as exc:
+                # The English content_en already stored above is a complete,
+                # useful result - losing it to a translation hiccup would
+                # throw away a finished insight over one extra model call,
+                # so this degrades to English-with-a-note rather than
+                # failing the whole job. Skip localize_data since the
+                # translator is down - no point in per-leaf retries either.
+                translator_is_down = True
+                insight.error = f"Could not translate to Polish, showing English: {exc}"
 
-            if insight.kind in _LOCALIZABLE:
+            if insight.kind in _LOCALIZABLE and not translator_is_down:
                 # profile/next_steps render `data` as prose directly (not
                 # through `content`), so it needs its own translation pass.
                 # A failure here must not fail a job whose Markdown content
                 # already translated fine - it only means the tab falls back
-                # to English data with a note, so record it on `error`
-                # (still empty at this point for a job reaching "done")
-                # rather than raising.
-                localized, reason = localize_data(data, insight.kind)
+                # to English data with a note, so record it alongside
+                # `error` (which may already hold the note above) rather
+                # than raising.
+                localized, note = localize_data(data, insight.kind)
                 insight.data_localized = localized
-                if reason:
-                    insight.error = f"Data translation unavailable: {reason}"
+                if note:
+                    prefix = "Data translation unavailable" if localized is None else "Data translation incomplete"
+                    data_note = f"{prefix}: {note}"
+                    insight.error = f"{insight.error} {data_note}".strip() if insight.error else data_note
         else:
             insight.content = content_en
 
