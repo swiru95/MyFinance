@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, fmtMoney, request } from "@/lib/api";
+import { api, fmtMoney, fmtSigned, fmtSignedPct, request } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useFeatures } from "@/lib/features";
+import { fireApi } from "@/lib/fireApi";
 import type { Prices } from "@/lib/types";
-import type { AssetWithWrapper, PositionWithFlow } from "@/lib/fireTypes";
+import type { AssetWithWrapper, PortfolioGrowth, PositionWithFlow } from "@/lib/fireTypes";
 import PositionForm from "@/components/PositionForm";
 import PositionCard from "@/components/PositionCard";
 import AssetForm from "@/components/fire/AssetForm";
@@ -26,6 +27,7 @@ export default function PositionsPage() {
   const [assets, setAssets] = useState<AssetWithWrapper[]>([]);
   const [positions, setPositions] = useState<PositionWithFlow[]>([]);
   const [prices, setPrices] = useState<Prices | null>(null);
+  const [growth, setGrowth] = useState<PortfolioGrowth | null>(null);
   const [openFor, setOpenFor] = useState<number | null>(null); // asset id for add form
   const [historyFor, setHistoryFor] = useState<number | null>(null); // position id
   const [history, setHistory] = useState<PositionWithFlow[]>([]);
@@ -34,6 +36,11 @@ export default function PositionsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    // Started alongside the rest rather than after it, but kept off the
+    // same Promise.all: growth is a nice-to-have summary, and a failure of
+    // just this call must not blank out the assets/positions the rest of
+    // the page depends on.
+    const growthPromise = fireApi.growth().catch(() => null);
     try {
       const [a, p, pr] = await Promise.all([
         api.assets(),
@@ -47,6 +54,7 @@ export default function PositionsPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.failedLoad"));
     }
+    setGrowth(await growthPromise);
   }, []);
 
   useEffect(() => {
@@ -54,6 +62,7 @@ export default function PositionsPage() {
   }, [refresh, portfolio]);
 
   const positionByAsset = new Map(positions.map((p) => [p.asset_id, p]));
+  const growthByAsset = new Map((growth?.assets ?? []).map((g) => [g.asset_id, g]));
   const base = prices?.base_currency ?? "PLN";
 
   // Group the asset cards by class, preserving the order the classes first
@@ -124,6 +133,42 @@ export default function PositionsPage() {
         </div>
       )}
 
+      {growth && growth.total.invested > 0 && (
+        <div className="card">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <p className="flex items-center text-sm muted">
+                {t("growth.yourMoney")}
+                <InfoTip text={t("growth.infoTip")} label={t("growth.yourMoney")} />
+              </p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {fmtMoney(growth.total.invested, base, locale)}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm muted">{t("growth.growth")}</p>
+              <p
+                className={`mt-1 text-2xl font-semibold tabular-nums ${
+                  growth.total.growth >= 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                }`}
+              >
+                {fmtSigned(growth.total.growth, base, locale)}
+                {growth.total.growth_pct != null &&
+                  ` (${fmtSignedPct(growth.total.growth_pct, locale)})`}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm muted">{t("growth.valueNow")}</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {fmtMoney(growth.total.value, base, locale)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {groups.map((group) => (
         <section key={group.name} className="space-y-3">
           <div className="flex items-baseline justify-between border-b border-slate-200 pb-1 dark:border-slate-700">
@@ -188,6 +233,7 @@ export default function PositionsPage() {
                   pos={pos}
                   asset={asset}
                   base={base}
+                  growth={growthByAsset.get(asset.id) ?? null}
                   historyFor={historyFor}
                   history={history}
                   onUpdate={() => setOpenFor(asset.id)}
@@ -223,6 +269,7 @@ export default function PositionsPage() {
             <PositionForm
               asset={assets.find((a) => a.id === openFor)!}
               prices={prices}
+              previous={positionByAsset.get(openFor)}
               onSubmit={() => {
                 setOpenFor(null);
                 refresh();

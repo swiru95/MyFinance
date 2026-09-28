@@ -7,6 +7,7 @@ import type {
   AssetWithWrapper,
   FireResponse,
   FireSettings,
+  PortfolioGrowth,
   PositionWithFlow,
   Wrapper,
 } from "./fireTypes";
@@ -68,4 +69,7 @@ export const fireApi = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Your money vs. growth, per asset and in total (see
+   *  backend/src/services/growth.py). */
+  growth: () => request<PortfolioGrowth>("/positions/growth"),
 };

@@ -158,6 +158,25 @@ export const en: Record<string, string> = {
   "fire.pos.flowRecorded": "Deposited / withdrawn: {value}",
   "fire.pos.historyFlow": "Deposited / withdrawn",
 
+  // "Your money vs. growth" (see backend/src/services/growth.py). Kept
+  // under its own `growth.` prefix, not `fire.pos.`, since it is shown on
+  // /positions independently of the flow-entry form.
+  "growth.yourMoney": "Your money",
+  "growth.growth": "Growth",
+  "growth.valueNow": "Value now",
+  "growth.infoTip":
+    "Your money = opening balance + deposits − withdrawals. Everything else counts as growth — interest, price changes, exchange rates.",
+  "growth.lastUpdate": "Last update",
+  "growth.lastUpdateLine": "{change} = paid in {flow} + growth {growth}",
+  "growth.lastUpdateLineNoFlow": "{change} = nothing paid in entered + growth {growth}",
+  "growth.historyColumn": "Growth",
+  "growth.flowLabelWithPrevious":
+    "How much did you pay in since the last update? (optional, {unit})",
+  "growth.flowHintWithPrevious":
+    "Leave empty if you added nothing — the whole change then counts as growth. A withdrawal is a negative number.",
+  "growth.saveUpdate": "Save update",
+  "growth.previewLine": "Change since last update {change} = paid in {paid} + growth {growth}",
+
   "fire.asset.addNew": "+ Add asset",
   "fire.asset.addTitle": "Add asset",
   "fire.asset.editTitle": "Edit asset",
@@ -364,6 +383,22 @@ export const pl: Record<string, string> = {
   "fire.pos.invalidFlow": "Podaj poprawną kwotę albo zostaw puste.",
   "fire.pos.flowRecorded": "Wpłata / wypłata: {value}",
   "fire.pos.historyFlow": "Wpłata / wypłata",
+
+  "growth.yourMoney": "Twoje wpłaty",
+  "growth.growth": "Wzrost",
+  "growth.valueNow": "Wartość teraz",
+  "growth.infoTip":
+    "Twoje wpłaty = saldo początkowe + wpłaty − wypłaty. Wszystko inne liczy się jako wzrost — odsetki, zmiany cen, kursy walut.",
+  "growth.lastUpdate": "Ostatnia aktualizacja",
+  "growth.lastUpdateLine": "{change} = wpłacono {flow} + wzrost {growth}",
+  "growth.lastUpdateLineNoFlow": "{change} = nic nie wpłacono + wzrost {growth}",
+  "growth.historyColumn": "Wzrost",
+  "growth.flowLabelWithPrevious":
+    "Ile wpłaciłeś(-aś) od ostatniej aktualizacji? (opcjonalnie, {unit})",
+  "growth.flowHintWithPrevious":
+    "Zostaw puste, jeśli nic nie dopłacałeś(-aś) — wtedy cała zmiana liczy się jako wzrost. Wypłata to liczba ujemna.",
+  "growth.saveUpdate": "Zapisz aktualizację",
+  "growth.previewLine": "Zmiana od ostatniej aktualizacji {change} = wpłacono {paid} + wzrost {growth}",
 
   "fire.asset.addNew": "+ Dodaj aktywo",
   "fire.asset.addTitle": "Dodaj aktywo",

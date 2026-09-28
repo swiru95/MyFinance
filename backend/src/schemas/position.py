@@ -42,3 +42,45 @@ class PositionOut(BaseModel):
     @field_serializer("timestamp")
     def _utc(self, value):
         return as_utc(value)
+
+
+class GrowthLast(BaseModel):
+    """The latest snapshot vs. the one before it."""
+
+    change: float
+    flow: float | None
+    growth: float
+    since: datetime
+    at: datetime
+
+    @field_serializer("since", "at")
+    def _utc(self, value):
+        return as_utc(value)
+
+
+class AssetGrowth(BaseModel):
+    asset_id: int
+    opening_value: float
+    contributed: float
+    untracked_updates: int
+    invested: float
+    value: float
+    growth: float
+    growth_pct: float | None
+    last: GrowthLast | None
+
+
+class GrowthTotal(BaseModel):
+    opening_value: float
+    contributed: float
+    invested: float
+    value: float
+    growth: float
+    growth_pct: float | None
+    untracked_updates: int
+
+
+class PortfolioGrowthOut(BaseModel):
+    base_currency: str
+    assets: list[AssetGrowth]
+    total: GrowthTotal

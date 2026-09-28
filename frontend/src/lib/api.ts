@@ -201,6 +201,27 @@ export function fmtNum(value: number, digits = 2, locale = "en-US"): string {
   }).format(value);
 }
 
+/** Same as fmtMoney but always carries an explicit +/− sign (e.g. "+100.00
+ *  zł" / "−20.00 zł") - used wherever a figure can be a gain or a loss and
+ *  the sign itself is the point (growth, deposits/withdrawals). */
+export function fmtSigned(value: number, currency: string, locale = "en-US"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+    signDisplay: "exceptZero",
+  }).format(value);
+}
+
+/** A fraction (0.018 -> "+1.8%") with an explicit sign, for growth_pct. */
+export function fmtSignedPct(value: number, locale = "en-US"): string {
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 1,
+    signDisplay: "exceptZero",
+  }).format(value);
+}
+
 /** A timestamp rendered in the configured zone, not the browser's. */
 export function fmtDateTime(
   iso: string,

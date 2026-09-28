@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..schemas.position import PositionIn, PositionOut, PositionUpdate
+from ..schemas.position import PositionIn, PositionOut, PositionUpdate, PortfolioGrowthOut
 from ..models.asset import Asset
 from ..models.position import Position
+from ..services.growth import portfolio_growth
 from .helpers import get_asset, compute_value
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
@@ -96,6 +97,13 @@ def create_position(payload: PositionIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(pos)
     return pos
+
+
+@router.get("/growth", response_model=PortfolioGrowthOut)
+def get_growth(db: Session = Depends(get_db)):
+    """Your money vs. growth, per asset and in total. Declared ahead of
+    /{position_id} so "growth" is never parsed as a position id."""
+    return portfolio_growth(db)
 
 
 @router.get("/{position_id}/history", response_model=list[PositionOut])

@@ -40,3 +40,6 @@ data/
 # a bare filename. Only the README's own image belongs there.
 /*.png
 !/dashboard.png
+
+# Agent worktrees (Claude Code isolation)
+.claude/worktrees/
