@@ -1,13 +1,24 @@
 import { fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import type { FireResult } from "@/lib/fireTypes";
+import type { FireInputs, FireResult } from "@/lib/fireTypes";
 
 interface Props {
   result: FireResult;
+  inputs: FireInputs;
   base: string;
 }
 
-export default function HeadlineStats({ result, base }: Props) {
+/** The top FIRE layer (round 2 spec item 8): three plain answers - how much
+ *  you need, when you get there, how much to put aside each month - plus
+ *  the progress bar, all in one glance with nothing collapsed. The Coast FI
+ *  tile that used to sit here moved to VariantCards under "Details": it is
+ *  a variant on the FI number, not one of the three headline answers, and
+ *  VariantCards already prices it out with the same figure. "How much to
+ *  put aside" is former TwoQuestions' q1 card, folded in here rather than
+ *  left as a fourth item below the fold - see RequiredIncomeCard.tsx for
+ *  its sibling q2 (how much to *earn*), which stayed under Details since it
+ *  is a step further than the three headline answers. */
+export default function HeadlineStats({ result, inputs, base }: Props) {
   const { t, locale } = useI18n();
   const progressPct =
     result.progress != null ? Math.max(0, Math.min(result.progress * 100, 100)) : null;
@@ -53,17 +64,36 @@ export default function HeadlineStats({ result, base }: Props) {
       </div>
 
       <div className="card">
-        <p className="text-sm muted">{t("fire.stat.coast")}</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">
-          {fmtMoney(result.coast.number, base, locale)}
-        </p>
-        <p
-          className={`mt-1 text-xs ${
-            result.coast.reached ? "text-emerald-600 dark:text-emerald-400" : "subtle"
-          }`}
-        >
-          {result.coast.reached ? t("fire.stat.coastReached") : t("fire.stat.coastNotYet")}
-        </p>
+        <p className="text-sm muted">{t("fire.q1.title")}</p>
+        {result.required ? (
+          <>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">
+              {fmtMoney(result.required.contribution, base, locale)}
+              <span className="ml-1 text-sm font-normal muted">{t("fire.perMonth")}</span>
+            </p>
+            <p className="mt-1 text-xs subtle">
+              {t("fire.q1.rateVsCurrent", {
+                required:
+                  result.required.savings_rate != null
+                    ? `${fmtNum(result.required.savings_rate * 100, 0, locale)}%`
+                    : "—",
+                current:
+                  result.current_savings_rate != null
+                    ? `${fmtNum(result.current_savings_rate * 100, 0, locale)}%`
+                    : "—",
+              })}
+            </p>
+            <details className="mt-1 text-xs subtle">
+              <summary className="cursor-pointer">{t("fire.howComputed")}</summary>
+              <p className="mt-1">{t("fire.q1.formula")}</p>
+              <p className="mt-1">
+                {t(`fire.contributionSource.${inputs.contribution_source}`)}
+              </p>
+            </details>
+          </>
+        ) : (
+          <p className="mt-1 text-sm muted">{t("fire.q1.needTarget")}</p>
+        )}
       </div>
     </div>
   );

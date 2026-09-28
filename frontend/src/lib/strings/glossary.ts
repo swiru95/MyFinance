@@ -28,6 +28,9 @@ export const en: Record<string, string> = {
   "gloss.realReturn": "Your investment growth after subtracting inflation - what your money actually gains in buying power, not just in złoty.",
   "gloss.belka": "Poland's flat 19% tax on investment gains - interest, dividends and capital gains outside a tax-advantaged account.",
   "gloss.fireAcronym": "FIRE stands for Financial Independence, Retire Early. This page prices out when your own portfolio could cover your spending indefinitely.",
+  "gloss.statedTolerance": "How much investment risk you said, in the questionnaire, that you're willing to accept.",
+  "gloss.capacityTolerance": "How much risk your finances could absorb without real hardship - based on your income stability, dependants and safety cushion, not on what you'd prefer.",
+  "gloss.revealedTolerance": "How much risk your actual holdings show you taking, regardless of what you said or could afford.",
 
   // Same explanations as above, keyed for lib/wrappers.ts's
   // wrapperGlossaryKey() so the Positions wrapper badge (an InfoTip, not a
@@ -61,6 +64,9 @@ export const pl: Record<string, string> = {
   "gloss.realReturn": "Wzrost inwestycji po odjęciu inflacji - ile Twoje pieniądze faktycznie zyskują siły nabywczej, a nie tylko złotówek.",
   "gloss.belka": "Polski płaski podatek 19% od zysków kapitałowych - odsetek, dywidend i zysków ze sprzedaży poza kontem z ulgą podatkową.",
   "gloss.fireAcronym": "FIRE (Financial Independence, Retire Early) oznacza niezależność finansową i możliwość wcześniejszego zakończenia pracy zarobkowej. Ta strona liczy, kiedy Twój portfel sam pokryje wydatki bez dalszej pracy.",
+  "gloss.statedTolerance": "Ile ryzyka inwestycyjnego zadeklarowałeś/aś w ankiecie, że jesteś skłonny/a zaakceptować.",
+  "gloss.capacityTolerance": "Ile ryzyka Twoje finanse realnie udźwigną bez poważnych konsekwencji — na podstawie stabilności dochodu, osób na utrzymaniu i poduszki bezpieczeństwa, a nie tego, co byś preferował/a.",
+  "gloss.revealedTolerance": "Ile ryzyka pokazują Twoje faktyczne inwestycje, niezależnie od deklaracji czy możliwości.",
 
   "gloss.wrapper.ike": "IKE to indywidualne konto emerytalne: zyski na nim są zwolnione z podatku Belki, jeśli wypłacisz środki po 60. roku życia.",
   "gloss.wrapper.ikze": "IKZE to indywidualne konto zabezpieczenia emerytalnego z odliczeniem wpłat od dochodu już teraz; wypłaty po 65. roku życia są opodatkowane ryczałtowo stawką 10%.",

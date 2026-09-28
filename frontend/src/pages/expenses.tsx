@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { api, fmtDay, fmtMoney, fmtNum } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { Expense, ExpenseSummary } from "@/lib/types";
@@ -12,6 +13,7 @@ type Filter = "active" | "all";
 
 export default function ExpensesPage() {
   const { t, td, locale } = useI18n();
+  const router = useRouter();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [filter, setFilter] = useState<Filter>("active");
@@ -36,6 +38,20 @@ export default function ExpensesPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Landing here with ?add=1 (the first-run start card's "spending only" and
+  // "add your first fixed cost" paths - components/dashboard/StartCard.tsx)
+  // opens the add form immediately instead of making a first-time user find
+  // the button themselves. Cleared from the URL right away so a later
+  // refresh of this page does not reopen the form unasked.
+  useEffect(() => {
+    if (!router.isReady || router.query.add !== "1") return;
+    setEditing(null);
+    setFormOpen(true);
+    const { add: _add, ...rest } = router.query;
+    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query.add]);
 
   const base = summary?.base_currency ?? "PLN";
   const visible = expenses.filter((e) =>

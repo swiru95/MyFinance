@@ -26,6 +26,9 @@ export const CATEGORY_RETURNS: Record<string, number> = {
   Retirement: 0.06,
   Stocks: 0.08,
   Gold: 0.03,
+  // Silver/platinum/palladium: same rate as Gold, mirroring
+  // backend/src/services/returns.py CATEGORY_RETURNS so the two never drift.
+  Metals: 0.03,
   Crypto: 0,
   Watches: 0,
   "Fixed Assets": 0,

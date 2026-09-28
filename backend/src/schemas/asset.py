@@ -1,7 +1,8 @@
 """Asset schemas."""
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
 
+from ..services.price_service import CRYPTO_SYMBOLS, METAL_SYMBOLS
 from ..tax.pl.wrappers import WRAPPERS as _WRAPPER_INFO
 from ..timeutils import as_utc
 
@@ -33,6 +34,23 @@ class AssetIn(BaseModel):
     @classmethod
     def _validate_wrapper(cls, v):
         return _check_wrapper(v)
+
+    @model_validator(mode="after")
+    def _validate_units(self):
+        """kind="crypto"/"metal" price by `units` (see price_service's
+        catalogue), so a typo or unsupported symbol there would silently
+        price as 0 (the crypto fallback for an unknown symbol) rather than
+        fail loudly - reject it at creation instead."""
+        u = self.units.upper()
+        if self.kind == "crypto" and u not in CRYPTO_SYMBOLS:
+            raise ValueError(
+                f"units must be one of: {', '.join(sorted(CRYPTO_SYMBOLS))} for kind=crypto"
+            )
+        if self.kind == "metal" and u not in METAL_SYMBOLS:
+            raise ValueError(
+                f"units must be one of: {', '.join(sorted(METAL_SYMBOLS))} for kind=metal"
+            )
+        return self
 
 
 class AssetUpdate(BaseModel):

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { insightsApi, isNotFound } from "@/lib/insightsApi";
 import type {
@@ -7,17 +7,21 @@ import type {
   NextStepsData,
   StepFeedbackState,
 } from "@/lib/insightsTypes";
-import LadderChecklist from "./LadderChecklist";
-import Markdown from "@/components/Markdown";
+import LadderChecklist, { type AiStep } from "./LadderChecklist";
 
 const POLL_MS = 3000;
 const PENDING: Insight["status"][] = ["pending", "running", "translating"];
-const FEEDBACK_STATES: StepFeedbackState[] = ["done", "dismissed", "later"];
 
 interface Props {
   status: { configured: boolean } | null;
 }
 
+/** One merged checklist (round 2 spec item 9): the deterministic ladder and
+ *  the AI ranking used to be two separate lists answering the same "what
+ *  should I do next" question. Now every rung is one row; a rung the latest
+ *  AI ranking also picked out shows that model's title/explanation inline,
+ *  and AI-ranked rows sort first, in the AI's own order - see
+ *  LadderChecklist for the row rendering. */
 export default function NextStepsTab({ status }: Props) {
   const { t, lang } = useI18n();
   const [ladder, setLadder] = useState<LadderResponse | null>(null);
@@ -115,93 +119,85 @@ export default function NextStepsTab({ status }: Props) {
     insight.language === "pl" &&
     insight.data != null &&
     insight.data_localized == null;
-  const rungs = [...(ladder?.rungs ?? [])].sort((a, b) => a.order - b.order);
   const unavailable = status != null && !status.configured;
 
+  // AI steps keyed by rung key (see LadderChecklist's AiStep doc), and the
+  // merged row order: AI-ranked rungs first in the AI's own order, then
+  // every other rung in the ladder's own order - so a fresh AI ranking
+  // reorders the top of the list without reshuffling rungs it left alone.
+  const aiByKey = useMemo(() => {
+    const map = new Map<string, AiStep>();
+    if (data) {
+      for (const step of data.steps) {
+        map.set(step.key, { title: step.title, why_md: step.why_md });
+      }
+    }
+    return map;
+  }, [data]);
+  const rungs = useMemo(() => {
+    const all = [...(ladder?.rungs ?? [])].sort((a, b) => a.order - b.order);
+    const aiOrder = new Map((data?.steps ?? []).map((s, i) => [s.key, i]));
+    return all.sort((a, b) => {
+      const aRank = aiOrder.get(a.key);
+      const bRank = aiOrder.get(b.key);
+      if (aRank != null && bRank != null) return aRank - bRank;
+      if (aRank != null) return -1;
+      if (bRank != null) return 1;
+      return a.order - b.order;
+    });
+  }, [ladder, data]);
+
   return (
-    <div className="space-y-6">
-      <div className="card">
-        <h2 className="text-lg font-semibold">{t("ins.next.checklistTitle")}</h2>
-        <p className="mb-3 text-sm muted">{t("ins.next.checklistSubtitle")}</p>
-        <LadderChecklist rungs={rungs} />
-      </div>
-
-      <div className="card space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">{t("ins.next.rankedTitle")}</h2>
-          <button
-            onClick={refresh}
-            className="btn-primary"
-            disabled={busy || pending || unavailable}
-          >
-            {busy || pending ? t("ins.job.running") : t("ins.next.refresh")}
-          </button>
+    <div className="card space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">{t("ins.next.checklistTitle")}</h2>
+          <p className="text-sm muted">{t("ins.next.checklistSubtitle")}</p>
         </div>
-
-        {error && <div className="banner-error">{error}</div>}
-
-        {pending && (
-          <div className="flex items-center gap-3">
-            <span
-              className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 dark:border-slate-600 dark:border-t-brand-400"
-              aria-hidden
-            />
-            <p className="text-sm muted">
-              {insight?.status === "translating"
-                ? t("ins.job.translating")
-                : insight?.status === "running"
-                  ? t("ins.job.running")
-                  : t("ins.job.queued")}
-            </p>
-          </div>
-        )}
-
-        {insight?.status === "failed" && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-red-600">{t("ins.job.failed")}</p>
-            <p className="text-xs muted">{insight.error}</p>
-          </div>
-        )}
-
-        {!pending && data && data.steps.length > 0 && translationUnavailable && (
-          <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
-        )}
-
-        {!pending && data && data.steps.length > 0 && (
-          <ul className="space-y-3">
-            {data.steps.map((step) => {
-              const feedback = ladder?.feedback[step.key];
-              return (
-                <li
-                  key={step.key}
-                  className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
-                >
-                  <p className="text-sm font-medium">{step.title}</p>
-                  <div className="mt-1">
-                    <Markdown text={step.why_md} />
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {FEEDBACK_STATES.map((state) => (
-                      <button
-                        key={state}
-                        onClick={() => giveFeedback(step.key, state)}
-                        aria-pressed={feedback?.state === state}
-                        className={`btn-ghost text-xs ${feedback?.state === state ? "border-brand-500 text-brand-700 dark:text-brand-100" : ""}`}
-                      >
-                        {t(`ins.next.feedback.${state}`)}
-                      </button>
-                    ))}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {!pending && !data && insight?.status !== "failed" && (
-          <p className="text-sm subtle">{t("ins.next.rankedEmpty")}</p>
-        )}
+        <button
+          onClick={refresh}
+          className="btn-primary"
+          disabled={busy || pending || unavailable}
+        >
+          {busy || pending ? t("ins.job.running") : t("ins.next.refresh")}
+        </button>
       </div>
+
+      {error && <div className="banner-error">{error}</div>}
+
+      {pending && (
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-brand-600 dark:border-slate-600 dark:border-t-brand-400"
+            aria-hidden
+          />
+          <p className="text-sm muted">
+            {insight?.status === "translating"
+              ? t("ins.job.translating")
+              : insight?.status === "running"
+                ? t("ins.job.running")
+                : t("ins.job.queued")}
+          </p>
+        </div>
+      )}
+
+      {insight?.status === "failed" && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-red-600">{t("ins.job.failed")}</p>
+          <p className="text-xs muted">{insight.error}</p>
+        </div>
+      )}
+
+      {translationUnavailable && (
+        <p className="text-xs subtle">{t("ins.data.translationUnavailable")}</p>
+      )}
+
+      <LadderChecklist
+        rungs={rungs}
+        aiByKey={aiByKey}
+        feedback={ladder?.feedback ?? {}}
+        onFeedback={giveFeedback}
+      />
     </div>
   );
 }

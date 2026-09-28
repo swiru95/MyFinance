@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { fireApi } from "@/lib/fireApi";
+import type { CatalogueEntry } from "@/lib/types";
 import type { AssetWithWrapper, Wrapper } from "@/lib/fireTypes";
 
-const KINDS = ["currency", "gold", "crypto"] as const;
+// "gold" (the pre-existing, XAU-only kind) is not offered for new assets -
+// picking "Gold" from the precious-metal catalogue below creates a "metal"
+// asset with units="XAU" instead, so every new gold holding goes through the
+// same generalised path as silver/platinum/palladium. Existing kind="gold"
+// assets keep working unchanged (see backend routes/helpers.compute_value).
+const KINDS = ["currency", "metal", "crypto"] as const;
+type FormKind = (typeof KINDS)[number];
 const PROFILES = ["", "safe", "moderate", "risky", "illiquid"] as const;
 const WRAPPERS: Wrapper[] = ["", "ike", "ikze", "ppk", "oipe", "oki"];
 
@@ -17,10 +24,10 @@ interface Props {
 }
 
 export default function AssetForm({ existing, onDone, onCancel }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [name, setName] = useState(existing?.name ?? "");
-  const [kind, setKind] = useState<(typeof KINDS)[number]>(
-    (existing?.kind as (typeof KINDS)[number]) ?? "currency"
+  const [kind, setKind] = useState<FormKind>(
+    existing?.kind === "metal" ? "metal" : existing?.kind === "crypto" ? "crypto" : "currency"
   );
   const [category, setCategory] = useState(existing?.category ?? "");
   const [profile, setProfile] = useState(existing?.profile ?? "");
@@ -29,6 +36,43 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
   const [wrapper, setWrapper] = useState<Wrapper>(existing?.wrapper ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The catalogue (4 metals + 5 coins, see backend price_service.CATALOGUE)
+  // - fetched once so picking a symbol can fill name/icon/category/profile/
+  // units in one go. Left null on a fetch failure rather than blocking the
+  // form: the fields below just fall back to plain manual entry.
+  const [catalogue, setCatalogue] = useState<{
+    metals: CatalogueEntry[];
+    crypto: CatalogueEntry[];
+  } | null>(null);
+  const [symbol, setSymbol] = useState("");
+
+  useEffect(() => {
+    if (existing) return; // editing never needs the catalogue (kind is fixed)
+    fireApi
+      .catalogue()
+      .then(setCatalogue)
+      .catch(() => setCatalogue(null));
+  }, [existing]);
+
+  const catalogueEntries: CatalogueEntry[] =
+    kind === "metal" ? catalogue?.metals ?? [] : kind === "crypto" ? catalogue?.crypto ?? [] : [];
+
+  function handleKindChange(next: FormKind) {
+    setKind(next);
+    setSymbol("");
+  }
+
+  function pickCatalogueEntry(sym: string) {
+    setSymbol(sym);
+    const entry = catalogueEntries.find((e) => e.symbol === sym);
+    if (!entry) return;
+    setName(entry.name[lang] ?? entry.name.en);
+    setIcon(entry.icon);
+    setCategory(entry.category);
+    setProfile(entry.profile);
+    setUnits(entry.symbol);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,6 +109,48 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {!existing && (
+        <div>
+          <label className="label" htmlFor="asset-kind">
+            {t("fire.asset.kind")}
+          </label>
+          <select
+            id="asset-kind"
+            className="input"
+            value={kind}
+            onChange={(e) => handleKindChange(e.target.value as FormKind)}
+          >
+            {KINDS.map((k) => (
+              <option key={k} value={k}>
+                {t(`fire.asset.kind.${k}`)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!existing && (kind === "metal" || kind === "crypto") && (
+        <div>
+          <label className="label" htmlFor="asset-catalogue">
+            {t(kind === "metal" ? "fire.asset.catalogueMetal" : "fire.asset.catalogueCrypto")}
+          </label>
+          <select
+            id="asset-catalogue"
+            className="input"
+            value={symbol}
+            onChange={(e) => pickCatalogueEntry(e.target.value)}
+          >
+            <option value="">{t("fire.asset.catalogueManual")}</option>
+            {catalogueEntries.map((entry) => (
+              <option key={entry.symbol} value={entry.symbol}>
+                {entry.icon} {entry.name[lang] ?? entry.name.en}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs muted">{t("fire.asset.catalogueHint")}</p>
+        </div>
+      )}
+
       <div>
         <label className="label" htmlFor="asset-name">
           {t("fire.asset.name")}
@@ -77,26 +163,6 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
           required
         />
       </div>
-
-      {!existing && (
-        <div>
-          <label className="label" htmlFor="asset-kind">
-            {t("fire.asset.kind")}
-          </label>
-          <select
-            id="asset-kind"
-            className="input"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as (typeof KINDS)[number])}
-          >
-            {KINDS.map((k) => (
-              <option key={k} value={k}>
-                {t(`fire.asset.kind.${k}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -126,7 +192,7 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
         </div>
       </div>
 
-      {!existing && (
+      {!existing && kind !== "currency" && (
         <div>
           <label className="label" htmlFor="asset-units">
             {t("fire.asset.units")}
@@ -138,6 +204,7 @@ export default function AssetForm({ existing, onDone, onCancel }: Props) {
             onChange={(e) => setUnits(e.target.value)}
             placeholder={t("fire.asset.unitsPlaceholder")}
           />
+          <p className="mt-1 text-xs muted">{t("fire.asset.unitsHint")}</p>
         </div>
       )}
 

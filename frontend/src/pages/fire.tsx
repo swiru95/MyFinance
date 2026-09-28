@@ -7,7 +7,7 @@ import { fireNeedsSetup } from "@/lib/fireTypes";
 import type { FireResponse, FireSettings } from "@/lib/fireTypes";
 import SettingsCard from "@/components/fire/SettingsCard";
 import HeadlineStats from "@/components/fire/HeadlineStats";
-import TwoQuestions from "@/components/fire/TwoQuestions";
+import RequiredIncomeCard from "@/components/fire/RequiredIncomeCard";
 import VariantCards from "@/components/fire/VariantCards";
 import ProjectionChart from "@/components/fire/ProjectionChart";
 import SavingsRateCurveChart from "@/components/fire/SavingsRateCurveChart";
@@ -16,6 +16,7 @@ import BridgeCheckCard from "@/components/fire/BridgeCheckCard";
 import InputsPanel from "@/components/fire/InputsPanel";
 import FeatureOffCard from "@/components/FeatureOffCard";
 import InfoTip from "@/components/InfoTip";
+import Disclosure from "@/components/Disclosure";
 
 export default function FirePage() {
   const { t } = useI18n();
@@ -86,40 +87,37 @@ export default function FirePage() {
             onSave={saveSettings}
           />
 
-          <HeadlineStats result={data.result} base={base} />
+          <HeadlineStats result={data.result} inputs={data.inputs} base={base} />
 
-          <TwoQuestions
-            result={data.result}
-            inputs={data.inputs}
-            requiredIncome={data.required_income}
-            base={base}
-          />
+          <Disclosure title={t("fire.details.show")} storageKey="myfinance-fire-details-open">
+            <RequiredIncomeCard requiredIncome={data.required_income} base={base} />
 
-          <VariantCards result={data.result} inputs={data.inputs} base={base} />
+            <VariantCards result={data.result} inputs={data.inputs} base={base} />
 
-          <div className="card">
-            <h2 className="mb-3 text-lg font-semibold">{t("fire.projection.title")}</h2>
-            <ProjectionChart
-              points={data.result.projection}
-              fiAge={data.result.simulate.fi_age}
-              base={base}
-            />
-          </div>
+            <div className="card">
+              <h2 className="mb-3 text-lg font-semibold">{t("fire.projection.title")}</h2>
+              <ProjectionChart
+                points={data.result.projection}
+                fiAge={data.result.simulate.fi_age}
+                base={base}
+              />
+            </div>
 
-          <div className="card">
-            <h2 className="text-lg font-semibold">{t("fire.curve.title")}</h2>
-            <p className="mb-3 text-sm muted">{t("fire.curve.caption")}</p>
-            <SavingsRateCurveChart
-              curve={data.result.savings_rate_curve}
-              currentRate={data.result.current_savings_rate}
-            />
-          </div>
+            <div className="card">
+              <h2 className="text-lg font-semibold">{t("fire.curve.title")}</h2>
+              <p className="mb-3 text-sm muted">{t("fire.curve.caption")}</p>
+              <SavingsRateCurveChart
+                curve={data.result.savings_rate_curve}
+                currentRate={data.result.current_savings_rate}
+              />
+            </div>
 
-          <LeversCard levers={data.result.levers} />
+            <LeversCard levers={data.result.levers} />
 
-          <BridgeCheckCard bridge={data.result.bridge_check} base={base} />
+            <BridgeCheckCard bridge={data.result.bridge_check} base={base} />
 
-          <InputsPanel inputs={data.inputs} base={base} />
+            <InputsPanel inputs={data.inputs} base={base} />
+          </Disclosure>
 
           <p className="text-xs subtle">{t("fire.disclaimer")}</p>
         </>

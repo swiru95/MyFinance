@@ -36,15 +36,15 @@ def _flow_in_base(
 
     - currency: `flow` is in the payload's own currency; `price` is the FX
       rate compute_value used for this snapshot, so multiplying converts it.
-    - gold/crypto: a given `flow` is already in base currency (the user paid
-      a different price than today's); otherwise it is derived from the
+    - gold/metal/crypto: a given `flow` is already in base currency (the user
+      paid a different price than today's); otherwise it is derived from the
       change in amount at today's price, which needs a previous snapshot.
     - interest: base currency as-is, never derived from the amount (the
       amount there is a principal, not a holding size a price multiplies).
     """
     if asset.kind == "currency":
         return None if flow is None else flow * price
-    if asset.kind in ("gold", "crypto"):
+    if asset.kind in ("gold", "metal", "crypto"):
         if flow is not None:
             return flow
         if previous is None:

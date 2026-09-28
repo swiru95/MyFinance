@@ -9,6 +9,7 @@ import CategoryTrendChart from "@/components/CategoryTrendChart";
 import MonthEditorCard from "./MonthEditorCard";
 import MonthStatTiles from "./MonthStatTiles";
 import RecordedMonthsTable from "./RecordedMonthsTable";
+import Disclosure from "@/components/Disclosure";
 
 const currentMonthKey = () => {
   const now = new Date();
@@ -62,53 +63,54 @@ export default function MonthlySection() {
 
       {error && <div className="banner-error">{error}</div>}
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <MonthEditorCard
-          months={months}
-          selected={selected}
-          onSelect={setSelected}
-          record={record}
-          base={base}
-          onSaved={refresh}
-        />
+      <MonthEditorCard
+        months={months}
+        selected={selected}
+        onSelect={setSelected}
+        record={record}
+        base={base}
+        onSaved={refresh}
+      />
+
+      <Disclosure title={t("exp.monthly.showAnalysis")} storageKey="myfinance-expenses-analysis-open">
         <MonthStatTiles
           record={record}
           analytics={analytics}
           base={base}
           showEffective={portfolio}
         />
-      </div>
 
-      <div className="card">
-        <h3 className="text-lg font-semibold">{t("mon.chartTitle")}</h3>
-        <p className="mb-3 text-sm muted">{t("mon.chartSubtitle")}</p>
-        {portfolio && <p className="mb-3 text-xs subtle">{t("mon.effectiveNote")}</p>}
-        <BudgetTimelineChart
-          points={analytics?.timeline ?? []}
-          currency={base}
-          currentMonth={currentMonthKey()}
-          showEffective={portfolio}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
         <div className="card">
-          <h3 className="text-lg font-semibold">{t("mon.savingsTitle")}</h3>
-          <p className="mb-3 text-sm muted">{t("mon.savingsSubtitle")}</p>
-          <SavingsRateChart points={analytics?.timeline ?? []} />
-        </div>
-        <div className="card">
-          <h3 className="text-lg font-semibold">{t("mon.categoryTitle")}</h3>
-          <p className="mb-3 text-sm muted">{t("mon.categorySubtitle")}</p>
-          <CategoryTrendChart
-            series={analytics?.category_series ?? []}
-            categories={analytics?.categories ?? []}
+          <h3 className="text-lg font-semibold">{t("mon.chartTitle")}</h3>
+          <p className="mb-3 text-sm muted">{t("mon.chartSubtitle")}</p>
+          {portfolio && <p className="mb-3 text-xs subtle">{t("mon.effectiveNote")}</p>}
+          <BudgetTimelineChart
+            points={analytics?.timeline ?? []}
             currency={base}
+            currentMonth={currentMonthKey()}
+            showEffective={portfolio}
           />
         </div>
-      </div>
 
-      <RecordedMonthsTable months={months} base={base} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="card">
+            <h3 className="text-lg font-semibold">{t("mon.savingsTitle")}</h3>
+            <p className="mb-3 text-sm muted">{t("mon.savingsSubtitle")}</p>
+            <SavingsRateChart points={analytics?.timeline ?? []} />
+          </div>
+          <div className="card">
+            <h3 className="text-lg font-semibold">{t("mon.categoryTitle")}</h3>
+            <p className="mb-3 text-sm muted">{t("mon.categorySubtitle")}</p>
+            <CategoryTrendChart
+              series={analytics?.category_series ?? []}
+              categories={analytics?.categories ?? []}
+              currency={base}
+            />
+          </div>
+        </div>
+
+        <RecordedMonthsTable months={months} base={base} />
+      </Disclosure>
     </div>
   );
 }

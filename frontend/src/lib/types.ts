@@ -1,6 +1,9 @@
 /** How a holding is valued. "interest" accrues Polish statutory interest on a
- *  principal; everything else is a spot amount or a live-priced quantity. */
-export type AssetKind = "currency" | "gold" | "crypto" | "interest";
+ *  principal; everything else is a spot amount or a live-priced quantity.
+ *  "gold" is the pre-existing metal kind (always XAU); "metal" generalises it
+ *  to the other three precious metals (units: XAU/XAG/XPT/XPD) - see
+ *  backend routes/helpers.compute_value. */
+export type AssetKind = "currency" | "gold" | "metal" | "crypto" | "interest";
 
 /** Statutory basis for kind="interest": art. 481 §2 KC (+5.5pp) or art. 359 §2 KC (+3.5pp). */
 export type InterestBasis = "" | "late" | "capital";
@@ -38,7 +41,12 @@ export interface Summary {
   total_value: number;
   positions: number;
   gold_price: number;
-  crypto_prices: { BTC: number; SOL: number };
+  /** Keyed by symbol; always has BTC/SOL (backward compat) plus whatever
+   *  else the wallet holds (see backend routes/helpers.held_symbols). */
+  crypto_prices: Record<string, number>;
+  /** Per-gram, keyed by symbol; always has XAU (backward compat) plus
+   *  whatever other metals the wallet holds. */
+  metals: Record<string, number>;
 }
 
 /** How the time series is split. "total" is one line; the rest are stacked. */
@@ -120,8 +128,28 @@ export interface Allocation {
 export interface Prices {
   base_currency: string;
   gold_per_gram: number;
-  crypto: { BTC: number; SOL: number };
+  /** Keyed by symbol (BTC/SOL always present, plus whatever else is held). */
+  crypto: Record<string, number>;
+  /** Per-gram, keyed by symbol (XAU always present, plus whatever else is held). */
+  metals: Record<string, number>;
   fx: Record<string, number>;
+}
+
+/** One entry of GET /api/prices/catalogue - what AssetForm offers when the
+ *  user picks a precious metal or cryptocurrency to track. */
+export interface CatalogueEntry {
+  symbol: string;
+  kind: "metal" | "crypto";
+  name: { en: string; pl: string };
+  icon: string;
+  category: string;
+  profile: string;
+  unit: "g" | "coin";
+}
+
+export interface Catalogue {
+  metals: CatalogueEntry[];
+  crypto: CatalogueEntry[];
 }
 
 /** Advanced features, off by default for a new wallet and switchable in

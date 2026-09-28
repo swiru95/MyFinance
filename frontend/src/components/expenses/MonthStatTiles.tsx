@@ -25,7 +25,7 @@ export default function MonthStatTiles({ record, analytics, base, showEffective 
   const variance = record?.variance ?? 0;
 
   return (
-    <div className="grid auto-rows-min content-start gap-4 sm:grid-cols-2 lg:col-span-2">
+    <div className="grid auto-rows-min content-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="card">
         <p className="text-sm muted">{t("mon.surplus")}</p>
         <p className={`mt-1 text-2xl font-semibold tabular-nums ${surplusTone}`}>

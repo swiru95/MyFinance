@@ -12,9 +12,16 @@ class Asset(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False, default="currency")
-    # kind: currency | gold | crypto - how the position is *valued*, not what the
-    # user calls it. `category` is the user-facing class (Cash, Stocks,
-    # Retirement, ...) that several differently-named assets can share.
+    # kind: currency | gold | metal | crypto | interest - how the position is
+    # *valued*, not what the user calls it. `category` is the user-facing
+    # class (Cash, Stocks, Retirement, ...) that several differently-named
+    # assets can share.
+    #
+    # "gold" is the pre-existing metal kind, kept exactly as before (always
+    # priced as XAU, regardless of `units`). "metal" is its generalisation to
+    # the other three precious metals: `units` must be XAU/XAG/XPT/XPD and
+    # `amount` is grams, same as gold. See services/price_service.py for the
+    # symbol catalogue and routes/helpers.compute_value for the pricing.
     category: Mapped[str] = mapped_column(String(60), nullable=False, default="", index=True)
     # Only for kind="interest": which statutory basis accrues on the principal.
     # "late" = art. 481 par. 2 KC (+5.5 pp), "capital" = art. 359 par. 2 KC

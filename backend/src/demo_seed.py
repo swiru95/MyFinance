@@ -130,6 +130,34 @@ def _create_extra_assets(db: Session) -> dict[str, Asset]:
     db.flush()
     assets["ppk"] = ppk
 
+    # Silver (metal) and Ethereum (crypto): opening-balance-only holdings, to
+    # exercise the two new asset kinds in demo data without adding another
+    # month-by-month story (see Watches below for the same "one snapshot"
+    # pattern).
+    silver = Asset(
+        name="Silver",
+        kind="metal",
+        category="Metals",
+        profile="moderate",
+        icon="🥈",
+        units="XAG",
+    )
+    db.add(silver)
+    db.flush()
+    assets["silver"] = silver
+
+    ethereum = Asset(
+        name="Ethereum",
+        kind="crypto",
+        category="Crypto",
+        profile="risky",
+        icon="Ξ",
+        units="ETH",
+    )
+    db.add(ethereum)
+    db.flush()
+    assets["ethereum"] = ethereum
+
     return assets
 
 
@@ -524,6 +552,38 @@ def _create_portfolio_snapshots(db: Session, extra_assets: dict[str, Asset]) -> 
             )
             db.add(pos)
 
+        # Silver and Ethereum: opening snapshot only, same pattern as
+        # Watches - the story does not need a full growth curve to exercise
+        # kind="metal" / a second crypto symbol.
+        if k == 0:
+            silver_amount = 2000.0  # grams
+            silver_price = 8.1  # PLN per gram, approx (~64 USD/oz)
+            pos = Position(
+                asset_id=asset_by_name["Silver"].id,
+                amount=silver_amount,
+                currency="PLN",
+                value_in_base=silver_amount * silver_price,
+                price_used=silver_price,
+                base_currency="PLN",
+                flow_in_base=None,
+                timestamp=datetime.combine(snapshot_date, datetime.min.time()).replace(hour=12, tzinfo=tz.utc),
+            )
+            db.add(pos)
+
+            eth_amount = 1.5
+            eth_price = 10500.0  # PLN per coin, approx (~2700 USD)
+            pos = Position(
+                asset_id=asset_by_name["Ethereum"].id,
+                amount=eth_amount,
+                currency="PLN",
+                value_in_base=eth_amount * eth_price,
+                price_used=eth_price,
+                base_currency="PLN",
+                flow_in_base=None,
+                timestamp=datetime.combine(snapshot_date, datetime.min.time()).replace(hour=12, tzinfo=tz.utc),
+            )
+            db.add(pos)
+
 
 def _create_fire_settings(db: Session) -> None:
     """Create FIRE settings."""
@@ -580,7 +640,7 @@ def main() -> int:
         print("demo_seed: creating monthly records")
         _create_monthly_records(db)
 
-        print("demo_seed: creating extra assets (IKE, IKZE, PPK)")
+        print("demo_seed: creating extra assets (IKE, IKZE, PPK, Silver, Ethereum)")
         extra_assets = _create_extra_assets(db)
 
         print("demo_seed: creating portfolio snapshots")

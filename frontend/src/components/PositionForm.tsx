@@ -12,14 +12,26 @@ interface Props {
   initial?: { amount: number; currency: string; notes: string };
 }
 
+// 1 troy oz = this many grams - the standard used for precious metals.
+const OZ_TO_GRAM = 31.1034768;
+
 export default function PositionForm({ asset, prices, onSubmit, initial }: Props) {
   const { t, td, locale } = useI18n();
   const isCurrency = asset.kind === "currency";
   const isInterest = asset.kind === "interest";
-  const isQuantity = asset.kind === "gold" || asset.kind === "crypto";
+  // "gold" is the pre-existing kind (always XAU); "metal" generalises it to
+  // silver/platinum/palladium too - both are entered in grams and both take
+  // the g/oz switch below.
+  const isMetal = asset.kind === "gold" || asset.kind === "metal";
+  const isCrypto = asset.kind === "crypto";
+  const isQuantity = isMetal || isCrypto;
   const [amount, setAmount] = useState<string>(
     initial ? String(initial.amount) : ""
   );
+  // Metals only: whether the amount typed above is grams or troy ounces.
+  // Ounces are converted to grams before the position is saved, since
+  // Asset.amount for a metal is always grams (see backend compute_value).
+  const [unitMode, setUnitMode] = useState<"g" | "oz">("g");
   const [currency, setCurrency] = useState<string>(
     initial?.currency ?? prices.base_currency
   );
@@ -30,22 +42,31 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
   const [error, setError] = useState<string | null>(null);
 
   // Currency and interest positions record the flow in the same currency the
-  // amount itself is in; gold/crypto only take a flow when entered (in base
+  // amount itself is in; metal/crypto only take a flow when entered (in base
   // currency), otherwise it is derived server-side from the quantity change.
   const flowUnit = isCurrency ? currency : prices.base_currency;
 
-  const unitLabel =
-    asset.kind === "gold"
-      ? t("pos.grams")
-      : asset.kind === "interest"
-        ? prices.base_currency
-        : asset.units || t("pos.units");
-  const unitPrice =
-    asset.kind === "gold"
-      ? prices.gold_per_gram
-      : asset.kind === "crypto"
-        ? (prices.crypto as Record<string, number>)[asset.units]
+  const unitLabel = isMetal
+    ? t("pos.grams")
+    : isInterest
+      ? prices.base_currency
+      : asset.units || t("pos.units");
+  const unitPrice = asset.kind === "gold"
+    ? prices.gold_per_gram
+    : asset.kind === "metal"
+      ? prices.metals[asset.units] ?? null
+      : isCrypto
+        ? prices.crypto[asset.units] ?? null
         : null;
+
+  // The amount actually priced/saved: a metal typed in troy oz is converted
+  // to grams first (unitPrice is always per gram); everything else is used
+  // as typed.
+  const amountInGrams = useMemo(() => {
+    const a = parseFloat(amount);
+    if (isNaN(a)) return NaN;
+    return isMetal && unitMode === "oz" ? a * OZ_TO_GRAM : a;
+  }, [amount, unitMode, isMetal]);
 
   const estimate = useMemo(() => {
     const a = parseFloat(amount);
@@ -56,16 +77,16 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
       // amount in `currency` -> USD -> base
       return a * (1 / rate) * baseRate;
     }
-    if (unitPrice) return a * unitPrice;
+    if (unitPrice) return (isMetal ? amountInGrams : a) * unitPrice;
     // Interest is deliberately not estimated here: the accrual needs the NBP
     // rate schedule, which lives on the server. Showing a client-side guess
     // would only disagree with the figure that gets stored.
     return null;
-  }, [amount, currency, asset.kind, unitPrice, prices]);
+  }, [amount, amountInGrams, currency, asset.kind, isMetal, unitPrice, prices]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const a = parseFloat(amount);
+    const a = isMetal ? amountInGrams : parseFloat(amount);
     if (isNaN(a)) {
       setError(t("pos.invalidAmount"));
       return;
@@ -117,6 +138,31 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
           placeholder="0.00"
           required
         />
+        {isMetal && (
+          <>
+            <div className="mt-1 flex gap-3 text-xs">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="unit-mode"
+                  checked={unitMode === "g"}
+                  onChange={() => setUnitMode("g")}
+                />
+                {t("pos.grams")}
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="unit-mode"
+                  checked={unitMode === "oz"}
+                  onChange={() => setUnitMode("oz")}
+                />
+                {t("pos.troyOz")}
+              </label>
+            </div>
+            {unitMode === "oz" && <p className="mt-1 text-xs subtle">{t("pos.ozHint")}</p>}
+          </>
+        )}
       </div>
 
       {isInterest && (
@@ -155,7 +201,7 @@ export default function PositionForm({ asset, prices, onSubmit, initial }: Props
           {t("pos.livePrice")}:{" "}
           <span className="font-medium">
             {fmtMoney(unitPrice, prices.base_currency, locale)}/
-            {asset.kind === "gold" ? "g" : asset.units}
+            {isMetal ? "g" : asset.units}
           </span>
         </p>
       )}

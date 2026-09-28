@@ -4,6 +4,10 @@ import { incomeApi, taxApi } from "@/lib/incomeApi";
 import { INPUT_CURRENCIES } from "@/lib/types";
 import { useI18n } from "@/lib/i18n";
 import InfoTip from "@/components/InfoTip";
+import {
+  DEFAULT_B2B_OPTIONS,
+  DEFAULT_UOP_OPTIONS,
+} from "@/lib/incomeTypes";
 import type {
   B2bIncomeParams,
   Billing,
@@ -90,6 +94,41 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
 
   // other
   const [netMonthly, setNetMonthly] = useState(op ? String(op.net_monthly) : "");
+
+  // "More options" starts open when editing a source whose values already
+  // stray from the engine defaults (DEFAULT_UOP_OPTIONS/DEFAULT_B2B_OPTIONS,
+  // lib/incomeTypes.ts) - someone who set a non-standard KUP or ZUS stage
+  // should see that setting immediately, not have to know it exists behind
+  // a toggle. A brand-new source always starts collapsed, and the check
+  // only ever runs once, off the source this form opened with.
+  const [moreOpen, setMoreOpen] = useState(() => {
+    if (!existing) return false;
+    if (Boolean(existing.ends_on) || existing.notes.trim() !== "") return true;
+    if (existing.kind === "uop" && up) {
+      return (
+        up.kup !== DEFAULT_UOP_OPTIONS.kup ||
+        up.creative_share !== DEFAULT_UOP_OPTIONS.creative_share ||
+        up.pit2 !== DEFAULT_UOP_OPTIONS.pit2 ||
+        up.young_relief !== DEFAULT_UOP_OPTIONS.young_relief ||
+        up.ppk_employee !== DEFAULT_UOP_OPTIONS.ppk_employee ||
+        up.ppk_employer !== DEFAULT_UOP_OPTIONS.ppk_employer
+      );
+    }
+    if (existing.kind === "b2b" && bp) {
+      return (
+        bp.tax_form !== DEFAULT_B2B_OPTIONS.tax_form ||
+        bp.ryczalt_rate !== DEFAULT_B2B_OPTIONS.ryczalt_rate ||
+        bp.ryczalt_health_tier !== DEFAULT_B2B_OPTIONS.ryczalt_health_tier ||
+        bp.zus_stage !== DEFAULT_B2B_OPTIONS.zus_stage ||
+        bp.sickness !== DEFAULT_B2B_OPTIONS.sickness ||
+        bp.vat !== DEFAULT_B2B_OPTIONS.vat ||
+        bp.vat_rate !== DEFAULT_B2B_OPTIONS.vat_rate ||
+        bp.costs_monthly !== 0 ||
+        bp.units_per_month != null
+      );
+    }
+    return false;
+  });
 
   // Mały ZUS Plus's base has to fall between the preferential and full ZUS
   // bases (tax/pl/b2b.py raises otherwise) - fetched on demand so a range
@@ -294,32 +333,6 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
-        <div className="flex items-center gap-2">
-          <input
-            id="inc-has-end"
-            type="checkbox"
-            checked={hasEnd}
-            onChange={(e) => setHasEnd(e.target.checked)}
-          />
-          <label htmlFor="inc-has-end" className="text-sm font-medium text-slate-700 dark:text-slate-200">
-            {t("inc.form.hasEnd")}
-          </label>
-        </div>
-        {hasEnd ? (
-          <input
-            className="input mt-2"
-            type="date"
-            value={endsOn}
-            min={startsOn}
-            onChange={(e) => setEndsOn(e.target.value)}
-            required
-          />
-        ) : (
-          <p className="mt-1 text-xs muted">{t("inc.form.indefiniteHint")}</p>
-        )}
-      </div>
-
       {kind === "uop" && (
         <div className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/50 p-3 dark:border-sky-900/50 dark:bg-sky-500/5">
           <div>
@@ -336,80 +349,6 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
               required
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="inc-kup">
-                {t("inc.form.kup")}
-                <InfoTip text={t("gloss.kup")} label={t("inc.form.kup")} />
-              </label>
-              <select id="inc-kup" className="input" value={kup} onChange={(e) => setKup(e.target.value as Kup)}>
-                <option value="standard">{t("inc.form.kupStandard")}</option>
-                <option value="commuting">{t("inc.form.kupCommuting")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="inc-creative">{t("inc.form.creativeShare")}</label>
-              <input
-                id="inc-creative"
-                className="input"
-                type="number"
-                step="1"
-                min="0"
-                max="100"
-                value={creativeSharePct}
-                onChange={(e) => setCreativeSharePct(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={pit2} onChange={(e) => setPit2(e.target.checked)} />
-              {t("inc.form.pit2")}
-              <InfoTip text={t("gloss.pit2")} label={t("inc.form.pit2")} />
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={youngRelief}
-                onChange={(e) => setYoungRelief(e.target.checked)}
-              />
-              {t("inc.form.youngRelief")}
-            </label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="inc-ppk-emp">
-                {t("inc.form.ppkEmployee")}
-                <InfoTip text={t("gloss.ppk")} label={t("inc.form.ppkEmployee")} />
-              </label>
-              <input
-                id="inc-ppk-emp"
-                className="input"
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                value={ppkEmployeePct}
-                onChange={(e) => setPpkEmployeePct(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="inc-ppk-empr">{t("inc.form.ppkEmployer")}</label>
-              <input
-                id="inc-ppk-empr"
-                className="input"
-                type="number"
-                step="0.1"
-                min="0"
-                max="1.5"
-                value={ppkEmployerPct}
-                onChange={(e) => setPpkEmployerPct(e.target.value)}
-              />
-            </div>
-          </div>
-          {parseFloat(ppkEmployeePct) === 0 && (
-            <p className="text-xs muted">{t("inc.form.ppkOptOutHint")}</p>
-          )}
         </div>
       )}
 
@@ -455,62 +394,24 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label" htmlFor="inc-rate">{t("inc.form.rate")}</label>
-                <input
-                  id="inc-rate"
-                  className="input"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-              <div>
-                <label className="label" htmlFor="inc-units">{t("inc.form.unitsPerMonth")}</label>
-                <input
-                  id="inc-units"
-                  className="input"
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  value={unitsPerMonth}
-                  onChange={(e) => setUnitsPerMonth(e.target.value)}
-                  disabled={useCalendarUnits}
-                  required={!useCalendarUnits}
-                />
-                <label className="mt-1 flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={useCalendarUnits}
-                    onChange={(e) => setUseCalendarUnits(e.target.checked)}
-                  />
-                  {t("inc.form.useCalendar")}
-                </label>
-                {useCalendarUnits && calendarHint && (
-                  <p className="mt-1 text-xs subtle">{calendarHint}</p>
-                )}
-              </div>
+            <div>
+              <label className="label" htmlFor="inc-rate">{t("inc.form.rate")}</label>
+              <input
+                id="inc-rate"
+                className="input"
+                type="number"
+                step="0.01"
+                min="0"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                placeholder="0.00"
+                required
+              />
+              {useCalendarUnits && calendarHint && (
+                <p className="mt-1 text-xs subtle">{calendarHint}</p>
+              )}
             </div>
           )}
-
-          <div>
-            <label className="label" htmlFor="inc-costs">{t("inc.form.costsMonthly")}</label>
-            <input
-              id="inc-costs"
-              className="input"
-              type="number"
-              step="0.01"
-              min="0"
-              value={costsMonthly}
-              onChange={(e) => setCostsMonthly(e.target.value)}
-              placeholder="0.00"
-            />
-          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -529,80 +430,23 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
                 <option value="ryczalt">{t("inc.form.taxFormRyczalt")}</option>
               </select>
             </div>
-            {taxForm === "ryczalt" && (
-              <div>
-                <label className="label" htmlFor="inc-ryczalt-rate">{t("inc.form.ryczaltRate")}</label>
-                <select
-                  id="inc-ryczalt-rate"
-                  className="input"
-                  value={ryczaltRate}
-                  onChange={(e) => setRyczaltRate(parseFloat(e.target.value))}
-                >
-                  {RYCZALT_RATES.map((r) => (
-                    <option key={r} value={r}>{(r * 100).toFixed(1)}%</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          {taxForm === "ryczalt" && (
             <div>
-              <label className="label" htmlFor="inc-ryczalt-health-tier">
-                {t("inc.form.ryczaltHealthTier")}
+              <label className="label" htmlFor="inc-zus-stage">
+                {t("inc.form.zusStage")}
+                <InfoTip text={t("gloss.zusStage")} label={t("inc.form.zusStage")} />
               </label>
               <select
-                id="inc-ryczalt-health-tier"
+                id="inc-zus-stage"
                 className="input"
-                value={ryczaltHealthTier ?? "auto"}
-                onChange={(e) =>
-                  setRyczaltHealthTier(e.target.value === "auto" ? null : Number(e.target.value))
-                }
+                value={zusStage}
+                onChange={(e) => setZusStage(e.target.value as ZusStage)}
               >
-                <option value="auto">{t("inc.form.ryczaltHealthTierAuto")}</option>
-                {ryczaltTierInfo &&
-                  ([1, 2, 3] as const).map((tier) => (
-                    <option key={tier} value={tier}>
-                      {t("inc.form.ryczaltHealthTierOption", {
-                        tier: String(tier),
-                        amount: fmtMoney(ryczaltTierInfo.tiers[tier - 1], "PLN", locale),
-                        range:
-                          tier === 1
-                            ? t("inc.form.ryczaltHealthTierRangeTier1", {
-                                max: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
-                              })
-                            : tier === 2
-                              ? t("inc.form.ryczaltHealthTierRangeTier2", {
-                                  min: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
-                                  max: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
-                                })
-                              : t("inc.form.ryczaltHealthTierRangeTier3", {
-                                  min: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
-                                }),
-                      })}
-                    </option>
-                  ))}
+                <option value="start">{t("inc.form.zusStart")}</option>
+                <option value="preferential">{t("inc.form.zusPreferential")}</option>
+                <option value="maly_zus_plus">{t("inc.form.zusMzp")}</option>
+                <option value="full">{t("inc.form.zusFull")}</option>
               </select>
-              <p className="mt-1 text-xs muted">{t("inc.form.ryczaltHealthTierHint")}</p>
             </div>
-          )}
-
-          <div>
-            <label className="label" htmlFor="inc-zus-stage">
-              {t("inc.form.zusStage")}
-              <InfoTip text={t("gloss.zusStage")} label={t("inc.form.zusStage")} />
-            </label>
-            <select
-              id="inc-zus-stage"
-              className="input"
-              value={zusStage}
-              onChange={(e) => setZusStage(e.target.value as ZusStage)}
-            >
-              <option value="start">{t("inc.form.zusStart")}</option>
-              <option value="preferential">{t("inc.form.zusPreferential")}</option>
-              <option value="maly_zus_plus">{t("inc.form.zusMzp")}</option>
-              <option value="full">{t("inc.form.zusFull")}</option>
-            </select>
           </div>
           {zusStage === "maly_zus_plus" && (
             <div>
@@ -628,37 +472,6 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
               )}
             </div>
           )}
-
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={sickness} onChange={(e) => setSickness(e.target.checked)} />
-            {t("inc.form.sickness")}
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="inc-vat">{t("inc.form.vat")}</label>
-              <select id="inc-vat" className="input" value={vat} onChange={(e) => setVat(e.target.value as VatMode)}>
-                <option value="standard">{t("inc.form.vatStandard")}</option>
-                <option value="exempt">{t("inc.form.vatExempt")}</option>
-                <option value="reverse_charge">{t("inc.form.vatReverseCharge")}</option>
-              </select>
-            </div>
-            {vat === "standard" && (
-              <div>
-                <label className="label" htmlFor="inc-vat-rate">{t("inc.form.vatRate")}</label>
-                <input
-                  id="inc-vat-rate"
-                  className="input"
-                  type="number"
-                  step="1"
-                  min="0"
-                  max="100"
-                  value={vatRatePct}
-                  onChange={(e) => setVatRatePct(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -682,15 +495,267 @@ export default function SourceForm({ base, existing, onDone, onCancel }: Props) 
         </div>
       )}
 
-      <div>
-        <label className="label" htmlFor="inc-notes">{t("common.notes")}</label>
-        <input
-          id="inc-notes"
-          className="input"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </div>
+      <button
+        type="button"
+        onClick={() => setMoreOpen((o) => !o)}
+        aria-expanded={moreOpen}
+        className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/60"
+      >
+        {t("inc.form.moreOptions")}
+        <span className="subtle">{moreOpen ? "▲" : "▼"}</span>
+      </button>
+
+      {moreOpen && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+            <div className="flex items-center gap-2">
+              <input
+                id="inc-has-end"
+                type="checkbox"
+                checked={hasEnd}
+                onChange={(e) => setHasEnd(e.target.checked)}
+              />
+              <label htmlFor="inc-has-end" className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("inc.form.hasEnd")}
+              </label>
+            </div>
+            {hasEnd ? (
+              <input
+                className="input mt-2"
+                type="date"
+                value={endsOn}
+                min={startsOn}
+                onChange={(e) => setEndsOn(e.target.value)}
+                required
+              />
+            ) : (
+              <p className="mt-1 text-xs muted">{t("inc.form.indefiniteHint")}</p>
+            )}
+          </div>
+
+          {kind === "uop" && (
+            <div className="space-y-3 rounded-lg border border-sky-100 bg-sky-50/50 p-3 dark:border-sky-900/50 dark:bg-sky-500/5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="inc-kup">
+                    {t("inc.form.kup")}
+                    <InfoTip text={t("gloss.kup")} label={t("inc.form.kup")} />
+                  </label>
+                  <select id="inc-kup" className="input" value={kup} onChange={(e) => setKup(e.target.value as Kup)}>
+                    <option value="standard">{t("inc.form.kupStandard")}</option>
+                    <option value="commuting">{t("inc.form.kupCommuting")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor="inc-creative">{t("inc.form.creativeShare")}</label>
+                  <input
+                    id="inc-creative"
+                    className="input"
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="100"
+                    value={creativeSharePct}
+                    onChange={(e) => setCreativeSharePct(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={pit2} onChange={(e) => setPit2(e.target.checked)} />
+                  {t("inc.form.pit2")}
+                  <InfoTip text={t("gloss.pit2")} label={t("inc.form.pit2")} />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={youngRelief}
+                    onChange={(e) => setYoungRelief(e.target.checked)}
+                  />
+                  {t("inc.form.youngRelief")}
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="inc-ppk-emp">
+                    {t("inc.form.ppkEmployee")}
+                    <InfoTip text={t("gloss.ppk")} label={t("inc.form.ppkEmployee")} />
+                  </label>
+                  <input
+                    id="inc-ppk-emp"
+                    className="input"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="2"
+                    value={ppkEmployeePct}
+                    onChange={(e) => setPpkEmployeePct(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor="inc-ppk-empr">{t("inc.form.ppkEmployer")}</label>
+                  <input
+                    id="inc-ppk-empr"
+                    className="input"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="1.5"
+                    value={ppkEmployerPct}
+                    onChange={(e) => setPpkEmployerPct(e.target.value)}
+                  />
+                </div>
+              </div>
+              {parseFloat(ppkEmployeePct) === 0 && (
+                <p className="text-xs muted">{t("inc.form.ppkOptOutHint")}</p>
+              )}
+            </div>
+          )}
+
+          {kind === "b2b" && (
+            <div className="space-y-3 rounded-lg border border-violet-100 bg-violet-50/50 p-3 dark:border-violet-900/50 dark:bg-violet-500/5">
+              {billing !== "monthly" && (
+                <div>
+                  <label className="label" htmlFor="inc-units">{t("inc.form.unitsPerMonth")}</label>
+                  <input
+                    id="inc-units"
+                    className="input"
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={unitsPerMonth}
+                    onChange={(e) => setUnitsPerMonth(e.target.value)}
+                    disabled={useCalendarUnits}
+                    required={!useCalendarUnits}
+                  />
+                  <label className="mt-1 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={useCalendarUnits}
+                      onChange={(e) => setUseCalendarUnits(e.target.checked)}
+                    />
+                    {t("inc.form.useCalendar")}
+                  </label>
+                  {useCalendarUnits && calendarHint && (
+                    <p className="mt-1 text-xs subtle">{calendarHint}</p>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="label" htmlFor="inc-costs">{t("inc.form.costsMonthly")}</label>
+                <input
+                  id="inc-costs"
+                  className="input"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={costsMonthly}
+                  onChange={(e) => setCostsMonthly(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {taxForm === "ryczalt" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label" htmlFor="inc-ryczalt-rate">{t("inc.form.ryczaltRate")}</label>
+                    <select
+                      id="inc-ryczalt-rate"
+                      className="input"
+                      value={ryczaltRate}
+                      onChange={(e) => setRyczaltRate(parseFloat(e.target.value))}
+                    >
+                      {RYCZALT_RATES.map((r) => (
+                        <option key={r} value={r}>{(r * 100).toFixed(1)}%</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="inc-ryczalt-health-tier">
+                      {t("inc.form.ryczaltHealthTier")}
+                    </label>
+                    <select
+                      id="inc-ryczalt-health-tier"
+                      className="input"
+                      value={ryczaltHealthTier ?? "auto"}
+                      onChange={(e) =>
+                        setRyczaltHealthTier(e.target.value === "auto" ? null : Number(e.target.value))
+                      }
+                    >
+                      <option value="auto">{t("inc.form.ryczaltHealthTierAuto")}</option>
+                      {ryczaltTierInfo &&
+                        ([1, 2, 3] as const).map((tier) => (
+                          <option key={tier} value={tier}>
+                            {t("inc.form.ryczaltHealthTierOption", {
+                              tier: String(tier),
+                              amount: fmtMoney(ryczaltTierInfo.tiers[tier - 1], "PLN", locale),
+                              range:
+                                tier === 1
+                                  ? t("inc.form.ryczaltHealthTierRangeTier1", {
+                                      max: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
+                                    })
+                                  : tier === 2
+                                    ? t("inc.form.ryczaltHealthTierRangeTier2", {
+                                        min: fmtMoney(ryczaltTierInfo.thresholds[0], "PLN", locale),
+                                        max: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
+                                      })
+                                    : t("inc.form.ryczaltHealthTierRangeTier3", {
+                                        min: fmtMoney(ryczaltTierInfo.thresholds[1], "PLN", locale),
+                                      }),
+                            })}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <p className="col-span-2 text-xs muted">{t("inc.form.ryczaltHealthTierHint")}</p>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={sickness} onChange={(e) => setSickness(e.target.checked)} />
+                {t("inc.form.sickness")}
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="inc-vat">{t("inc.form.vat")}</label>
+                  <select id="inc-vat" className="input" value={vat} onChange={(e) => setVat(e.target.value as VatMode)}>
+                    <option value="standard">{t("inc.form.vatStandard")}</option>
+                    <option value="exempt">{t("inc.form.vatExempt")}</option>
+                    <option value="reverse_charge">{t("inc.form.vatReverseCharge")}</option>
+                  </select>
+                </div>
+                {vat === "standard" && (
+                  <div>
+                    <label className="label" htmlFor="inc-vat-rate">{t("inc.form.vatRate")}</label>
+                    <input
+                      id="inc-vat-rate"
+                      className="input"
+                      type="number"
+                      step="1"
+                      min="0"
+                      max="100"
+                      value={vatRatePct}
+                      onChange={(e) => setVatRatePct(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="label" htmlFor="inc-notes">{t("common.notes")}</label>
+            <input
+              id="inc-notes"
+              className="input"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
