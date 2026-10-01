@@ -10,10 +10,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 
 
 class User(Base):
@@ -24,12 +25,12 @@ class User(Base):
     # user is recognised.
     subject_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     # The terms-of-use version this user has accepted (config.TERMS_VERSION is
     # the current one) and when. NULL until they accept.
     terms_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
         # The id only. subject_hash is not secret as such, but there is no

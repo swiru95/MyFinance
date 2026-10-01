@@ -26,18 +26,25 @@ ORM hooks and must filter on `user_id` itself, and the ORM's bulk INSERT
 (`session.execute(insert(Model), [...])`) is not stamped. Nothing in the
 application uses either.
 
-When PostgreSQL row-level security is added later, this is where the session
-variable it needs would be set, from the same `info["user_id"]`.
+On PostgreSQL this is also where the database's own copy of the rule is wired
+in (see rls.py): at the start of every transaction `after_begin` runs
+`set_config('myfinance.user_id', <the session's user>, true)` - transaction
+local, like `SET LOCAL` - and the row-level-security policies on every owned
+table compare `user_id` with it. A session with no user (or a system session)
+sets it to the empty string, which matches no row. Because it is set per
+transaction and reverts when the transaction ends, a pooled connection can
+never carry one user's id into another user's request.
 """
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.sql.expression import SelectBase, TableClause
 from sqlalchemy.sql.visitors import iterate
 from sqlalchemy.orm import ORMExecuteState, Session, with_loader_criteria
 
+from . import rls
 from .database import SessionLocal
 from .models.user import Owned
 
@@ -57,10 +64,17 @@ def open_session(user_id: uuid.UUID) -> Session:
 
 
 def open_system_session() -> Session:
-    """A session that sees every user's rows.
+    """A session that is not confined to a user by the ORM.
 
-    For the schema job and the startup sweep only. Rows it creates must name
-    their owner themselves.
+    For the schema job (and tests that inspect across users) only. Rows it
+    creates must name their owner themselves.
+
+    This lifts the ORM's filtering and nothing else. On PostgreSQL it does not
+    set the row-level-security variable, so it sees every user's rows only when
+    the database role it connects as is admitted by the owner policy (the
+    schema job's role is). Connected as the application's runtime role it sees
+    no owned rows at all - the cross-user work the application needs there goes
+    through the narrow functions in rls.py instead.
     """
     return SessionLocal(info={SYSTEM_KEY: True})
 
@@ -89,6 +103,24 @@ def _has_nested_owned_select(statement, names: set[str]) -> bool:
         if isinstance(el, SelectBase) and _owned_tables_in(el, names):
             return True
     return False
+
+
+@event.listens_for(Session, "after_begin")
+def _set_row_security_user(session: Session, transaction, connection) -> None:
+    """Tell PostgreSQL whose transaction this is (see rls.py).
+
+    Runs for every transaction the session begins, on whichever pooled
+    connection it was given, and always writes the variable - to the user's id,
+    or to '' for a session with none - so nothing a previous holder of the
+    connection left behind can apply.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    user_id = session.info.get(USER_KEY)
+    connection.execute(
+        text("SELECT set_config(:name, :value, true)"),
+        {"name": rls.GUC, "value": "" if user_id is None else str(user_id)},
+    )
 
 
 @event.listens_for(Session, "do_orm_execute")

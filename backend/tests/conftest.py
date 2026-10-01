@@ -15,6 +15,16 @@ _TMP = tempfile.mkdtemp(prefix="myfinance-tests-")
 os.environ["MYFINANCE_DATABASE_URL"] = os.environ.get(
     "MYFINANCE_TEST_DATABASE_URL", f"sqlite:///{_TMP}/test.db"
 )
+# On PostgreSQL the application connects as a *runtime* role that cannot create
+# tables and is subject to row-level security; the tables are made, and
+# inspected across users, by the owner. MYFINANCE_TEST_DATABASE_URL is then the
+# runtime role's URL and MYFINANCE_TEST_OWNER_DATABASE_URL the owner's, for the
+# same database. With only the first set, the suite runs as one role that makes
+# the tables and uses them (as it did before row-level security).
+TEST_OWNER_URL = os.environ.get("MYFINANCE_TEST_OWNER_DATABASE_URL")
+if not TEST_OWNER_URL:
+    # That one role owns the tables, so the startup check (rightly) objects.
+    os.environ["MYFINANCE_RLS_ROLE_CHECK"] = "false"
 os.environ["MYFINANCE_DATA_DIR"] = _TMP
 # Never inherit a real tenant or model server from the developer's shell.
 for _var in ("MYFINANCE_AUTH_TENANT_ID", "MYFINANCE_AUTH_CLIENT_ID",
@@ -57,6 +67,59 @@ def offline_prices(monkeypatch):
     )
 
 
+_owner_engine = None
+
+
+def owner_engine():
+    """The engine that creates and drops the tables, and sees across users.
+
+    The application's own engine, unless a separate owner URL was given (then a
+    second engine, for the owning role, on the same database).
+    """
+    global _owner_engine
+    from sqlalchemy import create_engine
+
+    from src.database import engine
+
+    if not TEST_OWNER_URL:
+        return engine
+    if _owner_engine is None:
+        _owner_engine = create_engine(TEST_OWNER_URL)
+    return _owner_engine
+
+
+def system_session():
+    """A session that sees every user's rows, for a test to look at the world.
+
+    On SQLite that is the application's own system session. On PostgreSQL the
+    application's role cannot do it (that is the point of row-level security),
+    so it is a system session on the owner's connection.
+    """
+    from sqlalchemy.orm import sessionmaker
+
+    from src.scoping import SYSTEM_KEY, open_system_session
+
+    if not TEST_OWNER_URL:
+        return open_system_session()
+    return sessionmaker(bind=owner_engine(), autocommit=False, autoflush=False)(
+        info={SYSTEM_KEY: True}
+    )
+
+
+def create_schema() -> None:
+    """Tables as create_all makes them, then what the schema job adds on
+    PostgreSQL: row-level security, and the runtime role's grants."""
+    from src import schema
+    from src.database import Base, engine
+
+    owner = owner_engine()
+    Base.metadata.create_all(bind=owner)
+    if owner.dialect.name == "postgresql":
+        schema.secure_postgresql(owner)
+        if TEST_OWNER_URL:
+            schema.grant_runtime_role(engine.url.username, owner)
+
+
 @pytest.fixture
 def db():
     """A fresh schema per test, dropped afterwards.
@@ -73,12 +136,12 @@ def db():
     import json
 
     from src import schema  # noqa: F401  (registers every model on Base)
-    from src.database import Base, engine
+    from src.database import Base
     from src.models.settings import Setting
     from src.scoping import open_session
     from src.services.users import get_or_create_local_user
 
-    Base.metadata.create_all(bind=engine)
+    create_schema()
     # The session is the fixed local user's, which is who the `client` fixture
     # (authentication off) is served as - so rows a test adds here are the rows
     # its API calls see. No default asset types: these tests start empty.
@@ -92,7 +155,7 @@ def db():
         yield session
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)
+        Base.metadata.drop_all(bind=owner_engine())
 
 
 @pytest.fixture
@@ -128,6 +191,9 @@ def idp(monkeypatch, db):
         ("auth_client_id", ""),
         ("auth_tenant_id", ""),
         ("auth_api_scope", None),
+        # A generic issuer must say how an access token is told from an ID token
+        # (auth.validate_config); FakeIdP signs tokens with typ "at+jwt".
+        ("auth_require_at_jwt_typ", True),
         ("auth_required_role", None),
         ("subject_pepper", PEPPER),
     ):

@@ -7,10 +7,11 @@ every month it applies to.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Numeric, DateTime, Text, UniqueConstraint
+from sqlalchemy import String, Numeric, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 from .user import Owned
 
 
@@ -39,7 +40,7 @@ class MonthlyRecord(Owned, Base):
     commitments_paid: Mapped[str | None] = mapped_column(Text, nullable=True)
     other_spent: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        UtcDateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )

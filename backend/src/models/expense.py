@@ -13,10 +13,11 @@ rather than a single logged payment.
 """
 from datetime import date, datetime, timezone
 
-from sqlalchemy import String, Numeric, Date, DateTime, Text
+from sqlalchemy import String, Numeric, Date, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 from .user import Owned
 
 
@@ -35,7 +36,7 @@ class Expense(Owned, Base):
     ends_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        UtcDateTime, default=lambda: datetime.now(timezone.utc)
     )
 
     def __repr__(self) -> str:  # pragma: no cover

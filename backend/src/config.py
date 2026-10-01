@@ -90,6 +90,17 @@ class Settings(BaseSettings):
     # default "MyFinance.User".
     auth_required_role: str | None = None
 
+    # Require the JWT header `typ` to be "at+jwt" (RFC 9068, "JWT Profile for
+    # OAuth 2.0 Access Tokens"). One of this or a scope (above) is mandatory:
+    # `iss`, `aud` and the signature are identical on the ID token the browser
+    # gets at sign-in and the access token it should send, so without one of
+    # these two checks a generic issuer's ID token is accepted as an API
+    # credential. Set this for issuers that mint RFC 9068 access tokens
+    # (Keycloak does not by default - its access tokens carry typ "Bearer" - so
+    # use a scope there; Entra's carry typ "JWT" and use the scope too). Entra
+    # needs neither: tenant + client id imply the access_as_user scope.
+    auth_require_at_jwt_typ: bool = False
+
     # Signing keys and the discovery document are cached for this long. Issuers
     # rotate keys, so this cannot be indefinite; an unknown key id forces an
     # earlier refresh (at most once per auth_jwks_min_refresh_seconds).
@@ -110,6 +121,14 @@ class Settings(BaseSettings):
     # read by `python -m src.schema`, and only when it finds rows with no owner.
     bootstrap_iss: str = ""
     bootstrap_sub: str = ""
+
+    # --- Database ---------------------------------------------------------
+    # On PostgreSQL the application must connect as a role that is subject to
+    # row-level security (src/rls.py): not a superuser, no BYPASSRLS, not the
+    # owner of the tables. Startup refuses to proceed otherwise, because every
+    # query would work and none would be protected. Switch off only for a
+    # deliberate one-off, e.g. running the application as the owner locally.
+    rls_role_check: bool = True
 
     # --- Wallet assessment (llama-server, OpenAI-compatible API) -------------
     # Unset base URL or key disables the feature rather than failing requests:

@@ -10,10 +10,11 @@ interpretable against the figures that produced it, not today's.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 from .user import Owned
 
 
@@ -22,7 +23,7 @@ class Insight(Owned, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), index=True
+        UtcDateTime, default=lambda: datetime.now(timezone.utc), index=True
     )
     # profile | digest | next_steps
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)

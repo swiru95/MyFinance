@@ -106,6 +106,17 @@ def required_role() -> str:
     return _ENTRA_DEFAULT_ROLE if _entra_compat() else ""
 
 
+def requires_access_token_proof() -> bool:
+    """Whether this deployment can tell an access token from an ID token.
+
+    The two carry the same issuer, audience and signature, so the API needs
+    something that sets them apart: a scope that only access tokens carry, or
+    the RFC 9068 `typ` header. Entra configured by tenant and client id has the
+    scope by default; anything else has to choose.
+    """
+    return bool(required_scope()) or settings.auth_require_at_jwt_typ
+
+
 def auth_enabled() -> bool:
     """Authentication is on when an issuer and an audience are both known."""
     return bool(issuer() and audiences())
@@ -154,6 +165,13 @@ def validate_config() -> None:
         )
     if urlsplit(issuer()).scheme != "https" and not _is_local(issuer()):
         raise AuthConfigError("the OIDC issuer must be an https URL")
+    if not requires_access_token_proof():
+        raise AuthConfigError(
+            "nothing distinguishes an access token from an ID token: with this issuer, an ID "
+            "token for the right audience would be accepted as an API credential. Set "
+            "MYFINANCE_AUTH_API_SCOPE (a scope that only access tokens carry) or "
+            "MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP=true (RFC 9068 `typ: at+jwt`)"
+        )
 
 
 # --- Keys ---------------------------------------------------------------
@@ -278,6 +296,12 @@ def verify_token(token: str) -> dict:
     Signature, issuer, audience and expiry are all checked. Nothing here trusts
     a claim before the signature has been verified against the issuer's keys.
     """
+    if not requires_access_token_proof():
+        # validate_config() stops the application starting like this; this is
+        # the same refusal for anything that reaches here without it (a test, a
+        # settings change at runtime). Failing open would accept ID tokens.
+        log.error("authentication is enabled with no scope and no typ requirement; refusing tokens")
+        raise HTTPException(500, "Server authentication configuration is incomplete")
     try:
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as exc:
@@ -328,6 +352,17 @@ def verify_token(token: str) -> dict:
     # corollary.
     if settings.auth_tenant_id and claims.get("tid") != settings.auth_tenant_id:
         raise _unauthorized("Token was not issued by the configured tenant")
+
+    # RFC 9068 section 2.1: an access token's header says so. Read from the
+    # header only after the signature has verified, so it is the issuer's word.
+    # `application/at+jwt` is the same media type spelled out (RFC 7515 4.1.9).
+    if settings.auth_require_at_jwt_typ:
+        typ = header.get("typ")
+        if not isinstance(typ, str) or typ.lower() not in ("at+jwt", "application/at+jwt"):
+            raise _unauthorized(
+                "Token is not an access token for this API "
+                '(its header typ is not "at+jwt"); an ID token will not do'
+            )
 
     # With a scope configured, this must be an *access token minted for this
     # API*, not merely a token carrying the right audience. An ID token from

@@ -25,7 +25,17 @@ import queue
 import threading
 from typing import Callable
 
+from sqlalchemy import text
+
+from .. import rls
+
 logger = logging.getLogger(__name__)
+
+# What a job left behind by a crash or restart is told. Shared with the SQL
+# function that does the same sweep on PostgreSQL (rls.py), so the two cannot
+# drift apart.
+TRANSLATION_INTERRUPTED_NOTE = "Translation was interrupted by a server restart; showing English."
+INTERRUPTED_NOTE = "Interrupted by a server restart - generate again."
 
 _jobs: "queue.Queue[Callable[[], None]]" = queue.Queue()
 _worker_lock = threading.Lock()
@@ -85,10 +95,29 @@ def cleanup_interrupted_jobs() -> None:
 
     Continues on errors to never block startup.
 
-    Deliberately works across every user: it runs once, before any request, as
-    a system session (scoping.open_system_session), and only ever changes the
-    status of rows - it reads no content and builds no prompt.
+    Deliberately works across every user: it runs once, before any request, and
+    only ever changes the status of rows - it reads no content and builds no
+    prompt. On PostgreSQL the application's role cannot see other users' rows
+    at all (row-level security, rls.py), so this is one call to a SECURITY
+    DEFINER function that does exactly this sweep and nothing else. On SQLite
+    there is no such boundary and a system session does it directly.
     """
+    from ..database import engine
+
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.begin() as conn:
+                reports, insights = conn.execute(
+                    text(f"SELECT out_reports, out_insights FROM public.{rls.SWEEP_JOBS}()")
+                ).one()
+            if reports:
+                logger.info(f"Cleaned up {reports} interrupted Report rows")
+            if insights:
+                logger.info(f"Cleaned up {insights} interrupted Insight rows")
+        except Exception:
+            logger.exception("Error cleaning up interrupted jobs")
+        return
+
     from ..scoping import open_system_session
     from ..models.report import Report
     from ..models.insight import Insight
@@ -105,11 +134,11 @@ def cleanup_interrupted_jobs() -> None:
                 if report.status == "translating" and report.content:
                     # Translation was interrupted but English is ready; mark done
                     report.status = "done"
-                    report.error = "Translation was interrupted by a server restart; showing English."
+                    report.error = TRANSLATION_INTERRUPTED_NOTE
                 else:
                     # Generation was interrupted before completion
                     report.status = "failed"
-                    report.error = "Interrupted by a server restart - generate again."
+                    report.error = INTERRUPTED_NOTE
 
             if pending_reports:
                 db.commit()
@@ -128,11 +157,11 @@ def cleanup_interrupted_jobs() -> None:
                 if insight.status == "translating" and insight.content:
                     # Translation was interrupted but English is ready; mark done
                     insight.status = "done"
-                    insight.error = "Translation was interrupted by a server restart; showing English."
+                    insight.error = TRANSLATION_INTERRUPTED_NOTE
                 else:
                     # Generation was interrupted before completion
                     insight.status = "failed"
-                    insight.error = "Interrupted by a server restart - generate again."
+                    insight.error = INTERRUPTED_NOTE
 
             if pending_insights:
                 db.commit()

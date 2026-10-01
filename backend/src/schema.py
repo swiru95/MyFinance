@@ -7,6 +7,10 @@ out; the app then connects with a role that can only read and write rows.
 
 Safe to run repeatedly: every step checks before it acts.
 
+On PostgreSQL the job also installs row-level security (rls.py) and the two
+functions the application's role calls for the work that crosses users, and
+adds the composite foreign keys that keep a child row inside its owner's data.
+
 Multi-user ownership (`migrate_ownership`) is the one step that rewrites
 existing tables. It runs on both databases the application supports - SQLite
 (local development) and PostgreSQL - and in one transaction on each, so a
@@ -23,7 +27,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Uuid, bindparam, insert, inspect, select, text
 from sqlalchemy.engine import Connection, Engine
 
-from . import auth, identity
+from . import auth, identity, rls
 from .config import settings
 from .database import Base, engine
 from .models import (  # noqa: F401 (import registers the tables on Base)
@@ -312,6 +316,100 @@ def _migrate_sqlite(eng: Engine, legacy: list, boot) -> None:
             raw.close()
 
 
+# Parent -> child links that must stay inside one user: (child table, child
+# column, parent table, unique constraint on the parent, composite FK name).
+# The models declare the same constraints (so a fresh database gets them from
+# create_all); this brings an existing PostgreSQL database up to the same shape.
+OWNED_LINKS = [
+    ("positions", "asset_id", "assets", "uq_assets_user_id_id", "fk_positions_user_asset"),
+    ("income_entries", "source_id", "income_sources", "uq_income_sources_user_id_id",
+     "fk_income_entries_user_source"),
+]
+
+
+def _has_constraint(conn: Connection, table: str, name: str) -> bool:
+    return conn.execute(
+        text("SELECT 1 FROM pg_constraint WHERE conrelid = to_regclass(:t) AND conname = :n"),
+        {"t": f"public.{table}", "n": name},
+    ).first() is not None
+
+
+def migrate_integrity(eng: Engine | None = None) -> None:
+    """Make the database itself refuse a child row that points at another
+    user's parent: `(user_id, asset_id)` on positions -> assets and
+    `(user_id, source_id)` on income_entries -> income_sources.
+
+    Row-level security cannot do this: foreign-key checks run with it bypassed,
+    so a plain `asset_id` reference accepts any user's asset (and its error
+    message tells you the id exists). Each link gets a unique constraint on the
+    parent's (user_id, id) to point at, the composite foreign key, and loses the
+    single-column foreign key it makes redundant.
+
+    PostgreSQL only, and idempotent: each step checks what is already there.
+    SQLite does not enforce foreign keys unless asked to and cannot add one to
+    an existing table without rebuilding it, so an existing SQLite database
+    keeps its old (decorative) single-column keys; a new one gets the composite
+    ones from create_all, and the ownership rebuild above recreates the legacy
+    tables from the models.
+
+    Rows that already cross users would make the new key fail. That cannot
+    happen through the application, but it is checked first so the failure
+    names the table instead of being a bare constraint error - and the run
+    stops rather than guessing which user the row belongs to.
+    """
+    eng = eng or engine
+    if eng.dialect.name != "postgresql":
+        return
+    q = eng.dialect.identifier_preparer.quote
+    done = []
+    with eng.begin() as conn:
+        for child, column, parent, unique, fk in OWNED_LINKS:
+            if not (inspect(conn).has_table(child) and inspect(conn).has_table(parent)):
+                continue
+            if _has_constraint(conn, child, fk):
+                continue
+            crossing = conn.execute(text(
+                f"SELECT count(*) FROM {q(child)} c JOIN {q(parent)} p ON p.id = c.{q(column)} "
+                f"WHERE p.user_id <> c.user_id"
+            )).scalar_one()
+            if crossing:
+                raise SchemaError(
+                    f"{crossing} row(s) in {child} point at a {parent} row owned by another "
+                    f"user; fix or delete them before the {fk} constraint can be added"
+                )
+            if not _has_constraint(conn, parent, unique):
+                conn.execute(text(
+                    f"ALTER TABLE {q(parent)} ADD CONSTRAINT {q(unique)} UNIQUE (user_id, id)"
+                ))
+            conn.execute(text(
+                f"ALTER TABLE {q(child)} ADD CONSTRAINT {q(fk)} "
+                f"FOREIGN KEY (user_id, {q(column)}) REFERENCES {q(parent)} (user_id, id)"
+            ))
+            for old in inspect(conn).get_foreign_keys(child):
+                if old["constrained_columns"] == [column] and old["name"]:
+                    conn.execute(text(f"ALTER TABLE {q(child)} DROP CONSTRAINT {q(old['name'])}"))
+            done.append(fk)
+    if done:
+        print(f"  + composite ownership keys: {', '.join(done)}")
+
+
+def secure_postgresql(eng: Engine | None = None) -> None:
+    """Row-level security and its functions (see rls.py), in one transaction.
+
+    Must run as the role that owns the tables - the schema job - and is
+    idempotent: policies are dropped and recreated, functions replaced.
+    """
+    eng = eng or engine
+    if eng.dialect.name != "postgresql":
+        return
+    try:
+        with eng.begin() as conn:
+            rls.apply(conn, [t.name for t in owned_tables()])
+    except rls.RowSecurityError as exc:
+        raise SchemaError(str(exc)) from exc
+    print("  + row-level security (forced) on the owned tables and users")
+
+
 def move_terms_to_users() -> None:
     """Terms acceptance used to be a per-database setting; it is now a column
     on the user. Carry any old `terms_accepted` setting over to the user that
@@ -409,28 +507,58 @@ def seed_features(user_id: uuid.UUID) -> None:
         db.close()
 
 
-def grant_runtime_role(role: str) -> None:
+def grant_runtime_role(role: str, eng: Engine | None = None) -> None:
     """Give the application role exactly what it needs and nothing more.
 
     Rows it may read and write; tables and schemas it may not create, drop or
-    alter. Sequences are needed because the primary keys are generated.
+    alter. Sequences are needed because the primary keys are generated. On
+    `users` it may read (its own row, by policy) and update only the two
+    terms-acceptance columns: accounts are added through a function, never
+    inserted or deleted by the role.
+
+    Refuses a role that would ignore row-level security - a superuser, one with
+    BYPASSRLS, or one that is (a member of) the owner - because granting it
+    rights would then hand over every user's rows.
     """
     if not role:
         return
-    statements = [
-        f'GRANT CONNECT ON DATABASE "{engine.url.database}" TO "{role}"',
-        f'GRANT USAGE ON SCHEMA public TO "{role}"',
-        f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "{role}"',
-        f'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "{role}"',
-        # Anything this Job creates in future runs is covered without re-granting.
-        f'ALTER DEFAULT PRIVILEGES IN SCHEMA public '
-        f'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{role}"',
-        f'ALTER DEFAULT PRIVILEGES IN SCHEMA public '
-        f'GRANT USAGE, SELECT ON SEQUENCES TO "{role}"',
-    ]
-    with engine.begin() as conn:
+    eng = eng or engine
+    database = eng.url.database
+    q = eng.dialect.identifier_preparer.quote
+    with eng.begin() as conn:
+        attrs = conn.execute(
+            text(
+                "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(r.oid, current_user, 'MEMBER') "
+                "FROM pg_roles r WHERE r.rolname = :r"
+            ),
+            {"r": role},
+        ).first()
+        if attrs is None:
+            raise SchemaError(f"runtime role {role!r} does not exist")
+        if attrs[0] or attrs[1] or attrs[2]:
+            raise SchemaError(
+                f"runtime role {role!r} would not be subject to row-level security "
+                f"(superuser={attrs[0]}, bypassrls={attrs[1]}, member of the owner={attrs[2]})"
+            )
+        statements = [
+            f"GRANT CONNECT ON DATABASE {q(database)} TO {q(role)}",
+            f"GRANT USAGE ON SCHEMA public TO {q(role)}",
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {q(role)}",
+            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {q(role)}",
+            # Anything this Job creates in future runs is covered without re-granting.
+            f"ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {q(role)}",
+            f"ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+            f"GRANT USAGE, SELECT ON SEQUENCES TO {q(role)}",
+            # users: narrower than every other table.
+            f"REVOKE ALL ON TABLE users FROM {q(role)}",
+            f"GRANT SELECT ON TABLE users TO {q(role)}",
+            f"GRANT UPDATE (terms_version, terms_accepted_at) ON TABLE users TO {q(role)}",
+        ]
         for sql in statements:
             conn.execute(text(sql))
+        if conn.execute(text("SELECT to_regprocedure(:f)"), {"f": rls.function_signatures()[0]}).scalar():
+            rls.grant_functions(conn, role)
     print(f"  + granted read/write on public to {role}")
 
 
@@ -443,13 +571,15 @@ def main() -> int:
         Base.metadata.create_all(bind=engine)
         migrate()
         migrate_ownership()
+        migrate_integrity()
         move_terms_to_users()
         backfill_profiles()
+        secure_postgresql()
+        if engine.dialect.name == "postgresql":
+            grant_runtime_role(os.environ.get("MYFINANCE_APP_ROLE", ""))
     except (SchemaError, auth.AuthConfigError) as exc:
         print(f"schema: {exc}", file=sys.stderr)
         return 1
-    if engine.url.drivername.startswith("postgresql"):
-        grant_runtime_role(os.environ.get("MYFINANCE_APP_ROLE", ""))
     print("schema: up to date")
     return 0
 

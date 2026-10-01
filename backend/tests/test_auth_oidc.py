@@ -15,10 +15,8 @@ from sqlalchemy import select
 
 from src import auth, identity
 from src.config import settings
-from src.database import engine
 from src.models.user import User
-from src.scoping import open_system_session
-from tests.conftest import make_client
+from tests.conftest import make_client, owner_engine, system_session
 from tests.fake_oidc import AUDIENCE, ISSUER, JWKS_URI, PEPPER, FakeIdP
 
 
@@ -28,7 +26,7 @@ def _get(token, path="/api/auth/me"):
 
 def _users() -> list[User]:
     """Signed-in users - the `db` fixture's fixed local user is not one."""
-    db = open_system_session()
+    db = system_session()
     try:
         return list(db.execute(select(User).where(User.id != identity.LOCAL_USER_ID)).scalars())
     finally:
@@ -155,6 +153,54 @@ def test_scope_and_role_checks_are_off_for_a_plain_issuer(idp):
     assert _get(idp.token()).status_code == 200
 
 
+# --- ID tokens are not API credentials ------------------------------------------------
+
+def test_without_scope_or_typ_requirement_no_token_is_accepted_at_all(idp, monkeypatch):
+    """Fails closed even if validate_config() was never run: a token with the
+    right issuer, audience and signature must not pass just because nothing was
+    configured to tell it from an ID token."""
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", False)
+    assert _get(idp.token()).status_code == 500
+    assert _users() == []
+
+
+def test_typ_at_jwt_accepts_access_tokens_and_rejects_everything_else(idp):
+    assert _get(idp.token(typ="at+jwt")).status_code == 200
+    assert _get(idp.token(typ="AT+JWT")).status_code == 200
+    # The same media type, spelled out (RFC 7515 section 4.1.9).
+    assert _get(idp.token(typ="application/at+jwt")).status_code == 200
+    # What an ID token (or an unlabelled token) carries.
+    for typ in ("JWT", "ID", "Bearer", "at+jwt+x", "", None):
+        r = _get(idp.token(typ=typ))
+        assert r.status_code == 401, typ
+        assert "ID token" in r.json()["detail"], typ
+    # Only the one person the accepted tokens above were for.
+    assert len(_users()) == 1
+
+
+def test_an_id_token_with_the_right_audience_is_rejected(idp):
+    """The scenario this check exists for: same issuer, same audience, same key,
+    a valid signature - an ID token, sent where an access token belongs."""
+    id_token = idp.token("sub-alice", typ="JWT", nonce="n-0S6_WzA2Mj", at_hash="xyz",
+                         name="Alice Example", email="alice@example.test")
+    assert _get(id_token).status_code == 401
+
+
+def test_typ_and_scope_can_both_be_required(idp, monkeypatch):
+    monkeypatch.setattr(settings, "auth_api_scope", "finance.read")
+    assert _get(idp.token(scp="finance.read")).status_code == 200
+    assert _get(idp.token(scp="finance.read", typ="JWT")).status_code == 401
+    assert _get(idp.token(typ="at+jwt")).status_code == 401
+
+
+def test_scope_alone_is_enough_without_the_typ_check(idp, monkeypatch):
+    """Providers whose access tokens are not typ at+jwt (Entra, Keycloak)."""
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", False)
+    monkeypatch.setattr(settings, "auth_api_scope", "finance.read")
+    assert _get(idp.token(scp="finance.read", typ="JWT")).status_code == 200
+    assert _get(idp.token(typ="JWT")).status_code == 401
+
+
 def test_required_scope_is_enforced_when_configured(idp, monkeypatch):
     monkeypatch.setattr(settings, "auth_api_scope", "finance.read")
     assert _get(idp.token()).status_code == 401
@@ -248,9 +294,22 @@ def test_entra_defaults_require_the_tenant(entra):
 
 
 def test_entra_checks_can_still_be_switched_off(entra, monkeypatch):
+    # The scope is what tells an access token from an ID token, so switching it
+    # off is only allowed alongside the RFC 9068 typ check.
     monkeypatch.setattr(settings, "auth_api_scope", "")
     monkeypatch.setattr(settings, "auth_required_role", "")
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", True)
     assert _get(_entra_token(entra, scp=None, roles=[])).status_code == 200
+    # ... and then it is the typ that is checked.
+    assert _get(_entra_token(entra, scp=None, roles=[], typ="JWT")).status_code == 401
+
+
+def test_entra_defaults_need_neither_typ_nor_explicit_choice(entra):
+    """Existing Entra deployments (tenant + client id) keep working untouched:
+    their access tokens carry typ "JWT", and the access_as_user scope is the
+    discriminator."""
+    auth.validate_config()
+    assert _get(_entra_token(entra, typ="JWT")).status_code == 200
 
 
 def test_auth_config_for_entra_keeps_its_old_shape_and_adds_the_issuer(entra):
@@ -279,6 +338,37 @@ def test_issuer_without_audience_is_a_startup_error(monkeypatch):
     monkeypatch.setattr(settings, "auth_issuer", ISSUER)
     with pytest.raises(auth.AuthConfigError):
         auth.validate_config()
+
+
+def test_a_generic_issuer_must_choose_how_to_tell_access_tokens_from_id_tokens(idp, monkeypatch):
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", False)
+    monkeypatch.setattr(settings, "auth_api_scope", None)
+    with pytest.raises(auth.AuthConfigError, match="ID token"):
+        auth.validate_config()
+    # Either choice is enough.
+    monkeypatch.setattr(settings, "auth_api_scope", "finance.read")
+    auth.validate_config()
+    monkeypatch.setattr(settings, "auth_api_scope", None)
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", True)
+    auth.validate_config()
+
+
+def test_an_empty_scope_does_not_count_as_a_choice(idp, monkeypatch):
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", False)
+    monkeypatch.setattr(settings, "auth_api_scope", "")
+    with pytest.raises(auth.AuthConfigError, match="ID token"):
+        auth.validate_config()
+
+
+def test_app_refuses_to_start_when_id_tokens_would_be_accepted(idp, monkeypatch):
+    monkeypatch.setattr(settings, "auth_require_at_jwt_typ", False)
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    with pytest.raises(auth.AuthConfigError, match="ID token"):
+        with TestClient(app):
+            pass
 
 
 def test_pepper_is_required_when_auth_is_enabled(idp, monkeypatch):
@@ -397,8 +487,8 @@ def test_no_raw_sub_name_or_email_reaches_the_database_or_the_logs(idp, caplog):
     # Every table, every column, as text.
     from sqlalchemy import inspect, text
 
-    with engine.connect() as conn:
-        tables = inspect(engine).get_table_names()
+    with owner_engine().connect() as conn:
+        tables = inspect(owner_engine()).get_table_names()
         dump = ""
         for t in tables:
             for row in conn.execute(text(f'SELECT * FROM "{t}"')):

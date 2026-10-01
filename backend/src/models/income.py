@@ -8,15 +8,20 @@ default. Shape of `params` depends on `kind` - see schemas/income.py.
 """
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, ForeignKeyConstraint, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 from .user import Owned
 
 
 class IncomeSource(Owned, Base):
     __tablename__ = "income_sources"
+    __table_args__ = (
+        # Target of income_entries' composite foreign key; see IncomeEntry.
+        UniqueConstraint("user_id", "id", name="uq_income_sources_user_id_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -29,7 +34,7 @@ class IncomeSource(Owned, Base):
     ends_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc)
+        UtcDateTime, default=lambda: datetime.now(timezone.utc)
     )
 
     def __repr__(self) -> str:  # pragma: no cover
@@ -48,12 +53,17 @@ class IncomeEntry(Owned, Base):
         UniqueConstraint(
             "user_id", "source_id", "month", name="uq_income_entry_user_source_month"
         ),
+        # An entry cannot belong to another user's source - see
+        # Position.__table_args__ for why this is a composite key.
+        ForeignKeyConstraint(
+            ["user_id", "source_id"],
+            ["income_sources.user_id", "income_sources.id"],
+            name="fk_income_entries_user_source",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    source_id: Mapped[int] = mapped_column(
-        ForeignKey("income_sources.id"), nullable=False, index=True
-    )
+    source_id: Mapped[int] = mapped_column(nullable=False, index=True)
     # Calendar month as "YYYY-MM".
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     # uop: gross; b2b: invoice net revenue; other: net.
@@ -69,7 +79,7 @@ class IncomeEntry(Owned, Base):
     override_net: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        UtcDateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )

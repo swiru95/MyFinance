@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from .auth import auth_enabled, issuer, require_user, validate_config
 from .config import settings
+from . import rls
+from .database import engine
 from .deps import get_db
 from .models import (  # noqa: F401 (register models)
     asset,
@@ -49,11 +51,14 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application startup and shutdown.
 
-    Startup: refuse an inconsistent authentication configuration, then clean up
+    Startup: refuse an inconsistent authentication configuration, refuse a
+    database role that would bypass row-level security, then clean up
     orphaned LLM jobs (pending/running/translating) left by a crash/restart of
     the previous instance.
     """
     validate_config()
+    if settings.rls_role_check:
+        rls.check_runtime_role(engine)
     llm_queue.cleanup_interrupted_jobs()
     yield
 

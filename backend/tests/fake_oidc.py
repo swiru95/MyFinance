@@ -64,6 +64,7 @@ class FakeIdP:
         ttl: int = 3600,
         key=None,
         kid: str | None = None,
+        typ: str | None = "at+jwt",
         drop: tuple[str, ...] = (),
         **claims,
     ) -> str:
@@ -71,8 +72,10 @@ class FakeIdP:
         body = {"iss": iss, "aud": aud, "sub": sub, "iat": now, "exp": now + ttl, **claims}
         for name in drop:
             body.pop(name, None)
+        # `typ` defaults to what RFC 9068 access tokens carry. None leaves the
+        # header without one; "JWT" is what an ID token typically has.
         return jwt.encode(
-            body, key or _KEY, algorithm="RS256", headers={"kid": kid or self.kid}
+            body, key or _KEY, algorithm="RS256", headers={"kid": kid or self.kid, "typ": typ}
         )
 
     @staticmethod

@@ -360,9 +360,9 @@ def test_terms_acceptance_belongs_to_the_user(idp):
     from sqlalchemy import select
 
     from src.models.settings import Setting
-    from src.scoping import open_system_session
+    from tests.conftest import system_session
 
-    db = open_system_session()
+    db = system_session()
     try:
         assert db.execute(select(Setting).where(Setting.key == "terms_accepted")).first() is None
     finally:

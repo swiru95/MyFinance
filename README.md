@@ -196,6 +196,16 @@ The tax engine's expected values are hand-computed, to the grosz. Tests run on
 a throwaway SQLite database with prices served from the static fallbacks, so
 they never touch the network.
 
+To run them on PostgreSQL instead, point `MYFINANCE_TEST_DATABASE_URL` at an
+**empty scratch database** (tables are created and dropped per test). To also run the
+row-level-security tests, use two roles on that database: the *owner* (makes the
+tables, `NOSUPERUSER`) and the *runtime* role (`NOSUPERUSER NOBYPASSRLS`, no DDL),
+and set `MYFINANCE_TEST_DATABASE_URL` to the runtime role's URL and
+`MYFINANCE_TEST_OWNER_DATABASE_URL` to the owner's. The suite then runs as the
+runtime role, exactly like the application. `MYFINANCE_TEST_POSTGRES_URL` (a
+database on that server where the owner may `CREATE DATABASE`) additionally enables
+the PostgreSQL migration tests.
+
 ## Wallet assessment
 
 The **Wallet assessment** tab on **Insights** asks a local language model to review the portfolio and
@@ -392,7 +402,8 @@ registration.
 |---|---|---|
 | `MYFINANCE_AUTH_TENANT_ID` | *(empty)* | Directory (tenant) ID. With a client id, this is the whole Entra configuration |
 | `MYFINANCE_AUTH_CLIENT_ID` | *(empty)* | Application (client) ID |
-| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` (Entra) | Scope that must be in `scp`. Empty switches the check off |
+| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` (Entra) | Scope that must be in `scp`/`scope`. Empty switches the check off, which is only allowed together with `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP` |
+| `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP` | `false` | Require the JWT header `typ` to be `at+jwt` (RFC 9068). **One of this and a scope is mandatory** for any issuer that is not configured the Entra way |
 | `MYFINANCE_AUTH_REQUIRED_ROLE` | `MyFinance.User` (Entra) | App role the caller must hold. Empty admits anyone in the tenant |
 | `MYFINANCE_AUTH_JWKS_CACHE_SECONDS` | `3600` | How long signing keys are cached |
 | `MYFINANCE_AUTH_LEEWAY_SECONDS` | `60` | Clock skew tolerated on `exp`/`nbf` |
@@ -400,8 +411,18 @@ registration.
 
 The Entra-specific defaults apply only when authentication is configured the Entra
 way (tenant + client id, no `MYFINANCE_AUTH_ISSUER`); with an explicit issuer the
-scope, role and tenant checks are off unless set. Configuration written for the
+role and tenant checks are off unless set. Configuration written for the
 Entra-only version therefore behaves exactly as before.
+
+**An ID token must never work as an API credential**, and for a generic issuer
+nothing but configuration can tell the two apart: they carry the same `iss`, `aud`
+and signature. So the backend refuses to start (and the schema job refuses to run)
+unless one of these is chosen explicitly: `MYFINANCE_AUTH_API_SCOPE` (a scope only
+access tokens carry, in `scp` or `scope`), or `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP=true`
+(the header `typ` must be `at+jwt` or `application/at+jwt`, RFC 9068; use this for
+issuers that mint RFC 9068 access tokens). Keycloak access tokens carry `typ: Bearer`
+and Entra's carry `typ: JWT`, so those two use a scope. Both may be set. Entra by
+tenant + client id gets the `access_as_user` scope by default and needs neither.
 
 **Setting none of the authentication variables disables authentication entirely** —
 every endpoint is open and served as one fixed local user, and the frontend skips the
@@ -484,12 +505,49 @@ once, in `src/scoping.py`: a database session is opened *for one user*
 (`deps.get_db`, and each queued LLM job opens its own), and from then on every query
 through it is filtered to that user and every new row is stamped with them. Another
 user's id is therefore a plain `404`. A session with no user refuses to touch an owned
-table; the few cross-user jobs (schema, startup sweep of interrupted jobs) ask for
-`open_system_session()` explicitly. Constructs the filter cannot reach — subqueries,
+table; the schema job asks for `open_system_session()` explicitly (the startup sweep and
+user lookup go through database functions on PostgreSQL, see below). Constructs the filter cannot reach — subqueries,
 Core statements on an owned table — are refused rather than left to leak. Raw `text()`
 SQL is outside it and must filter on `user_id` itself.
 
 New users start with the default asset types and every advanced feature off.
+
+### Row-level security (PostgreSQL)
+
+On PostgreSQL the database enforces the same rule a second time, underneath the ORM
+(`src/rls.py`; SQLite has no such thing and keeps only the application-level scoping).
+
+- Every owned table has row-level security enabled **and forced**, with one policy for
+  every command: `user_id = NULLIF(current_setting('myfinance.user_id', true), '')::uuid`,
+  as both `USING` and `WITH CHECK`. A query that does not name its user sees no rows and
+  cannot write any - it does not fall back to "all".
+- `src/scoping.py` sets that variable with `set_config(..., true)` (transaction-local,
+  like `SET LOCAL`) at the start of **every** transaction, from the session's user. A
+  pooled connection therefore cannot carry one user's id into another request.
+- The application connects as a **runtime role** that owns nothing, has no DDL and no
+  `BYPASSRLS`, and is not a superuser. Startup refuses to proceed if the role would
+  ignore the policies (`MYFINANCE_RLS_ROLE_CHECK=false` overrides, for a deliberate
+  one-off); the schema job refuses to grant to such a role.
+- Cross-user work has the narrowest door that does the job: two `SECURITY DEFINER`
+  functions owned by the owner role and executable by the runtime role only -
+  `myfinance_get_or_create_user(subject_hash, id)` (find or add a person) and
+  `myfinance_sweep_interrupted_jobs()` (the startup sweep). `open_system_session()` lifts
+  only the ORM's filter; as the runtime role it still sees no rows.
+- `users` has row-level security too: the runtime role sees and updates only its own row,
+  may update only the two terms columns, and cannot insert or delete (accounts are
+  created by the function above).
+- The **owner** is subject to the policies as well (`FORCE`) and is admitted by one named
+  policy, `myfinance_owner_access`, because the schema job and the two functions run as
+  it. The application must never connect as the owner or a member of it.
+- Foreign-key checks bypass row-level security, so `positions` and `income_entries` use
+  composite keys `(user_id, asset_id)` / `(user_id, source_id)` that cannot point at
+  another user's parent.
+
+`python -m src.schema` installs all of this, idempotently, and adds the composite keys
+to an existing PostgreSQL database (stopping, with the table named, if a row already
+crosses users). Set `MYFINANCE_APP_ROLE` to the runtime role so it receives its grants.
+Existing SQLite databases keep their old single-column keys (SQLite does not enforce
+foreign keys unless asked, and cannot add one without rebuilding the table).
 
 ### Migrating a single-user database
 

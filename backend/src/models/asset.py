@@ -1,14 +1,21 @@
 """Asset type model."""
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Text
+from sqlalchemy import String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .types import UtcDateTime
 from .user import Owned
 
 
 class Asset(Owned, Base):
     __tablename__ = "assets"
+    __table_args__ = (
+        # Not for lookups (id is already unique): it is the target of the
+        # composite foreign key on positions, which is what stops a position
+        # naming another user's asset. See Position.__table_args__.
+        UniqueConstraint("user_id", "id", name="uq_assets_user_id_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -41,12 +48,12 @@ class Asset(Owned, Base):
     # all (see tax/pl/wrappers.py). Which is why FIRE math needs to know
     # about it and allocation does not otherwise care.
     wrapper: Mapped[str] = mapped_column(String(8), nullable=False, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=lambda: datetime.now(timezone.utc))
     # When this asset was archived (soft delete - see routes/assets.py). NULL
     # while active. Archiving writes a closing snapshot (amount/value 0) so
     # the asset drops out of "currently held" everywhere without rewriting
     # its history on the portfolio-over-time chart.
-    archived_at: Mapped["datetime | None"] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped["datetime | None"] = mapped_column(UtcDateTime, nullable=True)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Asset {self.name} ({self.kind})>"

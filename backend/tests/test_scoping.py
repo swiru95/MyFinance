@@ -13,7 +13,8 @@ from src.database import Base, SessionLocal
 from src.models import (
     Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Owned, Position, Report, Setting, User,
 )
-from src.scoping import UnscopedAccess, open_session, open_system_session
+from src.scoping import UnscopedAccess, open_session
+from tests.conftest import TEST_OWNER_URL, system_session
 from src.services.users import get_or_create_user
 
 
@@ -42,8 +43,11 @@ def test_every_data_table_is_owned_with_a_not_null_foreign_key_to_users(db):
             continue
         col = table.c.user_id
         assert col.nullable is False, name
+        # users.id, plus - for a child table - the parent's user_id as part of
+        # a composite (user_id, parent_id) key that keeps it in its owner's data.
         targets = {fk.target_fullname for fk in col.foreign_keys}
-        assert targets == {"users.id"}, name
+        assert "users.id" in targets, name
+        assert targets - {"users.id"} <= {"assets.user_id", "income_sources.user_id"}, name
     # ...and every one of them carries the mixin that switches scoping on.
     assert {t.name for t in tables.values()} - {"users"} == {
         cls.__tablename__ for cls in Owned.__subclasses__()
@@ -154,7 +158,7 @@ def test_adding_a_row_that_names_another_user_is_refused(two):
 
 def test_moving_another_users_row_into_a_session_is_refused(two):
     a, b, sa, sb = two
-    sysdb = open_system_session()
+    sysdb = system_session()
     foreign = sysdb.query(Asset).filter(Asset.user_id == b).one()
     sysdb.expunge(foreign)
     sysdb.close()
@@ -164,7 +168,7 @@ def test_moving_another_users_row_into_a_session_is_refused(two):
         sa.commit()
     sa.rollback()
 
-    sysdb = open_system_session()
+    sysdb = system_session()
     foreign = sysdb.query(Asset).filter(Asset.user_id == b).one()
     sysdb.expunge(foreign)
     sysdb.close()
@@ -194,15 +198,21 @@ def test_a_session_without_a_user_cannot_read_or_write_owned_tables(two):
 
 
 def test_a_session_without_a_user_can_still_read_users(two):
+    """The ORM does not scope `users`. (On PostgreSQL the database does: a
+    session with no user sees no row of it - see test_row_level_security.)"""
     bare = SessionLocal()
     try:
-        assert bare.query(User).count() >= 2
+        if bare.get_bind().dialect.name == "postgresql" and TEST_OWNER_URL:
+            # Connected as the runtime role; the owner is admitted by policy.
+            assert bare.query(User).count() == 0
+        else:
+            assert bare.query(User).count() >= 2
     finally:
         bare.close()
 
 
 def test_the_system_session_sees_everyone(two):
-    s = open_system_session()
+    s = system_session()
     try:
         assert {x.name for x in s.query(Asset).all()} == {"alice-asset", "bob-asset"}
     finally:
