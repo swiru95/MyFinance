@@ -7,20 +7,23 @@ every month it applies to.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Numeric, DateTime, Text
+from sqlalchemy import String, Numeric, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .user import Owned
 
 
-class MonthlyRecord(Base):
+class MonthlyRecord(Owned, Base):
     __tablename__ = "monthly_records"
+    # One record per month *per user*. Its index (user_id leading) serves every
+    # lookup, since all of them are scoped to a user, so `month` carries no
+    # index of its own.
+    __table_args__ = (UniqueConstraint("user_id", "month", name="uq_monthly_user_month"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     # Calendar month as "YYYY-MM".
-    month: Mapped[str] = mapped_column(
-        String(7), nullable=False, unique=True, index=True
-    )
+    month: Mapped[str] = mapped_column(String(7), nullable=False)
     income: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False, default=0)
     actual_spent: Mapped[float] = mapped_column(
         Numeric(20, 2), nullable=False, default=0

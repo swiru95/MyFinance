@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..services.price_service import PriceService, catalogue_payload
 from .helpers import get_base_currency, held_symbols
 

@@ -5,6 +5,7 @@ import json
 from datetime import date
 
 from src import schema
+from src.identity import LOCAL_USER_ID
 from src.models.income import IncomeSource
 from src.models.report import Report
 from src.models.settings import Setting
@@ -21,11 +22,11 @@ def _clear_features(db):
     db.commit()
 
 
-# --- schema.seed_features(): defaults ---------------------------------------
+# --- schema.seed_features: defaults ----------------------------------------------------
 
 def test_seed_features_all_false_on_empty_db(db):
     _clear_features(db)
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert row is not None
     assert json.loads(row.value) == ALL_OFF
@@ -42,7 +43,7 @@ def test_seed_features_all_true_when_positions_exist(client, db):
         "/api/positions",
         json={"asset_id": asset_id, "amount": 100, "currency": "PLN"},
     )
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert json.loads(row.value) == ALL_ON
 
@@ -53,7 +54,7 @@ def test_seed_features_all_true_when_income_source_exists(db):
         name="Job", kind="uop", currency="PLN", params={}, starts_on=date(2024, 1, 1),
     ))
     db.commit()
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert json.loads(row.value) == ALL_ON
 
@@ -62,7 +63,7 @@ def test_seed_features_all_true_when_fire_settings_exist(db):
     _clear_features(db)
     db.add(Setting(key="fire", value="{}"))
     db.commit()
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert json.loads(row.value) == ALL_ON
 
@@ -71,19 +72,19 @@ def test_seed_features_all_true_when_report_exists(db):
     _clear_features(db)
     db.add(Report(status="done", style="balanced", language="en"))
     db.commit()
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert json.loads(row.value) == ALL_ON
 
 
 def test_seed_features_never_overwrites_a_later_choice(db):
     _clear_features(db)
-    schema.seed_features()
+    schema.seed_features(LOCAL_USER_ID)
     row = db.query(Setting).filter(Setting.key == "features").first()
     row.value = json.dumps({"portfolio": True, "fire": False, "tax": False, "insights": False})
     db.commit()
 
-    schema.seed_features()  # a second schema run (e.g. next release)
+    schema.seed_features(LOCAL_USER_ID)  # a second schema run (e.g. next release)
 
     row = db.query(Setting).filter(Setting.key == "features").first()
     assert json.loads(row.value)["portfolio"] is True

@@ -6,15 +6,25 @@ src.schema` with the owner's client certificate before the new backend rolls
 out; the app then connects with a role that can only read and write rows.
 
 Safe to run repeatedly: every step checks before it acts.
+
+Multi-user ownership (`migrate_ownership`) is the one step that rewrites
+existing tables. It runs on both databases the application supports - SQLite
+(local development) and PostgreSQL - and in one transaction on each, so a
+failure leaves the previous schema intact rather than half converted.
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
+import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import inspect, text
+from sqlalchemy import Uuid, bindparam, insert, inspect, select, text
+from sqlalchemy.engine import Connection, Engine
 
+from . import auth, identity
+from .config import settings
 from .database import Base, engine
 from .models import (  # noqa: F401 (import registers the tables on Base)
     asset,
@@ -25,8 +35,15 @@ from .models import (  # noqa: F401 (import registers the tables on Base)
     position,
     report,
     settings as settings_model,
+    user,
 )
 from .models.asset import Asset
+from .models.user import Owned, User
+from .scoping import open_session, open_system_session
+
+
+class SchemaError(RuntimeError):
+    """The schema cannot be brought up to date without operator input."""
 
 
 def migrate() -> None:
@@ -86,16 +103,258 @@ def migrate() -> None:
         print(f"  + {table}.{column}")
 
 
+# --- Ownership ------------------------------------------------------------
+
+
+def owned_tables() -> list:
+    """Every table whose rows belong to a user, derived from the models so a
+    table added later with the `Owned` mixin is picked up without editing this
+    list."""
+    return [m.class_.__table__ for m in Base.registry.mappers if issubclass(m.class_, Owned)]
+
+
+def _bootstrap_identity() -> tuple[str, uuid.UUID | None]:
+    """(subject hash, fixed user id or None) of whoever inherits existing data.
+
+    The operator names the person: the `sub` their tokens carry
+    (MYFINANCE_BOOTSTRAP_SUB) and, if that is not the configured issuer, the
+    `iss` (MYFINANCE_BOOTSTRAP_ISS). Both are hashed with the pepper exactly as
+    a login hashes them, so that person's next sign-in resolves to this user and
+    finds their data. The raw values are not stored or printed by this.
+
+    With none given and authentication off there is exactly one possible user -
+    the fixed local one the running application will use - so the data goes to
+    them. With none given and authentication on, there is no safe guess, and
+    the run stops.
+    """
+    sub = settings.bootstrap_sub
+    if not sub:
+        if not auth.auth_enabled():
+            print(
+                "  ! authentication is not configured here: existing data goes to the "
+                "local development user. If the application runs with authentication, "
+                "this job is missing its MYFINANCE_AUTH_* / MYFINANCE_BOOTSTRAP_* settings."
+            )
+            return identity.local_subject_hash(), identity.LOCAL_USER_ID
+        raise SchemaError(
+            "existing data has no owner and authentication is enabled: set "
+            "MYFINANCE_BOOTSTRAP_SUB (the `sub` claim of the person who owns it) "
+            "and, if that is not the configured issuer, MYFINANCE_BOOTSTRAP_ISS"
+        )
+    iss = settings.bootstrap_iss or auth.issuer()
+    if not iss:
+        raise SchemaError("MYFINANCE_BOOTSTRAP_SUB is set but there is no issuer: set MYFINANCE_BOOTSTRAP_ISS")
+    try:
+        return identity.subject_hash(iss, sub), None
+    except identity.PepperMissing as exc:
+        raise SchemaError(str(exc)) from exc
+
+
+def _has_rows(conn: Connection, table_name: str) -> bool:
+    quoted = conn.dialect.identifier_preparer.quote(table_name)
+    return conn.execute(text(f"SELECT 1 FROM {quoted} LIMIT 1")).first() is not None
+
+
+def _ensure_user(conn: Connection, subject_hash: str, fixed_id: uuid.UUID | None) -> uuid.UUID:
+    users = User.__table__
+    found = conn.execute(
+        select(users.c.id).where(users.c.subject_hash == subject_hash)
+    ).scalar_one_or_none()
+    if found is not None:
+        return found
+    new_id = fixed_id or uuid.uuid4()
+    conn.execute(
+        insert(users).values(
+            id=new_id,
+            subject_hash=subject_hash,
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+    )
+    print("  + created the user that inherits existing data")
+    return new_id
+
+
+def _owner_param(owner: uuid.UUID):
+    return bindparam("owner", value=owner, type_=Uuid)
+
+
+def migrate_ownership(eng: Engine | None = None) -> None:
+    """Give every data table an owner, and assign existing rows to one user.
+
+    Tables created fresh by create_all() already have `user_id`; this converts
+    the ones that predate it. Per table: add `user_id UUID NOT NULL` with a
+    foreign key to `users` and an index, make unique constraints per user, and
+    for `settings` make the primary key (user_id, key). Existing rows - which
+    all belong to the one person who used the single-user version - go to the
+    bootstrap user (see _bootstrap_identity), created here if it is not there.
+
+    Idempotent: a table that already has `user_id` is left alone, so a second
+    run finds nothing to do. `users` itself is made by create_all() beforehand.
+    """
+    eng = eng or engine
+    insp = inspect(eng)
+    legacy = [
+        t for t in owned_tables()
+        if insp.has_table(t.name)
+        and "user_id" not in {c["name"] for c in insp.get_columns(t.name)}
+    ]
+    if not legacy:
+        return
+    with eng.connect() as probe:
+        needs_owner = any(_has_rows(probe, t.name) for t in legacy)
+    # Resolved before anything is touched, so a missing setting fails the run
+    # cleanly instead of after some tables have been rewritten.
+    boot = _bootstrap_identity() if needs_owner else None
+
+    if eng.dialect.name == "sqlite":
+        _migrate_sqlite(eng, legacy, boot)
+    else:
+        _migrate_postgresql(eng, legacy, boot)
+    print(f"  + ownership: {', '.join(t.name for t in legacy)}")
+
+
+def _migrate_postgresql(eng: Engine, legacy: list, boot) -> None:
+    q = eng.dialect.identifier_preparer.quote
+    with eng.begin() as conn:
+        owner = _ensure_user(conn, *boot) if boot else None
+        insp = inspect(conn)
+        for t in legacy:
+            n = q(t.name)
+            conn.execute(text(f"ALTER TABLE {n} ADD COLUMN user_id UUID"))
+            if owner is not None:
+                conn.execute(
+                    text(f"UPDATE {n} SET user_id = :owner WHERE user_id IS NULL")
+                    .bindparams(_owner_param(owner))
+                )
+            conn.execute(text(f"ALTER TABLE {n} ALTER COLUMN user_id SET NOT NULL"))
+            conn.execute(text(
+                f"ALTER TABLE {n} ADD CONSTRAINT {q(t.name + '_user_id_fkey')} "
+                f"FOREIGN KEY (user_id) REFERENCES users (id)"
+            ))
+            if t.name != "settings":
+                conn.execute(text(
+                    f"CREATE INDEX IF NOT EXISTS {q('ix_' + t.name + '_user_id')} ON {n} (user_id)"
+                ))
+
+            if t.name == "monthly_records":
+                # Was a unique index on `month` alone: one record per month for
+                # the whole database. Now one per user per month.
+                conn.execute(text("DROP INDEX IF EXISTS ix_monthly_records_month"))
+                conn.execute(text(
+                    "ALTER TABLE monthly_records ADD CONSTRAINT uq_monthly_user_month "
+                    "UNIQUE (user_id, month)"
+                ))
+            elif t.name == "income_entries":
+                conn.execute(text(
+                    "ALTER TABLE income_entries DROP CONSTRAINT IF EXISTS uq_income_entry_source_month"
+                ))
+                conn.execute(text(
+                    "ALTER TABLE income_entries ADD CONSTRAINT uq_income_entry_user_source_month "
+                    "UNIQUE (user_id, source_id, month)"
+                ))
+            elif t.name == "settings":
+                pk = insp.get_pk_constraint("settings").get("name") or "settings_pkey"
+                conn.execute(text(f"ALTER TABLE settings DROP CONSTRAINT {q(pk)}"))
+                conn.execute(text(
+                    f"ALTER TABLE settings ADD CONSTRAINT {q(pk)} PRIMARY KEY (user_id, key)"
+                ))
+
+
+def _migrate_sqlite(eng: Engine, legacy: list, boot) -> None:
+    """SQLite cannot add a NOT NULL column without a default, nor add a foreign
+    key or change a primary key on an existing table, so each legacy table is
+    rebuilt: renamed aside, recreated from the model, copied across with the
+    owner filled in, and dropped.
+
+    `legacy_alter_table` keeps RENAME from also rewriting other tables' foreign
+    keys to point at the table being moved aside. An explicit BEGIN makes the
+    whole rebuild one transaction - pysqlite would otherwise leave DDL outside
+    one - so an error rolls back to the old schema untouched.
+    """
+    raw = eng.raw_connection()
+    try:
+        raw.execute("PRAGMA legacy_alter_table=ON")
+    finally:
+        raw.close()
+    try:
+        with eng.begin() as conn:
+            conn.exec_driver_sql("BEGIN")
+            owner = _ensure_user(conn, *boot) if boot else None
+            for t in legacy:
+                aside = f"{t.name}__premulti"
+                old_cols = {c["name"] for c in inspect(conn).get_columns(t.name)}
+                conn.exec_driver_sql(f'ALTER TABLE "{t.name}" RENAME TO "{aside}"')
+                # Index names are global in SQLite and the recreated table wants
+                # the same ones.
+                stale = conn.exec_driver_sql(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? "
+                    "AND sql IS NOT NULL",
+                    (aside,),
+                ).fetchall()
+                for (name,) in stale:
+                    conn.exec_driver_sql(f'DROP INDEX "{name}"')
+                t.create(conn)
+                cols = [c.name for c in t.columns if c.name != "user_id" and c.name in old_cols]
+                col_list = ", ".join(f'"{c}"' for c in cols)
+                if owner is not None:
+                    conn.execute(
+                        text(
+                            f'INSERT INTO "{t.name}" ({col_list}, user_id) '
+                            f'SELECT {col_list}, :owner FROM "{aside}"'
+                        ).bindparams(_owner_param(owner))
+                    )
+                conn.exec_driver_sql(f'DROP TABLE "{aside}"')
+    finally:
+        raw = eng.raw_connection()
+        try:
+            raw.execute("PRAGMA legacy_alter_table=OFF")
+        finally:
+            raw.close()
+
+
+def move_terms_to_users() -> None:
+    """Terms acceptance used to be a per-database setting; it is now a column
+    on the user. Carry any old `terms_accepted` setting over to the user that
+    owns it and delete it, so a person who already accepted is not asked again.
+    """
+    from .models.settings import Setting
+
+    db = open_system_session()
+    try:
+        rows = db.query(Setting).filter(Setting.key == "terms_accepted").all()
+        for row in rows:
+            owner = db.get(User, row.user_id)
+            if owner is not None and owner.terms_version is None and row.value:
+                data = json.loads(row.value)
+                owner.terms_version = data.get("version")
+                accepted_at = data.get("accepted_at")
+                if accepted_at:
+                    parsed = datetime.fromisoformat(accepted_at)
+                    if parsed.tzinfo is not None:
+                        # Naive UTC, like every other timestamp column.
+                        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                    owner.terms_accepted_at = parsed
+            db.delete(row)
+        if rows:
+            db.commit()
+            print(f"  + moved terms acceptance to {len(rows)} user(s)")
+    finally:
+        db.close()
+
+
+# --- Data ---------------------------------------------------------------
+
+
 def backfill_profiles() -> None:
     """Give every unclassified asset the band its class implies.
 
     Only touches rows that have no profile yet, so a deliberate per-asset
-    override is never overwritten by a later run.
+    override is never overwritten by a later run. Works across every user (it
+    is a system session) because it only derives one column from another.
     """
-    from .database import SessionLocal
     from .profiles import for_category
 
-    db = SessionLocal()
+    db = open_system_session()
     try:
         rows = db.query(Asset).filter((Asset.profile == "") | (Asset.profile.is_(None))).all()
         for a in rows:
@@ -107,49 +366,24 @@ def backfill_profiles() -> None:
         db.close()
 
 
-def seed() -> None:
-    """Create the default asset types on a brand-new database."""
-    from .database import SessionLocal
+def seed_features(user_id: uuid.UUID) -> None:
+    """Decide one user's advanced-feature defaults, once.
 
-    db = SessionLocal()
-    try:
-        if db.query(Asset).count():
-            return
-        db.add_all([
-            Asset(name="Cash", kind="currency", category="Cash", profile="safe", icon="💵", units=""),
-            Asset(name="Gold", kind="gold", category="Gold", profile="moderate", icon="🥇", units="g"),
-            Asset(name="Stocks", kind="currency", category="Stocks", profile="risky", icon="📈", units=""),
-            Asset(name="TFI Funds", kind="currency", category="TFI", profile="moderate", icon="🏦", units=""),
-            Asset(name="National Bonds", kind="currency", category="Bonds", profile="safe", icon="📜", units=""),
-            Asset(name="Watches", kind="currency", category="Watches", profile="illiquid", icon="⌚", units=""),
-            Asset(name="Bitcoin", kind="crypto", category="Crypto", profile="risky", icon="₿", units="BTC"),
-            Asset(name="Solana", kind="crypto", category="Crypto", profile="risky", icon="◎", units="SOL"),
-            Asset(name="Savings", kind="currency", category="Savings", profile="safe", icon="🏧", units=""),
-        ])
-        db.commit()
-        print("  + seeded default asset types")
-    finally:
-        db.close()
+    Only the demo seeder needs this now: a new user has no `features` row,
+    which already means "everything off" (routes/helpers.get_features), and an
+    existing database keeps the row it was given when it was single-user.
 
-
-def seed_features() -> None:
-    """Decide the advanced-feature defaults for this database, once.
-
-    A brand-new database starts with everything off - the app should read as
-    Dashboard/Income/Expenses/Settings only until the person opts in. A
-    database that already holds positions, income sources, saved FIRE
-    settings or a report predates this feature and must not lose anything on
-    upgrade, so it gets everything on instead. Only ever runs when the
-    `features` key is absent - a person's own later choice, made through
-    Settings, is never overwritten by a later schema run.
+    Everything on when the user already holds positions, income sources, saved
+    FIRE settings or a report - they predate the feature and must not lose
+    anything - otherwise everything off. Only ever runs when the `features` key
+    is absent, so a person's own later choice is never overwritten.
     """
-    from .database import SessionLocal
     from .models.income import IncomeSource
     from .models.position import Position
     from .models.report import Report
     from .models.settings import Setting
 
-    db = SessionLocal()
+    db = open_session(user_id)
     try:
         if db.query(Setting).filter(Setting.key == "features").first():
             return
@@ -201,13 +435,19 @@ def grant_runtime_role(role: str) -> None:
 
 
 def main() -> int:
-    url = str(engine.url)
     print(f"schema: {engine.url.drivername} -> {engine.url.database}")
-    Base.metadata.create_all(bind=engine)
-    migrate()
-    seed()
-    seed_features()
-    backfill_profiles()
+    try:
+        auth.validate_config()
+        # Brand-new tables (including `users`) come out of create_all with
+        # ownership built in; tables that already exist are converted below.
+        Base.metadata.create_all(bind=engine)
+        migrate()
+        migrate_ownership()
+        move_terms_to_users()
+        backfill_profiles()
+    except (SchemaError, auth.AuthConfigError) as exc:
+        print(f"schema: {exc}", file=sys.stderr)
+        return 1
     if engine.url.drivername.startswith("postgresql"):
         grant_runtime_role(os.environ.get("MYFINANCE_APP_ROLE", ""))
     print("schema: up to date")

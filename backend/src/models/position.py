@@ -4,9 +4,10 @@ from sqlalchemy import Integer, String, Numeric, Date, DateTime, ForeignKey, Tex
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .user import Owned
 
 
-class Position(Base):
+class Position(Owned, Base):
     __tablename__ = "positions"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

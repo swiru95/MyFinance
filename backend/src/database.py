@@ -18,16 +18,11 @@ def _engine_kwargs(url: str) -> dict:
 
 
 engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url))
+# Not meant to be called directly: scoping.open_session() / open_system_session()
+# wrap it so every session carries the user it is confined to. A bare
+# SessionLocal() has no user and refuses to touch an owned table.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
     pass
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

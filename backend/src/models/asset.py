@@ -4,9 +4,10 @@ from sqlalchemy import String, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .user import Owned
 
 
-class Asset(Base):
+class Asset(Owned, Base):
     __tablename__ = "assets"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

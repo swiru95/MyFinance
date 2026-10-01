@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..models.income import IncomeEntry, IncomeSource
 from ..schemas.income import (
     PARAM_MODELS,

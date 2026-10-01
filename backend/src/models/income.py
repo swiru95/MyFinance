@@ -12,9 +12,10 @@ from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String, Text, 
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .user import Owned
 
 
-class IncomeSource(Base):
+class IncomeSource(Owned, Base):
     __tablename__ = "income_sources"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -35,7 +36,7 @@ class IncomeSource(Base):
         return f"<IncomeSource {self.name} {self.kind}>"
 
 
-class IncomeEntry(Base):
+class IncomeEntry(Owned, Base):
     """One month's actual figures for a source, overriding its param default.
 
     Deleting a source deletes its entries explicitly in the route - SQLite
@@ -44,7 +45,9 @@ class IncomeEntry(Base):
 
     __tablename__ = "income_entries"
     __table_args__ = (
-        UniqueConstraint("source_id", "month", name="uq_income_entry_source_month"),
+        UniqueConstraint(
+            "user_id", "source_id", "month", name="uq_income_entry_user_source_month"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

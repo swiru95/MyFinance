@@ -1,12 +1,18 @@
 """Settings endpoints (base currency, timezone, advanced-feature switches,
-terms-of-use acceptance)."""
-import json
+terms-of-use acceptance).
+
+Settings are per user. Terms acceptance is not a setting any more: it lives on
+the user row (models/user.py), which is not one of the scoped tables, so it is
+looked up by the caller's id explicitly.
+"""
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..auth import Principal, require_user
+from ..deps import get_db
+from ..models.user import User
 from ..models.settings import Setting
 from ..schemas.settings import SettingsIn, TermsAcceptIn
 from ..config import BASE_CURRENCIES, DEFAULT_TIMEZONE, TERMS_VERSION, TIMEZONES
@@ -15,22 +21,18 @@ from .helpers import get_features, get_timezone
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-def _terms_state(db: Session) -> dict:
-    s = db.query(Setting).filter(Setting.key == "terms_accepted").first()
-    accepted_version = None
-    accepted_at = None
-    if s and s.value:
-        data = json.loads(s.value)
-        accepted_version = data.get("version")
-        accepted_at = data.get("accepted_at")
+def _terms_state(db: Session, user_id) -> dict:
+    user = db.get(User, user_id)
+    accepted_at = user.terms_accepted_at if user else None
     return {
         "current_version": TERMS_VERSION,
-        "accepted_version": accepted_version,
-        "accepted_at": accepted_at,
+        "accepted_version": user.terms_version if user else None,
+        # Stored naive-but-UTC; sent as an explicit UTC instant.
+        "accepted_at": accepted_at.replace(tzinfo=timezone.utc).isoformat() if accepted_at else None,
     }
 
 
-def _payload(db: Session) -> dict:
+def _payload(db: Session, user_id) -> dict:
     s = db.query(Setting).filter(Setting.key == "base_currency").first()
     return {
         "base_currency": s.value if s else "PLN",
@@ -38,16 +40,16 @@ def _payload(db: Session) -> dict:
         "timezone": get_timezone(db),
         "allowed_timezones": TIMEZONES,
         "default_timezone": DEFAULT_TIMEZONE,
-        # Always resolved (never missing) - schema.py seeds a default on every
-        # startup, and get_features falls back to all-false besides.
+        # Always resolved (never missing): a user who has never saved a choice
+        # has no row, and get_features turns that into "everything off".
         "features": get_features(db).model_dump(),
-        "terms": _terms_state(db),
+        "terms": _terms_state(db, user_id),
     }
 
 
 @router.get("")
-def get_settings(db: Session = Depends(get_db)):
-    return _payload(db)
+def get_settings(db: Session = Depends(get_db), principal: Principal = Depends(require_user)):
+    return _payload(db, principal.user_id)
 
 
 def _put(db: Session, key: str, value: str) -> None:
@@ -59,7 +61,11 @@ def _put(db: Session, key: str, value: str) -> None:
 
 
 @router.put("")
-def update_settings(payload: SettingsIn, db: Session = Depends(get_db)):
+def update_settings(
+    payload: SettingsIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
     _put(db, "base_currency", payload.base_currency)
     if payload.timezone is not None:
         _put(db, "timezone", payload.timezone)
@@ -68,20 +74,23 @@ def update_settings(payload: SettingsIn, db: Session = Depends(get_db)):
         # portfolio is off, so what lands here is always consistent.
         _put(db, "features", payload.features.model_dump_json())
     db.commit()
-    return _payload(db)
+    return _payload(db, principal.user_id)
 
 
 @router.post("/terms/accept")
-def accept_terms(payload: TermsAcceptIn, db: Session = Depends(get_db)):
+def accept_terms(
+    payload: TermsAcceptIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
     if payload.version != TERMS_VERSION:
         raise HTTPException(
             status_code=422,
             detail=f"terms version {payload.version} is not current ({TERMS_VERSION})",
         )
-    value = json.dumps({
-        "version": payload.version,
-        "accepted_at": datetime.now(timezone.utc).isoformat(),
-    })
-    _put(db, "terms_accepted", value)
+    user = db.get(User, principal.user_id)
+    user.terms_version = payload.version
+    # Naive UTC, like every other timestamp column here.
+    user.terms_accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
-    return _payload(db)
+    return _payload(db, principal.user_id)

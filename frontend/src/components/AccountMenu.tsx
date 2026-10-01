@@ -36,7 +36,7 @@ export default function AccountMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={user.username}
+        title={user.email}
         className="grid h-8 w-8 place-items-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 transition hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
       >
         {user.initials}
@@ -54,7 +54,7 @@ export default function AccountMenu() {
               {user.name}
             </p>
             <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-              {user.username}
+              {user.email}
             </p>
           </div>
           <button

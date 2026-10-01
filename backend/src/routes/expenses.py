@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..models.expense import Expense
 from ..schemas.expense import ExpenseIn, ExpenseOut, ExpenseSummary
 from ..services.price_service import PriceService

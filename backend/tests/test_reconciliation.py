@@ -48,8 +48,12 @@ def demo_db(tmp_path_factory):
     )
     assert result.returncode == 0, f"demo_seed failed:\n{result.stdout}\n{result.stderr}"
 
+    from src.identity import LOCAL_USER_ID
+
     engine = create_engine(db_url)
-    session_factory = sessionmaker(bind=engine)
+    # The demo wallet is the fixed local user's (what the app serves with
+    # authentication off), so this session is confined to that user.
+    session_factory = sessionmaker(bind=engine, info={"user_id": LOCAL_USER_ID})
     session = session_factory()
     try:
         yield session

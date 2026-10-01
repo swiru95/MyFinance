@@ -10,11 +10,14 @@ row immediately and the frontend polls it.
 """
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import Principal, require_user
 from ..config import settings
-from ..database import SessionLocal, get_db
+from ..deps import get_db
 from ..models.insight import Insight
 from ..schemas.insight import (
     INSIGHT_KINDS,
@@ -26,6 +29,7 @@ from ..schemas.insight import (
     LadderStateIn,
     ProfileAnswers,
 )
+from ..scoping import open_session
 from ..services import insights
 from ..services import ladder as ladder_service
 from ..services import llm, llm_queue
@@ -39,13 +43,15 @@ def _validate_kind(kind: str) -> str:
     return kind
 
 
-def _generate(insight_id: int) -> None:
+def _generate(user_id: uuid.UUID, insight_id: int) -> None:
     """Write one insight, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since
-    returned and closed its own.
+    returned and closed its own. That session is scoped to the user who queued
+    the job, so the figures the model is shown can only be built from their
+    rows.
     """
-    db = SessionLocal()
+    db = open_session(user_id)
     try:
         insight = db.query(Insight).filter(Insight.id == insight_id).first()
         if insight is None:
@@ -128,7 +134,12 @@ def list_items(limit: int = 50, db: Session = Depends(get_db)):
 
 
 @router.post("/{kind}", response_model=InsightOut, status_code=202)
-def create_insight(kind: str, payload: InsightIn, db: Session = Depends(get_db)):
+def create_insight(
+    kind: str,
+    payload: InsightIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
     """Queue a profile/digest/next_steps job and return the row to poll."""
     _validate_kind(kind)
     if not llm.configured():
@@ -149,7 +160,8 @@ def create_insight(kind: str, payload: InsightIn, db: Session = Depends(get_db))
     # up, then "running" in that case if a shutdown cuts it off mid-job, and
     # the page offers to generate again either way.
     row_id = row.id
-    llm_queue.enqueue(lambda: _generate(row_id))
+    user_id = principal.user_id
+    llm_queue.enqueue(lambda: _generate(user_id, row_id))
     return row
 
 

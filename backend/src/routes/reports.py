@@ -10,25 +10,31 @@ immediately and the frontend polls it.
 """
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..auth import Principal, require_user
 from ..config import settings
-from ..database import SessionLocal, get_db
+from ..deps import get_db
 from ..models.report import Report
+from ..scoping import open_session
 from ..schemas.report import ReportIn, ReportOut, ReportStatus, ReportSummary
 from ..services import assessment, llm, llm_queue
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
-def _generate(report_id: int) -> None:
+def _generate(user_id: uuid.UUID, report_id: int) -> None:
     """Write one report, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since returned
-    and closed its own.
+    and closed its own. That session is scoped to the user who queued the job,
+    so the snapshot the model is shown can only ever be built from their rows,
+    and a job whose id belongs to someone else finds no report and does nothing.
     """
-    db = SessionLocal()
+    db = open_session(user_id)
     try:
         report = db.query(Report).filter(Report.id == report_id).first()
         if report is None:
@@ -108,7 +114,11 @@ def list_reports(limit: int = 20, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=ReportOut, status_code=202)
-def create_report(payload: ReportIn, db: Session = Depends(get_db)):
+def create_report(
+    payload: ReportIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
     """Queue an assessment and return the row to poll."""
     if not llm.configured():
         raise HTTPException(503, "No model is configured for assessments")
@@ -123,7 +133,8 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db)):
     # up, then "running" in that case if a shutdown cuts it off mid-job, and
     # the page offers to generate again either way.
     report_id = report.id
-    llm_queue.enqueue(lambda: _generate(report_id))
+    user_id = principal.user_id
+    llm_queue.enqueue(lambda: _generate(user_id, report_id))
     return report
 
 

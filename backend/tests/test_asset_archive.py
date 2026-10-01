@@ -8,6 +8,8 @@ routes/assets.py and the work package spec for the exact semantics.
 """
 from datetime import date, datetime, timedelta
 
+from sqlalchemy import func
+
 from src.models.position import Position
 from src.services.ladder import build_ladder
 
@@ -121,7 +123,7 @@ def test_archive_asset_with_no_snapshots_writes_nothing(client, db):
     assert r.status_code == 200, r.text
     assert r.json()["archived_at"] is not None
 
-    assert db.query(Position).filter(Position.asset_id == asset["id"]).count() == 0
+    assert db.query(func.count(Position.id)).filter(Position.asset_id == asset["id"]).scalar() == 0
 
 
 # --- 5. archive/unarchive state machine -------------------------------------

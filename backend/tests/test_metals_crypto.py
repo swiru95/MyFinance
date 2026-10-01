@@ -85,7 +85,7 @@ def test_valid_crypto_units_accepted(client):
 
 def test_existing_gold_kind_asset_still_values_the_same(client):
     """kind="gold" is untouched by the metal generalisation: always XAU,
-    ignoring its own `units` field (schema.seed() sets it to "g", a label,
+    ignoring its own `units` field (the default asset types set it to "g", a label,
     not a symbol)."""
     asset = _create_asset(client, name="Gold Bar", kind="gold", units="g").json()
     pos = client.post(

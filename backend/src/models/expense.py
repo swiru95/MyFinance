@@ -17,9 +17,10 @@ from sqlalchemy import String, Numeric, Date, DateTime, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..database import Base
+from .user import Owned
 
 
-class Expense(Base):
+class Expense(Owned, Base):
     __tablename__ = "expenses"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)

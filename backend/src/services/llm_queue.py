@@ -68,7 +68,9 @@ def enqueue(job: Callable[[], None]) -> None:
 
     Starts the single worker thread on first use. `job` takes no arguments -
     callers close over whatever id/args it needs, e.g.
-    `enqueue(lambda: _generate(report.id))`.
+    `enqueue(lambda: _generate(user_id, report.id))`. Every job is closed over the
+    user who queued it and opens its own session scoped to that user - the queue
+    itself is shared by all users but knows nothing about them.
     """
     _ensure_worker()
     _jobs.put(job)
@@ -82,12 +84,16 @@ def cleanup_interrupted_jobs() -> None:
     All other pending/running/translating rows -> mark failed with a note.
 
     Continues on errors to never block startup.
+
+    Deliberately works across every user: it runs once, before any request, as
+    a system session (scoping.open_system_session), and only ever changes the
+    status of rows - it reads no content and builds no prompt.
     """
-    from ..database import SessionLocal
+    from ..scoping import open_system_session
     from ..models.report import Report
     from ..models.insight import Insight
 
-    db = SessionLocal()
+    db = open_system_session()
     try:
         # Clean up Reports
         try:

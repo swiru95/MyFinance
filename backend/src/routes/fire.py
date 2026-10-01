@@ -14,7 +14,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..models.position import Position
 from ..models.settings import Setting
 from ..profiles import for_category

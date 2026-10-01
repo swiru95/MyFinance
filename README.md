@@ -48,7 +48,10 @@ want them.
   wording changes.
 - **English and Polish** throughout, including the seeded asset and class names.
 - **Entra ID SSO** — OAuth 2.0 authorization code + PKCE, no client secret anywhere;
-  access is gated on an app role, not merely on tenant membership.
+  access is gated on an app role, not merely on tenant membership. The backend validates
+  tokens from any OIDC issuer (see "Users and ownership").
+- **Multi-user** — every row belongs to a user, identified by a keyed hash of the
+  token's issuer and subject; the database holds no name or email.
 - **Docker** — one `docker compose up` to run the whole stack. Python runs in a venv.
 
 ## Quick start
@@ -387,25 +390,32 @@ registration.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MYFINANCE_AUTH_TENANT_ID` | *(empty)* | Directory (tenant) ID. Empty disables authentication |
-| `MYFINANCE_AUTH_CLIENT_ID` | *(empty)* | Application (client) ID. Empty disables authentication |
-| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` | Scope name exposed on `api://<clientId>` |
-| `MYFINANCE_AUTH_REQUIRED_ROLE` | `MyFinance.User` | App role the caller must hold. Empty admits anyone in the tenant |
+| `MYFINANCE_AUTH_TENANT_ID` | *(empty)* | Directory (tenant) ID. With a client id, this is the whole Entra configuration |
+| `MYFINANCE_AUTH_CLIENT_ID` | *(empty)* | Application (client) ID |
+| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` (Entra) | Scope that must be in `scp`. Empty switches the check off |
+| `MYFINANCE_AUTH_REQUIRED_ROLE` | `MyFinance.User` (Entra) | App role the caller must hold. Empty admits anyone in the tenant |
 | `MYFINANCE_AUTH_JWKS_CACHE_SECONDS` | `3600` | How long signing keys are cached |
 | `MYFINANCE_AUTH_LEEWAY_SECONDS` | `60` | Clock skew tolerated on `exp`/`nbf` |
+| `MYFINANCE_SUBJECT_PEPPER` | *(empty)* | **Required once authentication is on.** See "Users and ownership" |
 
-**Unset tenant or client id disables authentication entirely** — every endpoint
-is open and the frontend skips the sign-in screen, the same way an unset LLM base
-URL disables the assessment. That is what keeps `docker compose up` working
-untouched, and it is why the backend logs
+The Entra-specific defaults apply only when authentication is configured the Entra
+way (tenant + client id, no `MYFINANCE_AUTH_ISSUER`); with an explicit issuer the
+scope, role and tenant checks are off unless set. Configuration written for the
+Entra-only version therefore behaves exactly as before.
+
+**Setting none of the authentication variables disables authentication entirely** —
+every endpoint is open and served as one fixed local user, and the frontend skips the
+sign-in screen, the same way an unset LLM base URL disables the assessment. That is
+what keeps `docker compose up` working untouched, and it is why the backend logs
 
 ```
-AUTHENTICATION IS DISABLED - MYFINANCE_AUTH_TENANT_ID and
-MYFINANCE_AUTH_CLIENT_ID are not both set. Every API endpoint is open.
+AUTHENTICATION IS DISABLED - no OIDC issuer/audience (or Entra tenant/client) is
+configured. Every API endpoint is open, as one shared local user.
 ```
 
-at startup. A half-finished deploy looks exactly like local development, and that
-line is the only thing that tells them apart.
+at startup. Setting *some* of them but not enough to validate a token (a client id
+without a tenant, an issuer without an audience) is a startup **error**, not "off":
+a half-finished deploy must not turn into an open API.
 
 In the cluster the chart sets both from `auth.tenantId` / `auth.clientId` and
 **refuses to render** when `auth.enabled` is true and either is missing, so the
@@ -442,9 +452,60 @@ Two endpoints are deliberately open:
 - `/api/auth/config` — it is what the browser reads *before* it has a token, to
   find out which tenant to sign in against.
 
-`GET /api/auth/me` returns the caller as the API sees them, which is the quickest
-way to confirm a deployment is really validating tokens rather than waving them
-through.
+`GET /api/auth/me` returns the caller as the API sees them — `authenticated` and the
+opaque `user_id`, nothing about the person — which is the quickest way to confirm a
+deployment is really validating tokens rather than waving them through.
+
+## Users and ownership
+
+The API validates access tokens from **any OpenID Connect issuer**. The signing keys
+come from the `jwks_uri` in the issuer's discovery document
+(`<issuer>/.well-known/openid-configuration`), which must name the same issuer.
+
+| Variable | Meaning |
+|---|---|
+| `MYFINANCE_AUTH_ISSUER` | Issuer URL; `iss` must equal it. Derived from the tenant for Entra |
+| `MYFINANCE_AUTH_AUDIENCE` | Accepted `aud`, comma-separated. Defaults to the client id (and `api://<client id>`) |
+| `MYFINANCE_SUBJECT_PEPPER` | Secret HMAC key for the subject hash. Required when authentication is on |
+| `MYFINANCE_BOOTSTRAP_SUB`, `MYFINANCE_BOOTSTRAP_ISS` | Who inherits existing data (schema job only); `ISS` defaults to the issuer |
+
+A user row is created on that person's first authenticated request. It holds a random
+UUID, `subject_hash = HMAC-SHA256(pepper, issuer + "|" + sub)`, the creation time and
+the terms version they accepted — **no name, no email, no raw subject**. Those three are
+never stored, returned or logged; the browser reads the name and email it displays
+from its own token. Keep the pepper in the same secret store as the database
+credentials: without it a copy of the database cannot be tied to a person, and if it
+is lost or changed every user's data becomes unreachable. The issuer that goes into
+the hash is the *configured* one, so Entra v1 and v2 tokens for the same person are
+the same user.
+
+Every data table has `user_id NOT NULL` with a foreign key to `users`. Scoping is done
+once, in `src/scoping.py`: a database session is opened *for one user*
+(`deps.get_db`, and each queued LLM job opens its own), and from then on every query
+through it is filtered to that user and every new row is stamped with them. Another
+user's id is therefore a plain `404`. A session with no user refuses to touch an owned
+table; the few cross-user jobs (schema, startup sweep of interrupted jobs) ask for
+`open_system_session()` explicitly. Constructs the filter cannot reach — subqueries,
+Core statements on an owned table — are refused rather than left to leak. Raw `text()`
+SQL is outside it and must filter on `user_id` itself.
+
+New users start with the default asset types and every advanced feature off.
+
+### Migrating a single-user database
+
+`python -m src.schema` converts an existing database in place (SQLite and
+PostgreSQL), in one transaction: it adds `user_id`, makes the unique constraints
+per-user, changes the `settings` primary key to `(user_id, key)`, and gives every
+existing row to the **bootstrap user** — the person whose `sub` you put in
+`MYFINANCE_BOOTSTRAP_SUB` (their `iss` too, if it is not the configured issuer). It is
+hashed with the pepper exactly as their next login will be, so they sign in and find
+their data. With authentication enabled and rows to assign, the job stops with an error
+if the bootstrap `sub` or the pepper is missing, leaving the database untouched. The old
+global terms acceptance moves onto that user. Re-running it is a no-op.
+
+The job must see the same `MYFINANCE_AUTH_*` and pepper as the application: without
+any authentication settings it assumes local development and gives the data to the
+fixed local user (and says so).
 
 ### Sessions
 
@@ -474,8 +535,8 @@ every page and appended to the existing tax/FIRE/assessment disclaimers.
 
 Acceptance is versioned. The backend's `TERMS_VERSION` constant
 (`backend/src/config.py`) is the single source of truth for what "current" means;
-`GET /api/settings` reports it alongside whatever version (if any) this wallet has
-accepted, and `POST /api/settings/terms/accept` records a new acceptance (422 if the
+`GET /api/settings` reports it alongside whatever version (if any) this user has
+accepted (stored on their user row), and `POST /api/settings/terms/accept` records a new acceptance (422 if the
 version sent does not match `TERMS_VERSION`). Once signed in, the frontend shows a
 blocking modal — checkbox required, Escape does not dismiss it — whenever the accepted
 version does not match the current one; `/terms` itself stays readable while the modal
@@ -483,7 +544,7 @@ is pending elsewhere in the app.
 
 **Bumping the version**: update the text in `terms.ts` (and the verbatim
 `versionLine`/date it carries) to the new wording, then increment `TERMS_VERSION` in
-`config.py` to match. Every wallet is asked to accept again on its next sign-in.
+`config.py` to match. Every user is asked to accept again on their next sign-in.
 
 ## Architecture
 | Service   | Tech                                        | Port |
