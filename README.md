@@ -185,6 +185,106 @@ MYFINANCE_DATA_DIR=/tmp/myfinance-demo .venv/bin/uvicorn src.main:app --port 800
 
 It refuses anything that is not SQLite or already holds data.
 
+## Wallet export and import
+
+**Settings → Wallet file** downloads a wallet's *setup* as one JSON file and imports such a
+file into another account or instance, to start from it. It is not a backup: it carries what
+is needed to start using the app and none of the history.
+
+| In the file | Left out |
+|---|---|
+| Active assets in their **current** state: amount, value, and the total you paid in | Position history, monthly records, income entries (monthly actuals) |
+| Income sources with their parameters (ended ones too: tax is worked out year to date) | Insights, reports, archived assets, one-off expenses, expenses that have ended |
+| Active recurring expenses (monthly, quarterly, yearly) | Terms acceptance, recovery and key material, contacts and e-mail, internal ids |
+| Settings: base currency, time zone, feature switches, FIRE inputs, birth year | Anything that identifies the person |
+
+**The file is not encrypted.** It lists balances, income and bills in plain text; the page
+says so and the download is sent `Cache-Control: no-store`. Store it safely.
+
+### Format (version 1)
+
+```json
+{
+  "format": "myfinance-wallet",
+  "version": 1,
+  "exported_at": "2026-10-02T05:43:03+00:00",
+  "settings": {
+    "base_currency": "PLN",
+    "timezone": "Europe/Warsaw",
+    "features": { "portfolio": true, "fire": true, "tax": true, "insights": false },
+    "fire": { "birth_year": 1992, "target_fi_age": 50.0, "swr": 0.035,
+              "zus_pension_monthly": "3200", "barista_income_monthly": "4000", "...": "..." },
+    "birth_year": 1992
+  },
+  "assets": [
+    { "name": "Gold", "kind": "gold", "category": "Gold", "units": "g",
+      "interest_basis": "", "profile": "moderate", "icon": "🥇", "wrapper": "",
+      "currency": "PLN", "amount": "50", "value": "16826.9", "contributed": "19868.5",
+      "accrues_from": null }
+  ],
+  "income_sources": [
+    { "name": "Flat rental (net)", "kind": "other", "currency": "PLN",
+      "params": { "net_monthly": "2200" },
+      "starts_on": "2025-06-01", "ends_on": null, "notes": "" }
+  ],
+  "expenses": [
+    { "name": "Rent", "amount": "3200.5", "currency": "PLN", "period": "monthly",
+      "category": "Housing", "starts_on": "2025-01-01", "ends_on": null, "notes": "" }
+  ]
+}
+```
+
+- **Amounts are strings** (`"1500.50"`), so decimals keep full precision: plain decimal, no
+  exponent, at most 6 decimal places for an asset `amount`, 4 for `value` / `contributed`, 2 for
+  expenses and income amounts. Rates and shares (`swr`, `ryczalt_rate`, ...) are plain numbers.
+- `assets[].value` and `contributed` are in `settings.base_currency`; `contributed` (what you
+  paid in over the asset's life) may be `null` when unknown. `amount` is in grams (gold and
+  metals), coin quantity (crypto), the currency amount, or the principal for `interest` assets.
+- `kind` is `currency`, `gold`, `metal`, `crypto` or `interest`; `period` is `monthly`,
+  `quarterly` or `yearly`; `income_sources[].kind` is `uop`, `b2b` or `other`, and `params` has the
+  shape the Income form uses for that kind. Money inside `params` (`gross_monthly`,
+  `invoice_monthly`, `net_monthly`, `rate`, `costs_monthly`, `custom_base`) and the FIRE money
+  inputs are strings too.
+- Field names are stable within a version. Unknown fields, an unknown `format` or `version`, and
+  anything the normal forms would refuse are rejected rather than ignored.
+
+### Importing
+
+`GET /api/wallet/export`, `POST /api/wallet/import/preview` (dry run) and
+`POST /api/wallet/import` take the file as the raw request body. It is validated as a whole
+before anything is planned or written: at most 1 000 000 bytes, 200 assets, 50 income sources and
+300 expenses; strict schema (`400` not JSON, `413` too large, `422` invalid or unsupported version,
+with where each problem is). The write is one transaction through the caller's own user-scoped
+session, so every row is stamped with the caller and encrypted under their key; another user's data
+is never read or touched.
+
+**The rule for a wallet that already has data: import only adds. It never overwrites or deletes.**
+
+- *Settings* (base currency, time zone, features, FIRE inputs, birth year): applied only if the
+  wallet has not set that value yet; otherwise yours is kept and the preview says what the file had.
+- *Assets*: a file asset only ever matches one of your active assets with the **same name**
+  (case-insensitive) and the same shape (kind, category, units, wrapper). If that asset has no
+  balance yet (the default asset types of a new account are the usual case) the opening position
+  goes onto it, so nothing is duplicated and your asset is not edited; if it already has a balance
+  the file asset is **skipped**; anything else is **created** as a new asset, even if that leaves an
+  empty default asset unused. A different name never matches, so the file's names are never lost.
+- *Income sources* and *expenses*: one identical to an existing one (same name and start, and for
+  expenses the same amount, currency and period) is skipped; the rest are created.
+- If your base currency differs from the file's, the paid-in totals are converted at today's rate.
+
+So importing the same file twice changes nothing the second time. The preview lists every item as
+`create`, `fill`, `skip` or `keep`.
+
+**How an asset is written.** Each asset gets one opening position holding the current amount,
+valued at today's prices in the wallet's base currency. The data model keeps "your money" only as
+the opening value plus the flows recorded on later updates, so when the paid-in total differs from
+today's value (the asset grew or lost) a *baseline* position valued at the paid-in total is written
+one millisecond before it, and the real one carries a recorded flow of zero. "Your money" and
+growth then read as they did in the source wallet; the latest position, which totals and charts use,
+holds the true value. What is not carried over is how that total split into an opening value and
+later contributions, and the monthly figures behind FIRE's savings rate and recorded spend: those
+start again from the day of the import.
+
 ## Tests
 
 ```bash

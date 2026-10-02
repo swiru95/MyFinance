@@ -40,6 +40,7 @@ from .routes import report_pdf as report_pdf_routes
 from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
+from .routes import wallet as wallet_routes
 from .services.price_service import PriceService
 from .services import keys as key_service
 from .services import llm_queue
@@ -126,6 +127,7 @@ protected = [
     statistics_routes.router,
     settings_routes.router,
     tax_routes.router,
+    wallet_routes.router,
     contacts_routes.router,
 ]
 for router in protected:

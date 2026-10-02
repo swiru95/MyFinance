@@ -1,0 +1,108 @@
+/** Wallet export / import strings (WalletCard on the Settings page), kept out
+ *  of lib/i18n.ts so feature work does not collide there - same pattern as
+ *  lib/strings/pdfReport.ts. */
+export const en: Record<string, string> = {
+  "wallet.title": "Wallet file",
+  "wallet.subtitle":
+    "Take your setup to another account or instance - or start from one. It holds your assets as they stand now, income sources, recurring expenses and settings. No history.",
+  "wallet.notEncrypted":
+    "The exported file is NOT encrypted. It lists your balances, income and bills in plain text. Store it somewhere safe and delete it when you no longer need it.",
+  "wallet.exportTitle": "Export",
+  "wallet.exportBody":
+    "Download your setup as one JSON file. Left out: position history, month-by-month figures, income actuals, reports and insights, archived assets, and anything about your account.",
+  "wallet.export": "Download wallet file",
+  "wallet.exporting": "Preparing…",
+  "wallet.exportFailed": "Could not export the wallet",
+  "wallet.importTitle": "Import",
+  "wallet.importBody":
+    "Pick a wallet file to see what it would add. Nothing is written until you confirm, and nothing you already have is changed or deleted.",
+  "wallet.choose": "Choose a wallet file…",
+  "wallet.reading": "Checking the file…",
+  "wallet.tooBig": "That file is larger than 1 MB, so it is not a wallet file.",
+  "wallet.invalid": "This file cannot be imported",
+  "wallet.readFailed": "Could not read that file",
+  "wallet.previewTitle": "What would happen - {file}",
+  "wallet.summary": "{create} new, {fill} placed on existing assets, {left} left as they are",
+  "wallet.nothing": "There is nothing new to import: everything in the file is already in your wallet.",
+  "wallet.rule":
+    "Import only adds. Settings you have already set stay as they are; an asset goes onto your existing empty asset with the same name and type instead of making a duplicate, and is skipped if that asset already has a balance; any other asset is created as new.",
+  "wallet.section.setting": "Settings",
+  "wallet.section.asset": "Assets",
+  "wallet.section.income_source": "Income sources",
+  "wallet.section.expense": "Recurring expenses",
+  "wallet.setting.base_currency": "Base currency",
+  "wallet.setting.timezone": "Time zone",
+  "wallet.setting.features": "Features",
+  "wallet.setting.fire": "Retirement (FIRE) inputs",
+  "wallet.setting.birth_year": "Birth year",
+  "wallet.action.create": "New",
+  "wallet.action.fill": "Added to yours",
+  "wallet.action.skip": "Skipped",
+  "wallet.action.keep": "Kept yours",
+  "wallet.reason.default_type": "opening balance goes on your existing empty \"{existing}\"",
+  "wallet.reason.already_has_balance": "\"{existing}\" already has a balance",
+  "wallet.reason.already_exists": "already in your wallet",
+  "wallet.reason.already_set": "yours is {existing}; the file has {incoming}",
+  "wallet.reason.unchanged": "same as yours",
+  "wallet.warn.base_currency_differs":
+    "The file is in {from}, your wallet in {to}. Amounts you paid in are converted at today's rate, and your base currency stays {to}.",
+  "wallet.confirm": "Import",
+  "wallet.importing": "Importing…",
+  "wallet.cancel": "Cancel",
+  "wallet.done": "Imported: {create} new, {fill} placed on existing assets. {left} left as they were.",
+  "wallet.importFailed": "The import failed and nothing was written",
+  "wallet.another": "Import another file",
+};
+
+export const pl: Record<string, string> = {
+  "wallet.title": "Plik portfela",
+  "wallet.subtitle":
+    "Przenieś swoją konfigurację na inne konto lub instancję - albo zacznij od gotowej. Zawiera aktywa w obecnym stanie, źródła dochodu, wydatki cykliczne i ustawienia. Bez historii.",
+  "wallet.notEncrypted":
+    "Wyeksportowany plik NIE jest zaszyfrowany. Zawiera saldo, dochody i rachunki otwartym tekstem. Przechowuj go w bezpiecznym miejscu i usuń, gdy nie będzie już potrzebny.",
+  "wallet.exportTitle": "Eksport",
+  "wallet.exportBody":
+    "Pobierz swoją konfigurację jako jeden plik JSON. Pomijane: historia pozycji, dane miesiąc po miesiącu, rzeczywiste przychody, raporty i analizy, zarchiwizowane aktywa oraz wszystko o Twoim koncie.",
+  "wallet.export": "Pobierz plik portfela",
+  "wallet.exporting": "Przygotowuję…",
+  "wallet.exportFailed": "Nie udało się wyeksportować portfela",
+  "wallet.importTitle": "Import",
+  "wallet.importBody":
+    "Wybierz plik portfela, aby zobaczyć, co zostanie dodane. Nic nie jest zapisywane, dopóki nie potwierdzisz, a to, co już masz, nie jest zmieniane ani usuwane.",
+  "wallet.choose": "Wybierz plik portfela…",
+  "wallet.reading": "Sprawdzam plik…",
+  "wallet.tooBig": "Ten plik jest większy niż 1 MB, więc nie jest plikiem portfela.",
+  "wallet.invalid": "Nie można zaimportować tego pliku",
+  "wallet.readFailed": "Nie udało się odczytać pliku",
+  "wallet.previewTitle": "Co się stanie - {file}",
+  "wallet.summary": "{create} nowych, {fill} dodanych do istniejących aktywów, {left} bez zmian",
+  "wallet.nothing": "Nie ma nic nowego do zaimportowania: wszystko z pliku jest już w Twoim portfelu.",
+  "wallet.rule":
+    "Import tylko dodaje. Ustawienia, które już masz, zostają bez zmian; aktywo trafia na Twoje istniejące puste aktywo o tej samej nazwie i typie zamiast tworzyć duplikat, a jest pomijane, jeśli to aktywo ma już saldo; każde inne aktywo jest tworzone jako nowe.",
+  "wallet.section.setting": "Ustawienia",
+  "wallet.section.asset": "Aktywa",
+  "wallet.section.income_source": "Źródła dochodu",
+  "wallet.section.expense": "Wydatki cykliczne",
+  "wallet.setting.base_currency": "Waluta bazowa",
+  "wallet.setting.timezone": "Strefa czasowa",
+  "wallet.setting.features": "Funkcje",
+  "wallet.setting.fire": "Dane do emerytury (FIRE)",
+  "wallet.setting.birth_year": "Rok urodzenia",
+  "wallet.action.create": "Nowe",
+  "wallet.action.fill": "Dodane do Twojego",
+  "wallet.action.skip": "Pominięte",
+  "wallet.action.keep": "Zostaje Twoje",
+  "wallet.reason.default_type": "saldo początkowe trafi na Twoje istniejące puste \"{existing}\"",
+  "wallet.reason.already_has_balance": "\"{existing}\" ma już saldo",
+  "wallet.reason.already_exists": "już jest w Twoim portfelu",
+  "wallet.reason.already_set": "u Ciebie: {existing}; w pliku: {incoming}",
+  "wallet.reason.unchanged": "tak samo jak u Ciebie",
+  "wallet.warn.base_currency_differs":
+    "Plik jest w {from}, Twój portfel w {to}. Wpłacone kwoty są przeliczane po dzisiejszym kursie, a Twoja waluta bazowa pozostaje {to}.",
+  "wallet.confirm": "Importuj",
+  "wallet.importing": "Importuję…",
+  "wallet.cancel": "Anuluj",
+  "wallet.done": "Zaimportowano: {create} nowych, {fill} dodanych do istniejących aktywów. {left} bez zmian.",
+  "wallet.importFailed": "Import się nie powiódł i nic nie zostało zapisane",
+  "wallet.another": "Importuj kolejny plik",
+};

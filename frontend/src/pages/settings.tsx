@@ -5,6 +5,7 @@ import { useFeatures } from "@/lib/features";
 import { BASE_CURRENCIES } from "@/lib/types";
 import type { FeatureFlags } from "@/lib/types";
 import { useSettings } from "@/components/SettingsProvider";
+import WalletCard from "@/components/WalletCard";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
 import {
@@ -197,6 +198,8 @@ export default function SettingsPage() {
           {busy ? t("common.saving") : t("set.saveSettings")}
         </button>
       </form>
+
+      <WalletCard />
 
       <RecoveryCard />
 
