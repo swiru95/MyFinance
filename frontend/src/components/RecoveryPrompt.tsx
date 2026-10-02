@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { RECOVERY_CONFIRMED_EVENT } from "@/lib/recovery";
 import type { RecoveryStatus } from "@/lib/types";
 import { useSettings } from "./SettingsProvider";
 import RecoveryCodeFlow from "./RecoveryCodeFlow";
@@ -126,7 +127,10 @@ export default function RecoveryPrompt() {
                 ) : null}
               </div>
             }
-            onConfirmed={(s) => setStatus(s)}
+            onConfirmed={(s) => {
+              setStatus(s);
+              window.dispatchEvent(new CustomEvent(RECOVERY_CONFIRMED_EVENT, { detail: s }));
+            }}
             onDismiss={() => setDismissed(true)}
             dismissWhileIdle
           />

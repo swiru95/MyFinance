@@ -9,6 +9,11 @@ export function normalizeRecoveryCode(raw: string): string {
   return raw.trim().replace(/\s+/g, "-").toUpperCase();
 }
 
+/** The modal prompt and the Settings card each keep their own copy of the
+ *  recovery status. The prompt announces a confirmed code with this event so a
+ *  card already on screen does not keep saying "no recovery code yet". */
+export const RECOVERY_CONFIRMED_EVENT = "myfinance:recovery-confirmed";
+
 /** "1:05" / "0:42" - for the lock-out countdown. */
 export function fmtCountdown(totalSeconds: number): string {
   const s = Math.max(0, Math.ceil(totalSeconds));

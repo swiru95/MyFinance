@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, api, fmtDateTime } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { isNetworkError } from "@/lib/recovery";
+import { RECOVERY_CONFIRMED_EVENT, isNetworkError } from "@/lib/recovery";
 import type { ContactState, RecoveryStatus } from "@/lib/types";
 import { useSettings } from "./SettingsProvider";
 import RecoveryCodeFlow from "./RecoveryCodeFlow";
@@ -25,8 +25,12 @@ export function RecoveryCard() {
       .catch(() => {
         if (!cancelled) setFailed(true);
       });
+    // The first-run modal prompt confirms a code on its own copy of the status.
+    const onConfirmed = (e: Event) => setStatus((e as CustomEvent<RecoveryStatus>).detail);
+    window.addEventListener(RECOVERY_CONFIRMED_EVENT, onConfirmed);
     return () => {
       cancelled = true;
+      window.removeEventListener(RECOVERY_CONFIRMED_EVENT, onConfirmed);
     };
   }, []);
 
