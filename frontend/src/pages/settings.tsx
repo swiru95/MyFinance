@@ -5,8 +5,14 @@ import { useFeatures } from "@/lib/features";
 import { BASE_CURRENCIES } from "@/lib/types";
 import type { FeatureFlags } from "@/lib/types";
 import { useSettings } from "@/components/SettingsProvider";
+import WalletCard from "@/components/WalletCard";
 import ThemeToggle from "@/components/ThemeToggle";
 import LanguageToggle from "@/components/LanguageToggle";
+import {
+  BirthYearCard,
+  NotificationsCard,
+  RecoveryCard,
+} from "@/components/RecoverySettingsCards";
 
 const FEATURE_KEYS: (keyof FeatureFlags)[] = ["portfolio", "fire", "tax", "insights"];
 
@@ -192,6 +198,14 @@ export default function SettingsPage() {
           {busy ? t("common.saving") : t("set.saveSettings")}
         </button>
       </form>
+
+      <WalletCard />
+
+      <RecoveryCard />
+
+      <NotificationsCard />
+
+      <BirthYearCard />
     </div>
   );
 }

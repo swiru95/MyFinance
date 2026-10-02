@@ -1,95 +1,295 @@
-"""Entra ID access-token validation.
+"""OIDC access-token validation and the per-request user.
 
-The browser runs the OAuth 2.0 authorization code flow with PKCE against
-Entra and sends the resulting *access* token here as a bearer credential. This
-module is the other half: it checks that the token really was issued by the
-configured tenant, for this API, to someone holding the required app role.
+The browser signs in against an OpenID Connect provider and sends the resulting
+*access* token here as a bearer credential. This module is the other half: it
+checks that the token really was issued by the configured issuer, for this API,
+and then maps it to a user row (creating it on first sight).
 
-One app registration plays both parts. It carries an SPA redirect URI and it
-exposes a scope on its own Application ID URI, so the client id below is both
-the `client_id` the browser authenticates with and the `aud` the token is
-issued for.
+What is checked, always: signature (against the keys the issuer publishes at
+the `jwks_uri` of its discovery document), `iss`, `aud`, `exp`, and that `sub`
+is present. What is checked only when configured: the Entra `tid`, a required
+scope in `scp`/`scope`, and a required app role in `roles`. A deployment with
+nothing but a tenant id and client id gets the Entra defaults for all three, so
+configuration written for the Entra-only version keeps meaning what it meant.
+
+What this module deliberately never does is keep or log the identity claims.
+`sub` is hashed (identity.subject_hash) and dropped; `name`, `preferred_username`
+and `oid` are not read. Two claims are used for the length of the request and no
+longer: the one configured as the key secret (MYFINANCE_KEY_CLAIM, `sub` by
+default), which unwraps the user's data key, and - only on the endpoint where
+someone opts in to notifications - `email` together with `email_verified`.
 """
 from __future__ import annotations
 
 import logging
 import threading
+import time
+import uuid
+from urllib.parse import urlsplit
 
+import httpx
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from . import identity
 from .config import settings
+from .crypto import contacts as contact_crypto
+from .crypto.core import LOCAL_SECRET, KekError, KeyRing, active_keks
+from .services.users import local_account, login
 
 log = logging.getLogger(__name__)
 
-ALGORITHMS = ["RS256"]
+# Asymmetric only. Never "none", never HS*: with a public JWKS an HMAC
+# algorithm would let anyone who can read the key forge tokens.
+ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "ES256", "ES384"]
+
+_ENTRA_DEFAULT_SCOPE = "access_as_user"
+_ENTRA_DEFAULT_ROLE = "MyFinance.User"
+
+
+class AuthConfigError(RuntimeError):
+    """Authentication is configured inconsistently. Raised at startup."""
+
+
+# --- Configuration, resolved --------------------------------------------
+
+
+def _entra_v2_issuer(tenant_id: str) -> str:
+    return f"https://login.microsoftonline.com/{tenant_id}/v2.0"
+
+
+def _entra_compat() -> bool:
+    """Only a tenant (and client id) is set: the pre-OIDC Entra configuration."""
+    return not settings.auth_issuer and bool(settings.auth_tenant_id)
+
+
+def issuer() -> str:
+    """The canonical issuer. This exact string, not the token's own `iss`, goes
+    into the subject hash, so that two token versions an issuer may emit for
+    one person (Entra v1 and v2) still resolve to the same user."""
+    if settings.auth_issuer:
+        return settings.auth_issuer
+    if settings.auth_tenant_id:
+        return _entra_v2_issuer(settings.auth_tenant_id)
+    return ""
+
+
+def audiences() -> list[str]:
+    if settings.auth_audience:
+        return [a.strip() for a in settings.auth_audience.split(",") if a.strip()]
+    cid = settings.auth_client_id
+    # Entra issues `aud` as the bare client id for v2 tokens and as the
+    # Application ID URI for v1 ones, and which you get follows from the token
+    # version the app registration is set to emit.
+    return [cid, f"api://{cid}"] if cid else []
+
+
+def _accepted_issuers() -> set[str]:
+    accepted = {issuer()}
+    tid = settings.auth_tenant_id
+    if tid and issuer() == _entra_v2_issuer(tid):
+        # A new app registration ships with `requestedAccessTokenVersion: null`,
+        # i.e. v1, and a v1 token comes from sts.windows.net rather than the v2
+        # endpoint the sign-in went through. Accepting both means the API
+        # works whether or not that manifest field was set to 2, instead of
+        # rejecting every token with an issuer mismatch that looks nothing like
+        # a configuration problem.
+        accepted.add(f"https://sts.windows.net/{tid}/")
+    return accepted
+
+
+def required_scope() -> str:
+    if settings.auth_api_scope is not None:
+        return settings.auth_api_scope
+    return _ENTRA_DEFAULT_SCOPE if _entra_compat() else ""
+
+
+def required_role() -> str:
+    if settings.auth_required_role is not None:
+        return settings.auth_required_role
+    return _ENTRA_DEFAULT_ROLE if _entra_compat() else ""
+
+
+def requires_access_token_proof() -> bool:
+    """Whether this deployment can tell an access token from an ID token.
+
+    The two carry the same issuer, audience and signature, so the API needs
+    something that sets them apart: a scope that only access tokens carry, or
+    the RFC 9068 `typ` header. Entra configured by tenant and client id has the
+    scope by default; anything else has to choose.
+    """
+    return bool(required_scope()) or settings.auth_require_at_jwt_typ
 
 
 def auth_enabled() -> bool:
-    """Authentication is on only when both halves of the identity are set.
-
-    A half-configured deploy is a misconfiguration, not a mode: without the
-    tenant there is nothing to fetch keys from, and without the client id there
-    is no audience to check against.
-    """
-    return bool(settings.auth_tenant_id and settings.auth_client_id)
-
-
-def _authority() -> str:
-    return f"https://login.microsoftonline.com/{settings.auth_tenant_id}"
+    """Authentication is on when an issuer and an audience are both known."""
+    return bool(issuer() and audiences())
 
 
 def scope_uri() -> str:
-    return f"api://{settings.auth_client_id}/{settings.auth_api_scope}"
+    """The scope string the SPA requests."""
+    scope = required_scope()
+    if scope and settings.auth_client_id and _entra_compat():
+        return f"api://{settings.auth_client_id}/{scope}"
+    return scope
 
 
-def _valid_issuers() -> set[str]:
-    """Both token versions, because the manifest decides which one you get.
+def _is_local(url: str) -> bool:
+    return (urlsplit(url).hostname or "") in ("localhost", "127.0.0.1", "::1")
 
-    A new app registration ships with `requestedAccessTokenVersion: null`,
-    which means v1 - and a v1 access token is issued by sts.windows.net, not by
-    the v2.0 endpoint the sign-in went through. Accepting both means the API
-    works whether or not that manifest field has been set to 2, instead of
-    rejecting every token with an issuer mismatch that looks nothing like a
-    configuration problem. Setting it to 2 is still the right thing to do; see
-    README "Entra ID SSO".
+
+def validate_config(*, schema_job: bool = False) -> None:
+    """Refuse to start on a configuration that would be unsafe or useless.
+
+    Called once at startup (main.lifespan). Nothing set at all is fine - that
+    is the documented way to run locally. Something set but not enough to
+    validate tokens is not: it would mean serving every user's data to anyone.
+
+    `schema_job`: the schema job needs the KEK (to encrypt, and to check it is
+    the right one) but never touches the contact key, so it is not asked for it
+    - the one process that holds the database owner's rights does not also need
+    the notification key.
     """
-    tid = settings.auth_tenant_id
-    return {
-        f"https://login.microsoftonline.com/{tid}/v2.0",
-        f"https://sts.windows.net/{tid}/",
-    }
+    touched = [
+        name
+        for name, value in (
+            ("MYFINANCE_AUTH_ISSUER", settings.auth_issuer),
+            ("MYFINANCE_AUTH_AUDIENCE", settings.auth_audience),
+            ("MYFINANCE_AUTH_CLIENT_ID", settings.auth_client_id),
+            ("MYFINANCE_AUTH_TENANT_ID", settings.auth_tenant_id),
+        )
+        if value
+    ]
+    if not touched:
+        return
+    if not auth_enabled():
+        raise AuthConfigError(
+            f"authentication is partly configured ({', '.join(touched)}) but needs an issuer "
+            "(MYFINANCE_AUTH_ISSUER, or MYFINANCE_AUTH_TENANT_ID for Entra) and an audience "
+            "(MYFINANCE_AUTH_AUDIENCE, or MYFINANCE_AUTH_CLIENT_ID)"
+        )
+    if not settings.subject_pepper:
+        raise AuthConfigError(
+            "MYFINANCE_SUBJECT_PEPPER is required when authentication is enabled"
+        )
+    # Encryption is not optional with authentication on: without these, either
+    # nothing could be unlocked or (worse) it would be done under a key that is
+    # not the one in the Secret. Checked for shape here; that the KEK is the
+    # *right* one is checked against the database (services/keys.py).
+    try:
+        active_keks()
+    except KekError as exc:
+        raise AuthConfigError(str(exc)) from exc
+    if not schema_job:
+        try:
+            contact_crypto.validate()
+        except contact_crypto.ContactKeyError as exc:
+            raise AuthConfigError(str(exc)) from exc
+    if not settings.key_claim:
+        raise AuthConfigError("MYFINANCE_KEY_CLAIM must name a token claim (default: sub)")
+    if urlsplit(issuer()).scheme != "https" and not _is_local(issuer()):
+        raise AuthConfigError("the OIDC issuer must be an https URL")
+    if not requires_access_token_proof():
+        raise AuthConfigError(
+            "nothing distinguishes an access token from an ID token: with this issuer, an ID "
+            "token for the right audience would be accepted as an API credential. Set "
+            "MYFINANCE_AUTH_API_SCOPE (a scope that only access tokens carry) or "
+            "MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP=true (RFC 9068 `typ: at+jwt`)"
+        )
 
 
-def _valid_audiences() -> set[str]:
-    """Entra issues `aud` as the bare client id for v2 tokens and as the
-    Application ID URI for v1 ones. Which you get follows from the token
-    version, so both are accepted for the same reason the issuers are."""
-    cid = settings.auth_client_id
-    return {cid, f"api://{cid}"}
+# --- Keys ---------------------------------------------------------------
 
 
-_jwk_client: jwt.PyJWKClient | None = None
-_jwk_lock = threading.Lock()
+def _fetch_json(url: str) -> dict:
+    """GET a JSON document. The one place this module touches the network, so
+    tests replace it rather than patching an HTTP library."""
+    resp = httpx.get(url, timeout=10.0, follow_redirects=False)
+    resp.raise_for_status()
+    return resp.json()
 
 
-def _jwks() -> jwt.PyJWKClient:
-    """One cached client for the process.
+class KeyUnavailable(RuntimeError):
+    """The issuer's keys could not be fetched (as opposed to: not found)."""
 
-    PyJWKClient caches the key set for `lifespan` seconds and re-fetches on a
-    key id it has not seen, which is exactly the behaviour a rotating JWKS
-    needs: no request pays for a fetch except the first after a rotation.
+
+class _KeyStore:
+    """Discovery document and JWKS, cached.
+
+    Both are re-fetched after `auth_jwks_cache_seconds`, and the JWKS earlier
+    when a token names a key id we do not hold - that is what a key rotation
+    looks like from here. That early refetch is rate-limited so a stream of
+    tokens with made-up key ids cannot turn this service into a way of hammering
+    the identity provider.
     """
-    global _jwk_client
-    with _jwk_lock:
-        if _jwk_client is None:
-            _jwk_client = jwt.PyJWKClient(
-                f"{_authority()}/discovery/v2.0/keys",
-                cache_jwk_set=True,
-                lifespan=settings.auth_jwks_cache_seconds,
-            )
-        return _jwk_client
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._jwks_uri: str | None = None
+        self._discovered_at = 0.0
+        self._keys: dict[str | None, object] = {}
+        self._keys_at = 0.0
+
+    def _discover(self, now: float) -> str:
+        if self._jwks_uri and now - self._discovered_at < settings.auth_jwks_cache_seconds:
+            return self._jwks_uri
+        url = issuer().rstrip("/") + "/.well-known/openid-configuration"
+        try:
+            doc = _fetch_json(url)
+        except (httpx.HTTPError, ValueError) as exc:
+            raise KeyUnavailable(f"discovery document unreachable: {exc}") from exc
+        # OIDC Discovery 4.3: the document must name the issuer it was fetched
+        # for, which stops a redirect or a mis-pointed config from quietly
+        # substituting someone else's key set.
+        if doc.get("issuer") != issuer():
+            raise KeyUnavailable("discovery document is for a different issuer")
+        jwks_uri = doc.get("jwks_uri")
+        if not isinstance(jwks_uri, str) or not (
+            urlsplit(jwks_uri).scheme == "https" or _is_local(jwks_uri)
+        ):
+            raise KeyUnavailable("discovery document has no usable jwks_uri")
+        self._jwks_uri, self._discovered_at = jwks_uri, now
+        return jwks_uri
+
+    def _refresh(self, now: float) -> None:
+        jwks_uri = self._discover(now)
+        try:
+            jwk_set = jwt.PyJWKSet.from_dict(_fetch_json(jwks_uri))
+        except (httpx.HTTPError, ValueError, jwt.PyJWTError) as exc:
+            raise KeyUnavailable(f"signing keys unavailable: {exc}") from exc
+        self._keys = {k.key_id: k.key for k in jwk_set.keys}
+        self._keys_at = now
+
+    def signing_key(self, kid: str | None):
+        now = time.monotonic()
+        with self._lock:
+            stale = now - self._keys_at >= settings.auth_jwks_cache_seconds
+            if stale or not self._keys:
+                self._refresh(now)
+            elif (
+                kid not in self._keys
+                and now - self._keys_at >= settings.auth_jwks_min_refresh_seconds
+            ):
+                self._refresh(now)
+            if kid in self._keys:
+                return self._keys[kid]
+            # A token with no `kid` is only unambiguous against a one-key set.
+            if kid is None and len(self._keys) == 1:
+                return next(iter(self._keys.values()))
+            return None
+
+    def reset(self) -> None:
+        with self._lock:
+            self._jwks_uri, self._discovered_at = None, 0.0
+            self._keys, self._keys_at = {}, 0.0
+
+
+_store = _KeyStore()
+
+
+def reset_key_cache() -> None:
+    _store.reset()
 
 
 def _unauthorized(detail: str) -> HTTPException:
@@ -105,33 +305,59 @@ def _unauthorized(detail: str) -> HTTPException:
 _bearer = HTTPBearer(auto_error=False)
 
 
+def _claim_list(value) -> list[str]:
+    """`scp`/`scope` is a space-separated string; `roles` is a list. Accept both
+    shapes for both, because providers differ."""
+    if isinstance(value, str):
+        return value.split()
+    if isinstance(value, (list, tuple)):
+        return [v for v in value if isinstance(v, str)]
+    return []
+
+
 def verify_token(token: str) -> dict:
     """Return the validated claims, or raise.
 
     Signature, issuer, audience and expiry are all checked. Nothing here trusts
-    a claim before the signature has been verified against the tenant's keys.
+    a claim before the signature has been verified against the issuer's keys.
     """
+    if not requires_access_token_proof():
+        # validate_config() stops the application starting like this; this is
+        # the same refusal for anything that reaches here without it (a test, a
+        # settings change at runtime). Failing open would accept ID tokens.
+        log.error("authentication is enabled with no scope and no typ requirement; refusing tokens")
+        raise HTTPException(500, "Server authentication configuration is incomplete")
     try:
-        key = _jwks().get_signing_key_from_jwt(token).key
-    except jwt.PyJWKClientError as exc:
-        # Reaching Microsoft failed, or the key id is unknown. That is this
-        # service being unable to answer, not the caller being unauthenticated,
-        # and a 503 says so where a 401 would send them round the login loop.
-        log.warning("Could not resolve Entra signing key: %s", exc)
+        header = jwt.get_unverified_header(token)
+    except jwt.InvalidTokenError as exc:
+        raise _unauthorized("Invalid token") from exc
+
+    kid = header.get("kid")
+    if kid is not None and not isinstance(kid, str):
+        raise _unauthorized("Invalid token")
+    try:
+        key = _store.signing_key(kid)
+    except KeyUnavailable as exc:
+        # Reaching the identity provider failed. That is this service being
+        # unable to answer, not the caller being unauthenticated, and a 503
+        # says so where a 401 would send them round the login loop.
+        log.warning("Could not resolve the issuer's signing key: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot reach the identity provider's signing keys",
         ) from exc
+    if key is None:
+        raise _unauthorized("Token was signed by an unknown key")
 
     try:
         claims = jwt.decode(
             token,
             key,
             algorithms=ALGORITHMS,
-            audience=list(_valid_audiences()),
+            audience=audiences(),
             leeway=settings.auth_leeway_seconds,
             # Checked below against a set, which older PyJWT cannot express here.
-            options={"verify_iss": False, "require": ["exp", "iss", "aud"]},
+            options={"verify_iss": False, "require": ["exp", "iss", "aud", "sub"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise _unauthorized("Token has expired") from exc
@@ -140,73 +366,188 @@ def verify_token(token: str) -> dict:
     except jwt.InvalidTokenError as exc:
         raise _unauthorized(f"Invalid token: {exc}") from exc
 
-    if claims.get("iss") not in _valid_issuers():
+    if claims.get("iss") not in _accepted_issuers():
+        raise _unauthorized("Token was not issued by the configured issuer")
+
+    if not isinstance(claims.get("sub"), str) or not claims["sub"]:
+        raise _unauthorized("Token has no subject")
+
+    # Entra only: guest accounts from another tenant carry a `tid` that is not
+    # ours even when the issuer is, so this is a separate check rather than a
+    # corollary.
+    if settings.auth_tenant_id and claims.get("tid") != settings.auth_tenant_id:
         raise _unauthorized("Token was not issued by the configured tenant")
 
-    # Guest accounts from another tenant carry a `tid` that is not ours even
-    # when the issuer is, so this is a separate check rather than a corollary.
-    if claims.get("tid") != settings.auth_tenant_id:
-        raise _unauthorized("Token was not issued by the configured tenant")
+    # RFC 9068 section 2.1: an access token's header says so. Read from the
+    # header only after the signature has verified, so it is the issuer's word.
+    # `application/at+jwt` is the same media type spelled out (RFC 7515 4.1.9).
+    if settings.auth_require_at_jwt_typ:
+        typ = header.get("typ")
+        if not isinstance(typ, str) or typ.lower() not in ("at+jwt", "application/at+jwt"):
+            raise _unauthorized(
+                "Token is not an access token for this API "
+                '(its header typ is not "at+jwt"); an ID token will not do'
+            )
 
-    # This must be an *access token minted for this API*, not merely a token
-    # carrying the right audience. An ID token from the same registration has
-    # the same `aud`, `iss` and `tid`, and carries `roles` too when the user is
-    # assigned one - so every check below would pass and a sign-in token would
-    # work as an API credential. `scp` is the discriminator: Entra sets it on
-    # delegated access tokens and never on ID tokens.
-    #
-    # This matters most where one app registration serves more than one
-    # application, because then the replayed token is one a *different* app
-    # legitimately holds.
-    scope = settings.auth_api_scope
-    if scope and scope not in (claims.get("scp") or "").split():
+    # With a scope configured, this must be an *access token minted for this
+    # API*, not merely a token carrying the right audience. An ID token from
+    # the same registration has the same `aud`, `iss` and `tid`, and carries
+    # `roles` too when the user is assigned one - so every other check would
+    # pass and a sign-in token would work as an API credential. Entra sets
+    # `scp` on delegated access tokens and never on ID tokens.
+    scope = required_scope()
+    if scope and scope not in _claim_list(claims.get("scp")) + _claim_list(claims.get("scope")):
         raise _unauthorized(
             "Token is not an access token for this API "
             f"(no {scope} scope); an ID token will not do"
         )
 
-    required = settings.auth_required_role
-    if required and required not in (claims.get("roles") or []):
+    role = required_role()
+    if role and role not in _claim_list(claims.get("roles")):
         # 403, not 401: they proved who they are and the answer is still no, so
         # sending them back through login would achieve nothing.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is not assigned the {required} role for this application",
+            detail=f"Account is not assigned the {role} role for this application",
         )
 
     return claims
 
 
 class Principal:
-    """Who is making the request. Not persisted - there is no user table."""
+    """Who is making the request: this application's own id for them, their
+    key ring for the length of the request, and nothing else that identifies
+    them. The token's claims are not kept, so there is no name, email or subject
+    on this object to end up in a log line or a response.
 
-    def __init__(self, claims: dict):
-        self.claims = claims
-        self.object_id: str | None = claims.get("oid")
-        self.name: str | None = claims.get("name")
-        self.username: str | None = (
-            claims.get("preferred_username") or claims.get("upn") or claims.get("email")
-        )
-        self.roles: list[str] = list(claims.get("roles") or [])
+    Three things are held privately for the endpoints that need them and are
+    never part of the representation: the user's key secret (to wrap their data
+    key again after a recovery), and the token's `email`/`email_verified` (to
+    opt in to notifications).
+    """
+
+    __slots__ = ("user_id", "keyring", "locked", "_key_secret", "_email", "_email_verified")
+
+    def __init__(
+        self,
+        user_id: uuid.UUID,
+        keyring: KeyRing | None = None,
+        *,
+        locked: bool = False,
+        key_secret: str | None = None,
+        email: str | None = None,
+        email_verified: bool = False,
+    ):
+        self.user_id = user_id
+        self.keyring = keyring
+        self.locked = locked
+        self._key_secret = key_secret
+        self._email = email
+        self._email_verified = email_verified
+
+    def key_secret(self) -> str:
+        if not self._key_secret:
+            raise RuntimeError("this principal carries no key secret")
+        return self._key_secret
+
+    def verified_email(self) -> str | None:
+        """The token's address, only if the identity provider vouched for it."""
+        return self._email if self._email_verified and self._email else None
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
-        return f"<Principal {self.username or self.object_id}>"
+        return f"<Principal {self.user_id}{' locked' if self.locked else ''}>"
 
 
-ANONYMOUS = Principal({"name": "local", "preferred_username": "local"})
+def _is_true(value) -> bool:
+    return value is True or (isinstance(value, str) and value.lower() == "true")
+
+
+def _authenticate(request: Request, credentials: HTTPAuthorizationCredentials | None) -> Principal:
+    """Validate the token, find or create the user, and unlock their key."""
+    try:
+        if not auth_enabled():
+            account = local_account()
+            if account.locked:
+                # The local user's key is the dev one (or the configured KEK);
+                # this means the database was initialised under a different KEK.
+                log.error("the local user's data cannot be unlocked: was the database created under another KEK?")
+            principal = Principal(
+                account.user_id, account.keyring, locked=account.locked, key_secret=LOCAL_SECRET
+            )
+            request.state.principal = principal
+            return principal
+        if credentials is None or not credentials.credentials:
+            raise _unauthorized("Not authenticated")
+        claims = verify_token(credentials.credentials)
+        try:
+            subject = identity.subject_hash(issuer(), claims["sub"])
+        except identity.PepperMissing as exc:
+            log.error("%s", exc)
+            raise HTTPException(500, "Server identity configuration is incomplete") from exc
+        secret = claims.get(settings.key_claim)
+        if isinstance(secret, (int, float)) and not isinstance(secret, bool):
+            secret = str(secret)
+        if not isinstance(secret, str) or not secret:
+            raise _unauthorized(
+                f"Token has no `{settings.key_claim}` claim, which this deployment uses to "
+                "protect your data (MYFINANCE_KEY_CLAIM)"
+            )
+        # Valid until the token is - plus the clock skew the validator itself
+        # tolerated, so a token accepted at the edge of its life is not refused a
+        # moment later by the layer under it.
+        expires_at = float(claims["exp"]) + settings.auth_leeway_seconds
+        account = login(subject, secret, expires_at=expires_at)
+        email = claims.get("email")
+        principal = Principal(
+            account.user_id,
+            account.keyring,
+            locked=account.locked,
+            key_secret=secret,
+            email=email if isinstance(email, str) else None,
+            email_verified=_is_true(claims.get("email_verified")),
+        )
+    except KekError as exc:
+        log.error("%s", exc)
+        raise HTTPException(503, "Server encryption configuration is incomplete") from exc
+    # Handy for anything downstream that wants the caller without re-declaring
+    # the dependency (exception handlers, logging middleware).
+    request.state.principal = principal
+    return principal
+
+
+def require_identity(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> Principal:
+    """The authenticated caller, whether or not their data key could be unlocked.
+
+    Only the endpoints that exist for a locked account use this (recovery, the
+    whoami call); everything that touches data uses `require_user`.
+    """
+    return _authenticate(request, credentials)
 
 
 def require_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
-    """Router-level dependency guarding every data endpoint."""
-    if not auth_enabled():
-        return ANONYMOUS
-    if credentials is None or not credentials.credentials:
-        raise _unauthorized("Not authenticated")
-    principal = Principal(verify_token(credentials.credentials))
-    # Handy for anything downstream that wants the caller without re-declaring
-    # the dependency (exception handlers, logging middleware).
-    request.state.principal = principal
+    """Router-level dependency guarding every data endpoint.
+
+    Also what every database session is scoped by (deps.get_db), so a route
+    cannot be reached, or reach the database, without passing through here - and
+    cannot get a session without the user's key unlocked.
+
+    423 (Locked) when the caller is a real user whose data key this sign-in does
+    not open: the identity changed since the key was wrapped. Not 401 - they are
+    authenticated, and signing in again would change nothing - and not 403,
+    which says "not allowed". The recovery code is the way out.
+    """
+    principal = _authenticate(request, credentials)
+    if principal.locked or principal.keyring is None:
+        raise HTTPException(
+            status_code=423,
+            detail="Your data is encrypted under a different sign-in identity; "
+            "enter your recovery code to restore access",
+            headers={"X-MyFinance-Locked": "recovery"},
+        )
     return principal

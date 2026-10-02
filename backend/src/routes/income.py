@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..models.income import IncomeEntry, IncomeSource
 from ..schemas.income import (
     PARAM_MODELS,
@@ -68,11 +68,8 @@ def list_sources(db: Session = Depends(get_db)):
     base = get_base_currency(db)
     ps = PriceService(base)
     today = today_in(db)
-    sources = (
-        db.query(IncomeSource)
-        .order_by(IncomeSource.starts_on.desc(), IncomeSource.id.desc())
-        .all()
-    )
+    # Sorted here, not in SQL: starts_on is encrypted, so the database cannot order by it.
+    sources = sorted(db.query(IncomeSource).all(), key=lambda s: (s.starts_on, s.id), reverse=True)
     entries_by_source = _entries_by_source(db)
     return [
         _decorate(s, entries_by_source.get(s.id, []), ps, base, today) for s in sources

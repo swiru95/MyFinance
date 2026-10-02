@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..models.expense import Expense
 from ..schemas.expense import ExpenseIn, ExpenseOut, ExpenseSummary
 from ..services.price_service import PriceService
@@ -55,7 +55,8 @@ def _all_decorated(db: Session) -> tuple[list[ExpenseOut], str]:
     base = get_base_currency(db)
     ps = PriceService(base)
     today = today_in(db)
-    rows = db.query(Expense).order_by(Expense.starts_on.desc(), Expense.id.desc()).all()
+    # Sorted here, not in SQL: starts_on is encrypted, so the database cannot order by it.
+    rows = sorted(db.query(Expense).all(), key=lambda e: (e.starts_on, e.id), reverse=True)
     return [_decorate(e, ps, base, today) for e in rows], base
 
 

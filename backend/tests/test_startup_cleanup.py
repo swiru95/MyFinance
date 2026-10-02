@@ -2,9 +2,16 @@
 
 When the application starts, any pending/running/translating Report or Insight
 rows left from a crash/restart of the previous instance are swept:
-- Translating rows with content set -> marked done with a note
+- Translating rows -> marked done with a note (a job only enters 'translating'
+  after its English text is stored, so there is always something to show)
 - All other pending/running/translating -> marked failed with a note
+
+The sweep holds no key, so it cannot read or write anything encrypted: it changes
+`status` and a plaintext `status_note` code, and the model turns that code back
+into the text a user reads (models/jobnotes.py). The tests below also check that.
 """
+import pytest
+
 from src.models.report import Report
 from src.models.insight import Insight
 from src.services.llm_queue import cleanup_interrupted_jobs
@@ -66,22 +73,25 @@ def test_cleanup_reports_translating_with_content_to_done(db):
     assert report.content == english_md
 
 
-def test_cleanup_reports_translating_without_content_to_failed(db):
-    """A Report in 'translating' without content is marked 'failed'."""
-    report = Report(
-        style="balanced",
-        language="pl",
-        status="translating",
-        content="",  # Not set yet
-    )
+def test_cleanup_never_needs_to_read_the_content(db):
+    """The sweep is status-only: it works on a session that holds no key, which
+    is the point - the system session could not decrypt `content` if it tried."""
+    from src.crypto.core import KeysUnavailable
+    from tests.conftest import system_session
+
+    report = Report(style="balanced", language="pl", status="translating", content="secret text")
     db.add(report)
     db.commit()
 
     cleanup_interrupted_jobs()
 
-    db.refresh(report)
-    assert report.status == "failed"
-    assert report.error == "Interrupted by a server restart - generate again."
+    sysdb = system_session()
+    try:
+        with pytest.raises(KeysUnavailable):
+            sysdb.query(Report).all()  # sanity: reading the row without a key is refused
+        assert sysdb.query(Report.status, Report.status_note).all() == [("done", "translation_interrupted")]
+    finally:
+        sysdb.close()
 
 
 def test_cleanup_insights_pending_to_failed(db):
@@ -138,24 +148,6 @@ def test_cleanup_insights_translating_with_content_to_done(db):
     assert insight.status == "done"
     assert "Translation was interrupted by a server restart" in insight.error
     assert insight.content == english_md
-
-
-def test_cleanup_insights_translating_without_content_to_failed(db):
-    """An Insight in 'translating' without content is marked 'failed'."""
-    insight = Insight(
-        kind="profile",
-        status="translating",
-        language="pl",
-        content="",  # Not set yet
-    )
-    db.add(insight)
-    db.commit()
-
-    cleanup_interrupted_jobs()
-
-    db.refresh(insight)
-    assert insight.status == "failed"
-    assert insight.error == "Interrupted by a server restart - generate again."
 
 
 def test_cleanup_mixed_orphaned_jobs(db):

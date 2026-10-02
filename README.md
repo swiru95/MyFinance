@@ -48,7 +48,10 @@ want them.
   wording changes.
 - **English and Polish** throughout, including the seeded asset and class names.
 - **Entra ID SSO** — OAuth 2.0 authorization code + PKCE, no client secret anywhere;
-  access is gated on an app role, not merely on tenant membership.
+  access is gated on an app role, not merely on tenant membership. The backend validates
+  tokens from any OIDC issuer (see "Users and ownership").
+- **Multi-user** — every row belongs to a user, identified by a keyed hash of the
+  token's issuer and subject; the database holds no name or email.
 - **Docker** — one `docker compose up` to run the whole stack. Python runs in a venv.
 
 ## Quick start
@@ -182,6 +185,106 @@ MYFINANCE_DATA_DIR=/tmp/myfinance-demo .venv/bin/uvicorn src.main:app --port 800
 
 It refuses anything that is not SQLite or already holds data.
 
+## Wallet export and import
+
+**Settings → Wallet file** downloads a wallet's *setup* as one JSON file and imports such a
+file into another account or instance, to start from it. It is not a backup: it carries what
+is needed to start using the app and none of the history.
+
+| In the file | Left out |
+|---|---|
+| Active assets in their **current** state: amount, value, and the total you paid in | Position history, monthly records, income entries (monthly actuals) |
+| Income sources with their parameters (ended ones too: tax is worked out year to date) | Insights, reports, archived assets, one-off expenses, expenses that have ended |
+| Active recurring expenses (monthly, quarterly, yearly) | Terms acceptance, recovery and key material, contacts and e-mail, internal ids |
+| Settings: base currency, time zone, feature switches, FIRE inputs, birth year | Anything that identifies the person |
+
+**The file is not encrypted.** It lists balances, income and bills in plain text; the page
+says so and the download is sent `Cache-Control: no-store`. Store it safely.
+
+### Format (version 1)
+
+```json
+{
+  "format": "myfinance-wallet",
+  "version": 1,
+  "exported_at": "2026-10-02T05:43:03+00:00",
+  "settings": {
+    "base_currency": "PLN",
+    "timezone": "Europe/Warsaw",
+    "features": { "portfolio": true, "fire": true, "tax": true, "insights": false },
+    "fire": { "birth_year": 1992, "target_fi_age": 50.0, "swr": 0.035,
+              "zus_pension_monthly": "3200", "barista_income_monthly": "4000", "...": "..." },
+    "birth_year": 1992
+  },
+  "assets": [
+    { "name": "Gold", "kind": "gold", "category": "Gold", "units": "g",
+      "interest_basis": "", "profile": "moderate", "icon": "🥇", "wrapper": "",
+      "currency": "PLN", "amount": "50", "value": "16826.9", "contributed": "19868.5",
+      "accrues_from": null }
+  ],
+  "income_sources": [
+    { "name": "Flat rental (net)", "kind": "other", "currency": "PLN",
+      "params": { "net_monthly": "2200" },
+      "starts_on": "2025-06-01", "ends_on": null, "notes": "" }
+  ],
+  "expenses": [
+    { "name": "Rent", "amount": "3200.5", "currency": "PLN", "period": "monthly",
+      "category": "Housing", "starts_on": "2025-01-01", "ends_on": null, "notes": "" }
+  ]
+}
+```
+
+- **Amounts are strings** (`"1500.50"`), so decimals keep full precision: plain decimal, no
+  exponent, at most 6 decimal places for an asset `amount`, 4 for `value` / `contributed`, 2 for
+  expenses and income amounts. Rates and shares (`swr`, `ryczalt_rate`, ...) are plain numbers.
+- `assets[].value` and `contributed` are in `settings.base_currency`; `contributed` (what you
+  paid in over the asset's life) may be `null` when unknown. `amount` is in grams (gold and
+  metals), coin quantity (crypto), the currency amount, or the principal for `interest` assets.
+- `kind` is `currency`, `gold`, `metal`, `crypto` or `interest`; `period` is `monthly`,
+  `quarterly` or `yearly`; `income_sources[].kind` is `uop`, `b2b` or `other`, and `params` has the
+  shape the Income form uses for that kind. Money inside `params` (`gross_monthly`,
+  `invoice_monthly`, `net_monthly`, `rate`, `costs_monthly`, `custom_base`) and the FIRE money
+  inputs are strings too.
+- Field names are stable within a version. Unknown fields, an unknown `format` or `version`, and
+  anything the normal forms would refuse are rejected rather than ignored.
+
+### Importing
+
+`GET /api/wallet/export`, `POST /api/wallet/import/preview` (dry run) and
+`POST /api/wallet/import` take the file as the raw request body. It is validated as a whole
+before anything is planned or written: at most 1 000 000 bytes, 200 assets, 50 income sources and
+300 expenses; strict schema (`400` not JSON, `413` too large, `422` invalid or unsupported version,
+with where each problem is). The write is one transaction through the caller's own user-scoped
+session, so every row is stamped with the caller and encrypted under their key; another user's data
+is never read or touched.
+
+**The rule for a wallet that already has data: import only adds. It never overwrites or deletes.**
+
+- *Settings* (base currency, time zone, features, FIRE inputs, birth year): applied only if the
+  wallet has not set that value yet; otherwise yours is kept and the preview says what the file had.
+- *Assets*: a file asset only ever matches one of your active assets with the **same name**
+  (case-insensitive) and the same shape (kind, category, units, wrapper). If that asset has no
+  balance yet (the default asset types of a new account are the usual case) the opening position
+  goes onto it, so nothing is duplicated and your asset is not edited; if it already has a balance
+  the file asset is **skipped**; anything else is **created** as a new asset, even if that leaves an
+  empty default asset unused. A different name never matches, so the file's names are never lost.
+- *Income sources* and *expenses*: one identical to an existing one (same name and start, and for
+  expenses the same amount, currency and period) is skipped; the rest are created.
+- If your base currency differs from the file's, the paid-in totals are converted at today's rate.
+
+So importing the same file twice changes nothing the second time. The preview lists every item as
+`create`, `fill`, `skip` or `keep`.
+
+**How an asset is written.** Each asset gets one opening position holding the current amount,
+valued at today's prices in the wallet's base currency. The data model keeps "your money" only as
+the opening value plus the flows recorded on later updates, so when the paid-in total differs from
+today's value (the asset grew or lost) a *baseline* position valued at the paid-in total is written
+one millisecond before it, and the real one carries a recorded flow of zero. "Your money" and
+growth then read as they did in the source wallet; the latest position, which totals and charts use,
+holds the true value. What is not carried over is how that total split into an opening value and
+later contributions, and the monthly figures behind FIRE's savings rate and recorded spend: those
+start again from the day of the import.
+
 ## Tests
 
 ```bash
@@ -192,6 +295,19 @@ cd backend && .venv/bin/pip install -r requirements-dev.txt
 The tax engine's expected values are hand-computed, to the grosz. Tests run on
 a throwaway SQLite database with prices served from the static fallbacks, so
 they never touch the network.
+
+To run them on PostgreSQL instead, point `MYFINANCE_TEST_DATABASE_URL` at an
+**empty scratch database** (tables are created and dropped per test). To also run the
+row-level-security tests, use two roles on that database: the *owner* (makes the
+tables, `NOSUPERUSER`) and the *runtime* role (`NOSUPERUSER NOBYPASSRLS`, no DDL),
+and set `MYFINANCE_TEST_DATABASE_URL` to the runtime role's URL and
+`MYFINANCE_TEST_OWNER_DATABASE_URL` to the owner's. The suite then runs as the
+runtime role, exactly like the application. `MYFINANCE_TEST_POSTGRES_URL` (a
+database on that server where the owner may `CREATE DATABASE`) additionally enables
+the PostgreSQL migration tests. The encryption tests (`test_crypto_core.py`,
+`test_encryption_at_rest.py`, `test_recovery.py`, `test_key_rotation.py`,
+`test_contacts.py`, and the encryption cases of `test_migration.py`) run on both
+databases; the suite sets the recovery code's scrypt cost to its minimum so they stay fast.
 
 ## Wallet assessment
 
@@ -387,25 +503,43 @@ registration.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MYFINANCE_AUTH_TENANT_ID` | *(empty)* | Directory (tenant) ID. Empty disables authentication |
-| `MYFINANCE_AUTH_CLIENT_ID` | *(empty)* | Application (client) ID. Empty disables authentication |
-| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` | Scope name exposed on `api://<clientId>` |
-| `MYFINANCE_AUTH_REQUIRED_ROLE` | `MyFinance.User` | App role the caller must hold. Empty admits anyone in the tenant |
+| `MYFINANCE_AUTH_TENANT_ID` | *(empty)* | Directory (tenant) ID. With a client id, this is the whole Entra configuration |
+| `MYFINANCE_AUTH_CLIENT_ID` | *(empty)* | Application (client) ID |
+| `MYFINANCE_AUTH_API_SCOPE` | `access_as_user` (Entra) | Scope that must be in `scp`/`scope`. Empty switches the check off, which is only allowed together with `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP` |
+| `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP` | `false` | Require the JWT header `typ` to be `at+jwt` (RFC 9068). **One of this and a scope is mandatory** for any issuer that is not configured the Entra way |
+| `MYFINANCE_AUTH_REQUIRED_ROLE` | `MyFinance.User` (Entra) | App role the caller must hold. Empty admits anyone in the tenant |
 | `MYFINANCE_AUTH_JWKS_CACHE_SECONDS` | `3600` | How long signing keys are cached |
 | `MYFINANCE_AUTH_LEEWAY_SECONDS` | `60` | Clock skew tolerated on `exp`/`nbf` |
+| `MYFINANCE_SUBJECT_PEPPER` | *(empty)* | **Required once authentication is on.** See "Users and ownership" |
 
-**Unset tenant or client id disables authentication entirely** — every endpoint
-is open and the frontend skips the sign-in screen, the same way an unset LLM base
-URL disables the assessment. That is what keeps `docker compose up` working
-untouched, and it is why the backend logs
+The Entra-specific defaults apply only when authentication is configured the Entra
+way (tenant + client id, no `MYFINANCE_AUTH_ISSUER`); with an explicit issuer the
+role and tenant checks are off unless set. Configuration written for the
+Entra-only version therefore behaves exactly as before.
+
+**An ID token must never work as an API credential**, and for a generic issuer
+nothing but configuration can tell the two apart: they carry the same `iss`, `aud`
+and signature. So the backend refuses to start (and the schema job refuses to run)
+unless one of these is chosen explicitly: `MYFINANCE_AUTH_API_SCOPE` (a scope only
+access tokens carry, in `scp` or `scope`), or `MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP=true`
+(the header `typ` must be `at+jwt` or `application/at+jwt`, RFC 9068; use this for
+issuers that mint RFC 9068 access tokens). Keycloak access tokens carry `typ: Bearer`
+and Entra's carry `typ: JWT`, so those two use a scope. Both may be set. Entra by
+tenant + client id gets the `access_as_user` scope by default and needs neither.
+
+**Setting none of the authentication variables disables authentication entirely** —
+every endpoint is open and served as one fixed local user, and the frontend skips the
+sign-in screen, the same way an unset LLM base URL disables the assessment. That is
+what keeps `docker compose up` working untouched, and it is why the backend logs
 
 ```
-AUTHENTICATION IS DISABLED - MYFINANCE_AUTH_TENANT_ID and
-MYFINANCE_AUTH_CLIENT_ID are not both set. Every API endpoint is open.
+AUTHENTICATION IS DISABLED - no OIDC issuer/audience (or Entra tenant/client) is
+configured. Every API endpoint is open, as one shared local user.
 ```
 
-at startup. A half-finished deploy looks exactly like local development, and that
-line is the only thing that tells them apart.
+at startup. Setting *some* of them but not enough to validate a token (a client id
+without a tenant, an issuer without an audience) is a startup **error**, not "off":
+a half-finished deploy must not turn into an open API.
 
 In the cluster the chart sets both from `auth.tenantId` / `auth.clientId` and
 **refuses to render** when `auth.enabled` is true and either is missing, so the
@@ -442,9 +576,105 @@ Two endpoints are deliberately open:
 - `/api/auth/config` — it is what the browser reads *before* it has a token, to
   find out which tenant to sign in against.
 
-`GET /api/auth/me` returns the caller as the API sees them, which is the quickest
-way to confirm a deployment is really validating tokens rather than waving them
-through.
+`GET /api/auth/me` returns the caller as the API sees them — `authenticated` and the
+opaque `user_id`, nothing about the person — which is the quickest way to confirm a
+deployment is really validating tokens rather than waving them through.
+
+## Users and ownership
+
+The API validates access tokens from **any OpenID Connect issuer**. The signing keys
+come from the `jwks_uri` in the issuer's discovery document
+(`<issuer>/.well-known/openid-configuration`), which must name the same issuer.
+
+| Variable | Meaning |
+|---|---|
+| `MYFINANCE_AUTH_ISSUER` | Issuer URL; `iss` must equal it. Derived from the tenant for Entra |
+| `MYFINANCE_AUTH_AUDIENCE` | Accepted `aud`, comma-separated. Defaults to the client id (and `api://<client id>`) |
+| `MYFINANCE_SUBJECT_PEPPER` | Secret HMAC key for the subject hash. Required when authentication is on |
+| `MYFINANCE_BOOTSTRAP_SUB`, `MYFINANCE_BOOTSTRAP_ISS` | Who inherits existing data (schema job only); `ISS` defaults to the issuer |
+
+A user row is created on that person's first authenticated request. It holds a random
+UUID, `subject_hash = HMAC-SHA256(pepper, issuer + "|" + sub)`, the creation time and
+the terms version they accepted — **no name, no email, no raw subject**. Those three are
+never stored, returned or logged; the browser reads the name and email it displays
+from its own token. (The one exception is an e-mail address a user explicitly opts in to
+store for future notifications, in its own table under its own key — see "Per-user
+encryption".) Keep the pepper in the same secret store as the database
+credentials: without it a copy of the database cannot be tied to a person, and if it
+is lost or changed every user's data becomes unreachable. The issuer that goes into
+the hash is the *configured* one, so Entra v1 and v2 tokens for the same person are
+the same user.
+
+Every data table has `user_id NOT NULL` with a foreign key to `users`. Scoping is done
+once, in `src/scoping.py`: a database session is opened *for one user*
+(`deps.get_db`, and each queued LLM job opens its own), and from then on every query
+through it is filtered to that user and every new row is stamped with them. Another
+user's id is therefore a plain `404`. A session with no user refuses to touch an owned
+table; the schema job asks for `open_system_session()` explicitly (the startup sweep and
+user lookup go through database functions on PostgreSQL, see below). Constructs the filter cannot reach — subqueries,
+Core statements on an owned table — are refused rather than left to leak. Raw `text()`
+SQL is outside it and must filter on `user_id` itself.
+
+New users start with the default asset types and every advanced feature off.
+
+### Row-level security (PostgreSQL)
+
+On PostgreSQL the database enforces the same rule a second time, underneath the ORM
+(`src/rls.py`; SQLite has no such thing and keeps only the application-level scoping).
+
+- Every owned table has row-level security enabled **and forced**, with one policy for
+  every command: `user_id = NULLIF(current_setting('myfinance.user_id', true), '')::uuid`,
+  as both `USING` and `WITH CHECK`. A query that does not name its user sees no rows and
+  cannot write any - it does not fall back to "all".
+- `src/scoping.py` sets that variable with `set_config(..., true)` (transaction-local,
+  like `SET LOCAL`) at the start of **every** transaction, from the session's user. A
+  pooled connection therefore cannot carry one user's id into another request.
+- The application connects as a **runtime role** that owns nothing, has no DDL and no
+  `BYPASSRLS`, and is not a superuser. Startup refuses to proceed if the role would
+  ignore the policies (`MYFINANCE_RLS_ROLE_CHECK=false` overrides, for a deliberate
+  one-off); the schema job refuses to grant to such a role.
+- Cross-user work has the narrowest door that does the job: `SECURITY DEFINER`
+  functions owned by the owner role and executable by the runtime role only -
+  `myfinance_get_or_create_user(subject_hash, id, key material)` (find or add a person),
+  `myfinance_sweep_interrupted_jobs()` (the startup sweep, status only),
+  `myfinance_recovery_lookup(id)` and `myfinance_recover_account(...)` (the recovery code,
+  see "Per-user encryption") and `myfinance_contact_unsubscribe(token_hash)` (the
+  unsubscribe link). `open_system_session()` lifts only the ORM's filter; as the runtime
+  role it still sees no rows - and it holds no encryption key either.
+- `users` has row-level security too: the runtime role sees and updates only its own row,
+  may update only the terms columns and its own key material, recovery-code and
+  birth-year columns (never `subject_hash`, `id` or `created_at`), and cannot insert or
+  delete (accounts are created by the function above). `key_check` is read-only to it.
+- The **owner** is subject to the policies as well (`FORCE`) and is admitted by one named
+  policy, `myfinance_owner_access`, because the schema job and the two functions run as
+  it. The application must never connect as the owner or a member of it.
+- Foreign-key checks bypass row-level security, so `positions` and `income_entries` use
+  composite keys `(user_id, asset_id)` / `(user_id, source_id)` that cannot point at
+  another user's parent.
+
+`python -m src.schema` installs all of this, idempotently, and adds the composite keys
+to an existing PostgreSQL database (stopping, with the table named, if a row already
+crosses users). Set `MYFINANCE_APP_ROLE` to the runtime role so it receives its grants.
+Existing SQLite databases keep their old single-column keys (SQLite does not enforce
+foreign keys unless asked, and cannot add one without rebuilding the table).
+
+### Migrating a single-user database
+
+`python -m src.schema` converts an existing database in place (SQLite and
+PostgreSQL), in one transaction: it adds `user_id`, makes the unique constraints
+per-user, changes the `settings` primary key to `(user_id, key)`, and gives every
+existing row to the **bootstrap user** — the person whose `sub` you put in
+`MYFINANCE_BOOTSTRAP_SUB` (their `iss` too, if it is not the configured issuer). It is
+hashed with the pepper exactly as their next login will be, so they sign in and find
+their data. With authentication enabled and rows to assign, the job stops with an error
+if the bootstrap `sub` or the pepper is missing, leaving the database untouched. The old
+global terms acceptance moves onto that user. Re-running it is a no-op. The same job then
+**encrypts every value of that user in place** — see "Migrating existing data" under
+"Per-user encryption" for what it needs and when it refuses.
+
+The job must see the same `MYFINANCE_AUTH_*` and pepper as the application: without
+any authentication settings it assumes local development and gives the data to the
+fixed local user (and says so).
 
 ### Sessions
 
@@ -465,6 +695,284 @@ reach for `localStorage` does not apply here.
 | `401 Token is not an access token for this API` | An ID token was sent instead of an access token, or the scope name does not match `auth.apiScope` |
 | `503 Cannot reach the identity provider's signing keys` | The backend cannot reach `login.microsoftonline.com`. This is the service failing, not the caller, which is why it is not a `401` |
 
+## Per-user encryption
+
+Every value that describes a user's money or behaviour is encrypted in the database
+under a key that belongs to that user and that **the server can only unwrap while they
+are signed in**. The consequence, which the test suite checks: *the database plus the
+KEK, without a user's token, cannot decrypt anything of theirs* — and neither can the
+token without the KEK.
+
+### Key hierarchy
+
+```
+KEK  (Kubernetes Secret, versioned: MYFINANCE_KEKS)
+ +   users.key_salt           random per user, stored in the clear
+ +   the user's secret        a token claim, `sub` by default - never stored, never logged
+ --HKDF-SHA256-->  key-wrapping key
+ --AES-256-GCM-->  users.wrapped_dek     (AAD: user id, KEK version)
+
+DEK  random 32 bytes per user; only ever stored wrapped (above) and, a second time,
+     under the recovery code (below)
+ --HKDF-SHA256(info = table name)-->  per-table subkey
+ --AES-256-GCM, random 96-bit nonce-->  every value   (AAD: user id, table, column)
+```
+
+A cell is stored as `0x01 || nonce || ciphertext || tag` (`src/crypto/`). The column
+types (`EncStr`, `EncInt`, `EncDecimal`, `EncDate`, `EncJSON`) are SQLAlchemy
+`TypeDecorator`s, so the models still hold `str`, `int`, `Decimal`, `date` and JSON;
+`Decimal` columns are rounded to their old `NUMERIC(p, s)` scale half away from zero.
+
+**Request flow.** `require_user` validates the token, finds or creates the user, and
+unwraps their DEK from *that token's* claim. The key ring lives in `session.info`; the
+session puts it in force around every statement and flush it runs and at no other time
+(`database.KeyedSession`), and SELECTs are fully built inside the call, so nothing is
+decrypted lazily after the key has been put away. There is **no cache of unwrapped keys
+between requests** — unwrapping costs about 11 µs — so nothing outlives the token. A
+request's key ring is valid until the token's `exp` plus the validator's clock-skew
+leeway. LLM jobs (`/api/reports`, `/api/insights/*`, including the PDF commentary) get a
+*copy* of the ring from the request that queues them, valid for
+`MYFINANCE_JOB_KEY_SECONDS` (default 3600) and destroyed when the job ends; a job that
+waited longer fails with a note instead of decrypting. The system session and the startup
+sweep hold no key and cannot decrypt — the sweep only changes `status` and a plaintext
+`status_note` code. A query that tries to compare, sort or aggregate an encrypted column
+in SQL raises instead of silently matching nothing (`Asset.name == "x"` is a `TypeError`);
+the few places that did so now sort and filter in Python.
+
+### Configuration
+
+| Variable | Meaning |
+|---|---|
+| `MYFINANCE_KEKS` | **Required with authentication on.** Key-encryption keys from a Kubernetes Secret: `<version>:<base64 of ≥32 bytes>`, comma-separated, e.g. `2:Zm9v…,1:YmFy…`. The highest version is current unless `MYFINANCE_KEK_CURRENT_VERSION` says otherwise |
+| `MYFINANCE_KEK_CURRENT_VERSION` | Optional: which listed version wraps new and rewrapped keys |
+| `MYFINANCE_CONTACT_KEY` | **Required with authentication on** (the backend; not the schema job). 32 random bytes, base64. Encrypts notification e-mail addresses and nothing else |
+| `MYFINANCE_KEY_CLAIM` | The token claim that is the user's own secret. Default `sub`. It must be stable for the person and unguessable by someone holding the database and the KEK (an opaque id such as Entra's pairwise `sub` or a Keycloak UUID — not an e-mail address or a counter) |
+| `MYFINANCE_BOOTSTRAP_SUB` | As before: the person who inherits existing data. With the default key claim it is also what their key is derived from |
+| `MYFINANCE_BOOTSTRAP_KEY_SECRET` | The bootstrap user's value of the key claim, *only* when `MYFINANCE_KEY_CLAIM` is not `sub` |
+| `MYFINANCE_JOB_KEY_SECONDS` | How long a queued LLM job may hold its user's key (default 3600) |
+| `MYFINANCE_RECOVERY_SCRYPT_N` | scrypt cost of the recovery code (default 32768 = 2¹⁵; `r=8`, `p=1`); stored with each code, so changing it affects new codes only |
+| `MYFINANCE_RECOVERY_MAX_FAILURES`, `MYFINANCE_RECOVERY_LOCK_SECONDS` | Wrong recovery codes allowed before a lock (default 5), and its first length (default 900 s, doubling each further failure, capped at a day) |
+
+Deployment: the schema job (`python -m src.schema`, run first, as the database owner) needs
+`MYFINANCE_KEKS` — and `MYFINANCE_BOOTSTRAP_SUB` when there is old plaintext data — but not the
+contact key; the backend needs both. Neither secret belongs in the image or the Helm values
+file: they are Kubernetes Secrets, like the pepper.
+
+Generate a key with `openssl rand -base64 32` (or `python -c "import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"`).
+With authentication **off** (local development) no KEK is needed: a fixed, public
+development key is used so the same encrypted code path runs, and the schema job and
+startup say so. It protects nothing; never use a database created that way for real data.
+
+**Startup refuses** to run with authentication on and no valid `MYFINANCE_KEKS` or
+`MYFINANCE_CONTACT_KEY`, and — with authentication on or off — if the configured KEK is
+not the one the database was initialised under. That last check uses a *key-check value*
+per KEK version (table `key_check`: a fixed message sealed under that version, written by
+the schema job). Both startup and `python -m src.schema` open it with the configured KEK
+before writing anything, so a wrong Secret (a typo, last month's value, another
+environment's) is reported by version number instead of surfacing as every user failing to
+unlock. The schema job also refuses to proceed while any user is wrapped under a KEK
+version that `MYFINANCE_KEKS` no longer lists.
+
+### What is encrypted, and what stays in the clear
+
+Encrypted columns (ciphertext, bound to user, table and column):
+
+| Table | Columns |
+|---|---|
+| `assets` | `name`, `kind`, `category`, `interest_basis`, `profile`, `icon`, `units`, `wrapper` |
+| `positions` | `amount`, `currency`, `value_in_base`, `price_used`, `base_currency`, `notes`, `accrues_from`, `flow_in_base` |
+| `expenses` | `name`, `amount`, `currency`, `period`, `category`, `starts_on`, `ends_on`, `notes` |
+| `income_sources` | `name`, `kind`, `currency`, `params`, `starts_on`, `ends_on`, `notes` |
+| `income_entries` | `amount`, `units`, `costs`, `override_net`, `notes` |
+| `monthly_records` | `income`, `actual_spent`, `currency`, `notes`, `commitments_paid`, `other_spent` |
+| `reports` | `style`, `content`, `content_en`, `snapshot`, `error` |
+| `insights` | `content`, `content_en`, `data`, `data_localized`, `snapshot`, `ungrounded`, `error` |
+| `settings` | `value` (base currency, time zone, feature switches, FIRE settings, profile answers, ladder feedback) |
+| `users` | `birth_year` (new, optional; for the age analysis planned for the insights) |
+
+Plaintext columns, each with the reason the application needs it that way:
+
+| Column(s) | Why it is not encrypted, and what it reveals |
+|---|---|
+| every table: `id`; owned tables: `user_id` | Surrogate keys; `user_id` is what ownership scoping and row-level security compare. Reveals row counts per user |
+| `positions.asset_id`, `income_entries.source_id` | Composite foreign keys `(user_id, parent_id)` that keep a child row inside its owner's data (enforced by the database) |
+| `positions.timestamp` | Snapshots are ordered, and the latest per asset picked, in SQL. Reveals *when* a user recorded values, not what |
+| `assets.created_at`, `assets.archived_at` | `archived_at IS NULL` is a SQL filter. Reveals that and when an asset was archived |
+| `expenses.created_at`, `income_sources.created_at`, `income_entries.updated_at`, `monthly_records.updated_at`, `reports.created_at`, `insights.created_at` | Timestamps; history lists are newest-first |
+| `income_entries.month`, `monthly_records.month` | `"YYYY-MM"` inside the `(user_id, …, month)` unique constraints and the lookups. Reveals which months a user has data for |
+| `settings.key` | Part of the primary key; fixed, application-defined names (`base_currency`, `features`, `fire`, …). Reveals which settings exist, not their values |
+| `reports.status`, `insights.status`, `*.status_note` | Job state. The startup sweep sets them with no key; `status_note` is a code the model turns back into text (the encrypted `error` cannot be written without the key) |
+| `reports.language`, `insights.language`, `insights.kind`, `insights.period` | Selected and filtered in SQL ("the newest digest for 2026-03 in Polish"). Application enumerations and months |
+| `reports.model`, `reports.translator`, `insights.model`, `insights.translator` | Names of the server's configured models, not user data |
+| `users`: `subject_hash`, `created_at`, `terms_version`, `terms_accepted_at` | Identity lookup (a keyed hash, see above) and the terms record |
+| `users`: `key_salt`, `wrapped_dek`, `kek_version`, `recovery_*` | Key material that is useless without the KEK, the user's claim or the recovery code; `recovery_id` is the code's random lookup half |
+| `user_contacts`: `notify_opt_in`, `email_verified`, `unsubscribe_token_hash`, `token_version`, `updated_at` (and `email`, which is ciphertext under the **contact key**) | See "Notification e-mail" |
+| `key_check` | One sealed constant per KEK version; no user data |
+
+A `NULL` stays `NULL`: which *optional* fields are unset is visible, their content is not.
+Ciphertext length reveals roughly how long a value is.
+
+### The recovery code
+
+If a person's `sub` changes (the identity provider is replaced, or an account is
+re-linked) their next sign-in is, to this system, a **new, empty user** with a new key;
+the old data can no longer be unlocked. A recovery code is a second, independent way to
+unwrap the DEK, held only by the user:
+
+- Made by `POST /api/recovery` while signed in, **returned once** and never stored. The
+  frontend shows it in a modal and does not let the user continue until they have saved it
+  and *typed it back* (`POST /api/recovery/confirm`). A confirmed code is not replaced
+  unless `replace` is sent.
+- Format: `MF1-` + 50 Crockford base32 characters in groups of five =
+  `<16-char random id><32-char secret (160 bits)><2 check characters>`. The id is stored
+  (`users.recovery_id`, unique) and is how the old account is found without scanning
+  anyone; the check characters catch typos before any lookup; case, spacing and `I/L/O`
+  confusions are tolerated.
+- The secret half goes through **scrypt** (per-code salt) to a key that wraps the DEK a
+  second time (`recovery_wrapped_dek`) and to a *proof* whose SHA-256 is stored
+  (`recovery_verifier`), so the database itself can check a presented code without being
+  able to recover it.
+- `POST /api/recovery/restore {code}` — called by the new, empty account: it looks up the
+  old user by the code's id, unwraps the DEK, wraps it again for the *new* identity (new
+  salt, current KEK, the new token's claim), gives the old user row the new
+  `subject_hash`, and removes the empty new user. Rows do not move; the identity does. It
+  refuses (409) if the new account already holds data of its own beyond what a first
+  sign-in creates (the default asset types and settings). On PostgreSQL this is one
+  `SECURITY DEFINER` function that deletes only *the caller's own* account and re-checks
+  the proof itself.
+- The same endpoint repairs an account whose *key claim* changed while its `sub` did not
+  (only possible with `MYFINANCE_KEY_CLAIM` ≠ `sub`): such an account answers `423 Locked`
+  on every data endpoint until it is restored in place.
+- **Rate limiting.** Wrong codes are counted on the caller's own user row (so every replica
+  agrees) and lock them out — `429` with `Retry-After`, the right code refused too — for
+  15 minutes after five, doubling each further failure up to a day. A process-wide cap of
+  30 attempts a minute bounds the scrypt work any flood of identities can ask of one
+  replica. Every failure is the same `400` whatever was wrong.
+
+### Notification e-mail (a separate trust domain)
+
+`user_contacts` stores, for people who opted in, their e-mail address encrypted under
+`MYFINANCE_CONTACT_KEY` — its own Secret, **not derived from the KEK** — so something that
+must read addresses while nobody is signed in (a future notifier) can never read a
+financial value, and the finance keys cannot read an address (both directions are tested).
+
+- The address is taken from the access token's `email` claim, and only when `email_verified`
+  is true; the browser never sends one. `POST /api/contacts/opt-in`, `POST
+  /api/contacts/opt-out` (erases the address), and the unauthenticated
+  `POST /api/contacts/unsubscribe {token}` for the link in an e-mail (idempotent).
+- The unsubscribe token is an HMAC of (user, version) under the contact key, so a sender
+  can recompute it for any user; the database holds only its SHA-256. Opting in again
+  after opting out bumps the version, so an old link cannot cancel the new subscription.
+- **Nothing is sent**: no notifier exists yet. When one does it should connect as its own
+  database role with a policy on `user_contacts` only; the runtime role's row-level
+  security, as it stands, lets a role see only its own user's contact row.
+
+### Rotating the KEK
+
+Rotation is lazy. (1) Add a new version to the Secret *alongside* the old ones
+(`MYFINANCE_KEKS=3:<new>,2:<old>`), (2) run the schema job (it records the key-check value
+for version 3), (3) roll out the backend. Each user's DEK is wrapped again under version 3
+on their next sign-in — a new salt too — with no downtime and no re-encryption of data.
+(4) `python -m src.keystatus` (owner credentials; the runtime role would see only its own
+row) reports how many users are on each version and how many have no key yet; add
+`--fail-on-behind` to gate on it. (5) Only when nobody is behind, drop the old version —
+and the schema job will refuse to if anyone still is. Rotating a user's **DEK** (which
+would mean re-encrypting that user's data) and rotating the **contact key** are not
+implemented.
+
+### Migrating existing data
+
+`python -m src.schema` also encrypts the plaintext rows of a database from before this
+release, in place, on SQLite and PostgreSQL, in one transaction, and a second run does
+nothing. It needs `MYFINANCE_KEKS` and `MYFINANCE_BOOTSTRAP_SUB` (the same values the
+ownership migration used; `MYFINANCE_BOOTSTRAP_KEY_SECRET` too if the key claim is not
+`sub`). It creates the bootstrap user's key exactly as their next sign-in will derive it,
+so signing in as that person unlocks the migrated data. **Plaintext rows belonging to any
+other user make it stop, naming the user and the tables, and change nothing** — they
+should not exist, and no key can be derived for them here. A user with no data stays
+without a key until their first sign-in. Indexes on columns that are now ciphertext
+(`assets.category`, `assets.profile`, the expense and income date columns) are dropped.
+
+### Backing up the secrets
+
+The database dump alone is useless without these three, and they are useless without the
+dump — so **keep them apart**: the dump goes to your normal backup storage; the secrets go
+offline.
+
+| Secret | Why |
+|---|---|
+| `MYFINANCE_KEKS` (every version still in use) | Unwraps every user's key |
+| `MYFINANCE_SUBJECT_PEPPER` | Finds users: without it nobody's row can be located |
+| `MYFINANCE_CONTACT_KEY` | Decrypts the notification addresses |
+
+With [`age`](https://github.com/FiloSottile/age), on a machine that is not the cluster:
+
+```bash
+# once: a key pair for the backups. Keep key.txt OFFLINE (paper, an encrypted USB stick) -
+# not on the cluster, not next to the database dumps. The public key is safe to keep anywhere.
+age-keygen -o myfinance-backup-key.txt          # prints "Public key: age1..."
+
+# whenever a secret is created or rotated: export the Secret and encrypt it to that public key,
+# straight through a pipe so the plaintext never lands on disk
+kubectl -n <namespace> get secret <your-secret> -o json \
+  | jq '.data | map_values(@base64d)' \
+  | age -r age1<public key> -o myfinance-secrets-$(date +%F).json.age
+
+# to restore (or to test that a backup is readable - do this once, with a scratch database):
+age -d -i myfinance-backup-key.txt myfinance-secrets-2026-10-01.json.age
+```
+
+Test a restore end to end at least once: load a dump into a scratch database, run the
+schema job with the secrets from the backup (it will say if the KEK is wrong), sign in.
+
+### What losing things means
+
+- **Losing the KEK (every version that users are still on) or the pepper loses all users'
+  data.** The wrapped keys cannot be opened, or nobody's row can be found. There is no
+  other way in. (A user's recovery code wraps their key independently of the KEK, so
+  someone holding a confirmed code could in principle be re-attached to a database
+  re-initialised with a new KEK — but that path is not provided or tested; treat a lost KEK
+  as total.)
+- **Losing the contact key** loses the stored notification addresses, nothing else; people
+  re-opt-in.
+- **Losing both a user's `sub` (their sign-in identity) and their recovery code loses that
+  one user's data**, and nobody — including the operator — can get it back.
+- A *leaked* KEK is not enough to read anything, and neither is a leaked database or a
+  leaked token; it takes the KEK **and** that user's claim, which the server only ever
+  sees while they are signed in.
+
+### What it costs
+
+Measured on a laptop with 5,000 position rows (8 encrypted columns each): sealing or
+opening one cell takes about 1.6 µs; loading all 5,000 rows through the ORM takes about
+150 ms with decryption against about 80 ms with the same type conversion and no
+cryptography (PostgreSQL: 152 vs 93 ms), and inserting them 485 vs 378 ms (SQLite).
+Unwrapping the user's key once per request is about 11 µs; signing in an existing user
+is about 0.5 ms on SQLite and 1 ms on PostgreSQL including the lookup that was already
+there. A recovery-code attempt runs scrypt at about 75 ms. Many routes load a user's whole
+history and aggregate in Python (nothing can be summed in SQL any more), so a very large
+wallet pays the per-row figure on every request. Ciphertext adds 29 bytes to each value.
+
+### What is not covered (read this before relying on it)
+
+- **A cell is not bound to its row.** The AAD names the user, table and column; it does
+  not name the row, because the column types see one cell at a time and a new row's id
+  does not exist until after its values are sealed. Someone who can *write* to the
+  database (but not read it) can therefore swap a column's ciphertexts between two rows of
+  the same user and the application will show the swap. Confidentiality is not affected;
+  integrity against a database-level writer is not provided. (`tests/test_encryption_at_rest.py`
+  pins this down rather than hiding it.)
+- **A compromised backend sees plaintext** of whoever is signed in while it is
+  compromised: the key is in memory for the length of their requests. This protects data
+  at rest and against a database or backup leak, not against code execution in the API.
+- The metadata in the "in the clear" table above, row counts, ciphertext lengths and
+  access patterns are visible to anyone with the database.
+- Raw `text()` SQL is outside the ORM scoping and decrypts nothing; nothing uses it.
+- The user's claim should have real entropy. An 8-digit numeric `sub` could be brute-forced
+  offline by someone who holds the database *and* the KEK (the wrapping uses HKDF, not a
+  slow KDF, because the claim is meant to be an opaque identifier).
+- Python cannot scrub memory: "destroying" a key ring drops the references.
+
 ## Terms of use
 
 The legal text (English and Polish, headings/paragraphs/bullets, plus the footer line and
@@ -474,8 +982,8 @@ every page and appended to the existing tax/FIRE/assessment disclaimers.
 
 Acceptance is versioned. The backend's `TERMS_VERSION` constant
 (`backend/src/config.py`) is the single source of truth for what "current" means;
-`GET /api/settings` reports it alongside whatever version (if any) this wallet has
-accepted, and `POST /api/settings/terms/accept` records a new acceptance (422 if the
+`GET /api/settings` reports it alongside whatever version (if any) this user has
+accepted (stored on their user row), and `POST /api/settings/terms/accept` records a new acceptance (422 if the
 version sent does not match `TERMS_VERSION`). Once signed in, the frontend shows a
 blocking modal — checkbox required, Escape does not dismiss it — whenever the accepted
 version does not match the current one; `/terms` itself stays readable while the modal
@@ -483,7 +991,7 @@ is pending elsewhere in the app.
 
 **Bumping the version**: update the text in `terms.ts` (and the verbatim
 `versionLine`/date it carries) to the new wording, then increment `TERMS_VERSION` in
-`config.py` to match. Every wallet is asked to accept again on its next sign-in.
+`config.py` to match. Every user is asked to accept again on their next sign-in.
 
 ## Architecture
 | Service   | Tech                                        | Port |

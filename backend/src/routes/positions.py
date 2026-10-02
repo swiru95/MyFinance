@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..deps import get_db
 from ..schemas.position import PositionIn, PositionOut, PositionUpdate, PortfolioGrowthOut
 from ..models.asset import Asset
 from ..models.position import Position

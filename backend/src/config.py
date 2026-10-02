@@ -15,8 +15,9 @@ except PermissionError:
 BASE_CURRENCIES = ["PLN", "EUR", "USD", "CHF"]
 
 # Bumped whenever the terms text (frontend/src/lib/terms.ts) changes in a way
-# that needs re-acceptance. Every wallet with an older (or no) accepted
-# version is shown the acceptance modal again - see routes/settings.py.
+# that needs re-acceptance. Every user with an older (or no) accepted
+# version (users.terms_version) is shown the acceptance modal again - see
+# routes/settings.py.
 TERMS_VERSION = 1
 
 # Offered in Settings. A curated list beats the full IANA database here - it is
@@ -51,29 +52,123 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{DATA_DIR / 'myfinance.db'}"
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
-    # --- Entra ID SSO (OAuth 2.0 authorization code + PKCE) -----------------
-    # Unset tenant or client id disables authentication entirely, the same way
-    # an unset LLM base URL disables the assessment. That keeps `docker compose
-    # up` and local development working untouched; the Helm chart always sets
-    # both. main.py logs a loud warning on startup when it is off, because the
-    # failure mode of a misconfigured deploy is an open API.
-    auth_tenant_id: str = ""
+    # --- OIDC authentication (OAuth 2.0 access tokens) ----------------------
+    # Tokens are validated against any OpenID Connect issuer: the signing keys
+    # come from the `jwks_uri` in the issuer's discovery document
+    # ({issuer}/.well-known/openid-configuration), and `iss` and `aud` must
+    # match what is configured here. Everything else below is an optional extra
+    # check that only runs when it is set.
+    #
+    # Authentication is off only when *nothing* here is set - the same way an
+    # unset LLM base URL disables the assessment - so `docker compose up` and
+    # local development keep working untouched. A partial configuration is a
+    # startup error (see auth.validate_config), not "off": the failure mode of
+    # a half-finished deploy would otherwise be an open API.
+    auth_issuer: str = ""
+    # Accepted `aud`. Comma-separated when more than one. Falls back to the
+    # client id (and api://<client id>, which is what Entra v1 tokens carry).
+    auth_audience: str = ""
+    # The OAuth client id the browser signs in with. Needed by the SPA, and the
+    # audience default above; not used to validate tokens beyond that.
     auth_client_id: str = ""
-    # The scope the SPA asks for. The app registration exposes it on its own
-    # Application ID URI, so one registration serves as both the client and the
-    # protected API - see README "Entra ID SSO".
-    auth_api_scope: str = "access_as_user"
-    # App role a caller must hold. Combined with "Assignment required" on the
-    # enterprise application this is the actual gate: a valid tenant token
-    # without the role is rejected. Empty means any authenticated tenant user,
-    # which for a single-person finance app is not what you want.
-    auth_required_role: str = "MyFinance.User"
-    # Signing keys are cached for this long. Microsoft rotates them, so this
-    # cannot be indefinite; an hour is well inside the rotation window and
-    # keeps login off the critical path of every request.
+
+    # --- Entra ID specifics, all optional --------------------------------
+    # With only tenant + client id set (how every existing deployment is
+    # configured) the issuer is derived from the tenant and the three checks
+    # below default to what they always were. With an explicit issuer they
+    # default to off. Set any of them to the empty string to switch it off.
+    #
+    # `tid` must equal this. Guest accounts from another tenant carry a `tid`
+    # that is not ours even when the issuer is.
+    auth_tenant_id: str = ""
+    # Scope that must appear in the token's `scp` (or `scope`) claim. Also what
+    # the SPA asks for. Entra-only default "access_as_user": it is the
+    # discriminator between an access token for this API and an ID token.
+    auth_api_scope: str | None = None
+    # App role that must appear in `roles`. Combined with "Assignment required"
+    # on the enterprise application this is the actual gate. Entra-only
+    # default "MyFinance.User".
+    auth_required_role: str | None = None
+
+    # Require the JWT header `typ` to be "at+jwt" (RFC 9068, "JWT Profile for
+    # OAuth 2.0 Access Tokens"). One of this or a scope (above) is mandatory:
+    # `iss`, `aud` and the signature are identical on the ID token the browser
+    # gets at sign-in and the access token it should send, so without one of
+    # these two checks a generic issuer's ID token is accepted as an API
+    # credential. Set this for issuers that mint RFC 9068 access tokens
+    # (Keycloak does not by default - its access tokens carry typ "Bearer" - so
+    # use a scope there; Entra's carry typ "JWT" and use the scope too). Entra
+    # needs neither: tenant + client id imply the access_as_user scope.
+    auth_require_at_jwt_typ: bool = False
+
+    # Signing keys and the discovery document are cached for this long. Issuers
+    # rotate keys, so this cannot be indefinite; an unknown key id forces an
+    # earlier refresh (at most once per auth_jwks_min_refresh_seconds).
     auth_jwks_cache_seconds: int = 3600
+    auth_jwks_min_refresh_seconds: int = 30
     # Clock skew tolerated on exp/nbf.
     auth_leeway_seconds: int = 60
+
+    # --- User identity ---------------------------------------------------
+    # Secret mixed into the subject hash: users.subject_hash =
+    # HMAC-SHA256(pepper, issuer + "|" + sub). The database therefore holds no
+    # identifier that can be tied back to a person without this value. Required
+    # when authentication is on; losing or changing it orphans every user's
+    # data, so it belongs in the same secret store as the database credentials.
+    subject_pepper: str = ""
+    # Whose existing (pre multi-user) data the schema job assigns to. `sub` is
+    # the token's own claim and `iss` defaults to the configured issuer. Only
+    # read by `python -m src.schema`, and only when it finds rows with no owner.
+    bootstrap_iss: str = ""
+    bootstrap_sub: str = ""
+
+    # --- Per-user encryption (src/crypto) ---------------------------------
+    # Key-encryption keys, from a Kubernetes Secret. A comma- or newline-
+    # separated list of `<version>:<base64 of >=32 random bytes>`, e.g.
+    # "2:Zm9v...,1:YmFy...". The highest version wraps new and rewrapped user
+    # keys (override with kek_current_version); the others stay listed for as
+    # long as any user is still wrapped under them (`python -m src.keystatus`
+    # says how many are). Required when authentication is on. With
+    # authentication off and nothing set, a fixed, PUBLIC development key is
+    # used so local runs still exercise the same code - that protects nothing.
+    keks: str = ""
+    kek_current_version: int | None = None
+    # Which token claim is the user's own secret, mixed into the key that
+    # wraps their data key. Never stored or logged. It must be stable for the
+    # person and unguessable by anyone who holds the database and the KEK
+    # (an opaque id such as Entra's pairwise `sub`, a Keycloak UUID - not an
+    # email address or a counter). `sub` by default; a deployment whose `sub`
+    # can change (IdP migration) can name a different claim.
+    key_claim: str = "sub"
+    # The *value* of that claim for the bootstrap user, when key_claim is not
+    # `sub` (with `sub` it is MYFINANCE_BOOTSTRAP_SUB). Read by the schema job
+    # only, to encrypt that user's existing plaintext rows in place.
+    bootstrap_key_secret: str = ""
+    # 32 random bytes, base64. Encrypts the notification e-mail addresses
+    # (user_contacts) and nothing else. Deliberately its own secret, not
+    # derived from the KEK: whatever may read addresses without the user
+    # present (a future notifier) can then never read a financial value.
+    # Required when authentication is on.
+    contact_key: str = ""
+    # How long a queued LLM job may hold its user's data key in memory: from the
+    # request that queued it until the job finishes. Past this the job fails
+    # ("generate again") instead of decrypting with a key the token that
+    # produced it no longer vouches for.
+    job_key_seconds: int = 3600
+    # Recovery code: scrypt cost, and how many wrong codes a user may submit
+    # before being locked out (the lock doubles each time, from
+    # recovery_lock_seconds, capped at a day).
+    recovery_scrypt_n: int = 2**15
+    recovery_max_failures: int = 5
+    recovery_lock_seconds: int = 900
+
+    # --- Database ---------------------------------------------------------
+    # On PostgreSQL the application must connect as a role that is subject to
+    # row-level security (src/rls.py): not a superuser, no BYPASSRLS, not the
+    # owner of the tables. Startup refuses to proceed otherwise, because every
+    # query would work and none would be protected. Switch off only for a
+    # deliberate one-off, e.g. running the application as the owner locally.
+    rls_role_check: bool = True
 
     # --- Wallet assessment (llama-server, OpenAI-compatible API) -------------
     # Unset base URL or key disables the feature rather than failing requests:

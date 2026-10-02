@@ -4,20 +4,29 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
-from .auth import auth_enabled, require_user
+from .auth import auth_enabled, issuer, require_user, validate_config
 from .config import settings
+from . import rls
+from .database import engine
+from .deps import get_db
 from .models import (  # noqa: F401 (register models)
     asset,
+    contact,
     expense,
     income,
     insight,
+    keycheck,
     monthly,
     position,
     report,
     settings as settings_model,
+    user,
 )
 from .routes import auth as auth_routes
+from .routes import contacts as contacts_routes
+from .routes import recovery as recovery_routes
 from .routes import positions as positions_routes
 from .routes import assets as assets_routes
 from .routes import expenses as expenses_routes
@@ -31,7 +40,9 @@ from .routes import report_pdf as report_pdf_routes
 from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
+from .routes import wallet as wallet_routes
 from .services.price_service import PriceService
+from .services import keys as key_service
 from .services import llm_queue
 
 
@@ -46,9 +57,17 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application startup and shutdown.
 
-    Startup: Clean up orphaned LLM jobs (pending/running/translating) left by
-    a crash/restart of the previous instance.
+    Startup: refuse an inconsistent authentication configuration (with
+    authentication on that includes a missing KEK or contact key), refuse a KEK
+    that is not the one this database was initialised under, refuse a database
+    role that would bypass row-level security, then clean up
+    orphaned LLM jobs (pending/running/translating) left by a crash/restart of
+    the previous instance.
     """
+    validate_config()
+    key_service.startup_check(engine)
+    if settings.rls_role_check:
+        rls.check_runtime_role(engine)
     llm_queue.cleanup_interrupted_jobs()
     yield
 
@@ -56,20 +75,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MyFinance", version="1.0.0", lifespan=lifespan)
 
 if not auth_enabled():
-    # Loud on purpose. Leaving the tenant unset is the documented way to run
-    # locally, but it is also what a half-finished deploy looks like, and the
-    # consequence there is an API serving someone's finances to anyone who can
-    # reach it. The only signal is this line.
+    # Loud on purpose. Leaving authentication unconfigured is the documented
+    # way to run locally, but it is also what a half-finished deploy looks
+    # like, and the consequence there is an API serving someone's finances to
+    # anyone who can reach it. Everyone is then one fixed local user. (A
+    # *partly* configured deploy never gets this far - validate_config() stops
+    # it at startup.)
     log.warning(
-        "AUTHENTICATION IS DISABLED - MYFINANCE_AUTH_TENANT_ID and "
-        "MYFINANCE_AUTH_CLIENT_ID are not both set. Every API endpoint is open."
+        "AUTHENTICATION IS DISABLED - no OIDC issuer/audience (or Entra tenant/client) "
+        "is configured. Every API endpoint is open, as one shared local user."
     )
 else:
-    log.info(
-        "Entra ID authentication enabled for tenant %s, client %s",
-        settings.auth_tenant_id,
-        settings.auth_client_id,
-    )
+    log.info("OIDC authentication enabled for issuer %s", issuer())
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,6 +99,12 @@ app.add_middleware(
 # Unauthenticated by design: /api/auth/config is what the browser reads before
 # it has a token. /api/auth/me guards itself.
 app.include_router(auth_routes.router)
+# Recovery answers a caller whose data key could not be unlocked, so it cannot sit
+# behind the router-level `require_user`: each of its routes names the
+# authentication it needs (routes/recovery.py). The unsubscribe link is public
+# because whoever follows it is not signed in.
+app.include_router(recovery_routes.router)
+app.include_router(contacts_routes.public)
 
 # Everything that touches data is guarded here rather than endpoint by
 # endpoint, so adding a router to this list is the only step needed and there
@@ -104,6 +127,8 @@ protected = [
     statistics_routes.router,
     settings_routes.router,
     tax_routes.router,
+    wallet_routes.router,
+    contacts_routes.router,
 ]
 for router in protected:
     app.include_router(router, dependencies=[Depends(require_user)])
@@ -116,39 +141,34 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/summary", dependencies=[Depends(require_user)])
-def summary() -> dict:
+@app.get("/api/summary")
+def summary(db: Session = Depends(get_db)) -> dict:
     """Convenience endpoint: current totals + live prices in one call."""
-    from .database import SessionLocal
     from .models.asset import Asset
     from .models.settings import Setting
     from .routes.helpers import held_symbols, latest_positions_by_asset, value_of_position
 
-    db = SessionLocal()
-    try:
-        base = db.query(Setting).filter(Setting.key == "base_currency").first()
-        base_currency = base.value if base else "PLN"
-        assets = {a.id: a for a in db.query(Asset).all()}
-        latest = latest_positions_by_asset(db)
-        ps = PriceService(base_currency)
-        gold_price = ps.gold_price()
-        held_metals, held_crypto = held_symbols(db)
-        # Only what the wallet holds (plus XAU/BTC/SOL for the pre-existing
-        # gold_price / crypto_prices fields) - see routes/prices.py for why.
-        metal_prices = {"XAU": round(gold_price, 4)}
-        for sym in held_metals:
-            metal_prices.setdefault(sym, round(ps.metal_price(sym), 4))
-        crypto_prices = {u: ps.crypto_price(u) for u in ({"BTC", "SOL"} | held_crypto)}
-        total = sum(
-            value_of_position(db, assets[asset_id], p) for asset_id, p in latest.items()
-        )
-        return {
-            "base_currency": base_currency,
-            "total_value": round(total, 2),
-            "positions": len(latest),
-            "gold_price": gold_price,
-            "crypto_prices": crypto_prices,
-            "metals": metal_prices,
-        }
-    finally:
-        db.close()
+    base = db.query(Setting).filter(Setting.key == "base_currency").first()
+    base_currency = base.value if base else "PLN"
+    assets = {a.id: a for a in db.query(Asset).all()}
+    latest = latest_positions_by_asset(db)
+    ps = PriceService(base_currency)
+    gold_price = ps.gold_price()
+    held_metals, held_crypto = held_symbols(db)
+    # Only what the wallet holds (plus XAU/BTC/SOL for the pre-existing
+    # gold_price / crypto_prices fields) - see routes/prices.py for why.
+    metal_prices = {"XAU": round(gold_price, 4)}
+    for sym in held_metals:
+        metal_prices.setdefault(sym, round(ps.metal_price(sym), 4))
+    crypto_prices = {u: ps.crypto_price(u) for u in ({"BTC", "SOL"} | held_crypto)}
+    total = sum(
+        value_of_position(db, assets[asset_id], p) for asset_id, p in latest.items()
+    )
+    return {
+        "base_currency": base_currency,
+        "total_value": round(total, 2),
+        "positions": len(latest),
+        "gold_price": gold_price,
+        "crypto_prices": crypto_prices,
+        "metals": metal_prices,
+    }

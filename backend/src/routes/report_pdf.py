@@ -5,10 +5,11 @@ same LLM queue as the other insights (see services/insights.py's
 "wallet_pdf" kind, driven by routes/insights.py exactly like profile/digest/
 next_steps) and only embedded once that job has actually finished.
 
-No ownership check beyond the router-level `require_user` dependency
-(main.py) is needed here - this is a single-tenant app (see auth.py's
-Principal docstring: "there is no user table"), the same as every other
-data endpoint.
+Per-user scoping needs nothing special here: `db` is a session confined to the
+caller's rows (deps.get_db, scoping.py), so both the freshly built snapshot and
+an `ai_insight_id` lookup can only see their own data - another user's
+insight id is a 404, exactly as if it did not exist. Nothing identifying the
+user (name, email, subject) is ever put into the PDF.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..config import TERMS_VERSION
-from ..database import get_db
+from ..deps import get_db
 from ..models.insight import Insight
 from ..schemas.insight import INSIGHT_LANGUAGES
 from ..services import wallet_report

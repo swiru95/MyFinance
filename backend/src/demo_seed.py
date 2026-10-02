@@ -5,6 +5,9 @@ purposes. Refuses to run unless: (1) database is SQLite, (2) database is empty
 (no existing positions, expenses, monthly records, income sources).
 
 Run as: MYFINANCE_DATA_DIR=<dir> python -m src.demo_seed
+
+The data is written for the fixed local user, i.e. what the app serves when
+authentication is off. It is not meant for a database whose users sign in.
 """
 
 import json
@@ -18,8 +21,10 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .database import Base, engine, SessionLocal
-from .schema import backfill_profiles, migrate, seed, seed_features
+from .database import Base, engine
+from .schema import migrate, migrate_ownership, seed_features
+from .scoping import open_session
+from .services.users import local_account
 from .models.asset import Asset
 from .models.expense import Expense
 from .models.monthly import MonthlyRecord
@@ -39,10 +44,10 @@ def _check_safety() -> None:
 def _check_empty(db: Session) -> None:
     """Check if database is empty (no existing data)."""
     # Check if database has any existing data
-    has_positions = db.query(Position).count() > 0
-    has_expenses = db.query(Expense).count() > 0
-    has_monthly = db.query(MonthlyRecord).count() > 0
-    has_income = db.query(IncomeSource).count() > 0
+    has_positions = db.query(Position.id).first() is not None
+    has_expenses = db.query(Expense.id).first() is not None
+    has_monthly = db.query(MonthlyRecord.id).first() is not None
+    has_income = db.query(IncomeSource.id).first() is not None
 
     if has_positions or has_expenses or has_monthly or has_income:
         print(
@@ -657,10 +662,16 @@ def main() -> int:
     print("demo_seed: initializing schema")
     Base.metadata.create_all(bind=engine)
     migrate()
-    seed()
-    backfill_profiles()
+    migrate_ownership()
+    # The demo wallet belongs to the fixed local user - the one every request
+    # is served as when authentication is off - and starts with the default
+    # asset types, same as any new user.
+    account = local_account()
+    local_user = account.user_id
 
-    db = SessionLocal()
+    # The demo data is stored encrypted like any other (under the local user's
+    # key - the public development one unless MYFINANCE_KEKS is set).
+    db = open_session(local_user, account.keyring)
     try:
         # Check that database is empty
         _check_empty(db)
@@ -700,7 +711,7 @@ def main() -> int:
         db.close()
 
     print("demo_seed: seeding feature defaults")
-    seed_features()
+    seed_features(local_user, account.keyring)
     return 0
 
 

@@ -17,7 +17,10 @@ import type {
   Report,
   ReportStatus,
   ReportStyle,
+  RecoveryRestoreResult,
+  RecoveryStatus,
   ReportSummary,
+  ContactState,
   Settings,
   Summary,
   ValueOverTime,
@@ -57,6 +60,49 @@ export class AuthError extends Error {
     super(message);
     this.name = "AuthError";
     this.status = status;
+  }
+}
+
+/** Raised on 423 + `X-MyFinance-Locked: recovery`: the account exists but
+ *  this sign-in cannot unlock its data. Deliberately NOT an AuthError - the
+ *  token is fine, so it must not send the user back to sign-in, and callers
+ *  must not show it as a generic "failed to load". LockedGate shows the
+ *  recovery screen instead. */
+export class LockedError extends Error {
+  readonly status = 423;
+  constructor(message: string) {
+    super(message);
+    this.name = "LockedError";
+  }
+}
+
+/** Notified on any 423, so LockedGate can switch to the recovery screen even
+ *  when the lock only becomes visible after its initial status check. */
+let onLocked: (() => void) | null = null;
+
+export function setLockedHandler(handler: (() => void) | null): void {
+  onLocked = handler;
+}
+
+/** A non-2xx answer that is not an auth/lock error. Carries the same
+ *  "API <status>: <body>" message the plain Error used to, so callers that
+ *  show err.message are unaffected; recovery callers branch on `status`. */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** 429 with the server's Retry-After (seconds; null if absent/unparseable). */
+export class RateLimitError extends ApiError {
+  readonly retryAfter: number | null;
+  constructor(message: string, retryAfter: number | null) {
+    super(429, message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -103,7 +149,16 @@ async function fetchWithAuth(path: string, options?: RequestInit): Promise<Respo
       onAuthError?.(res.status);
       throw new AuthError(res.status, body || res.statusText);
     }
-    throw new Error(`API ${res.status}: ${body || res.statusText}`);
+    if (res.status === 423) {
+      onLocked?.();
+      throw new LockedError(body || res.statusText);
+    }
+    const message = `API ${res.status}: ${body || res.statusText}`;
+    if (res.status === 429) {
+      const raw = Number.parseInt(res.headers.get("Retry-After") ?? "", 10);
+      throw new RateLimitError(message, Number.isFinite(raw) && raw > 0 ? raw : null);
+    }
+    throw new ApiError(res.status, message);
   }
   return res;
 }
@@ -225,6 +280,33 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ base_currency, timezone, features }),
     }),
+  setBirthYear: (birth_year: number | null) =>
+    request<Settings>("/settings/birth-year", {
+      method: "PUT",
+      body: JSON.stringify({ birth_year }),
+    }),
+  recoveryStatus: () => request<RecoveryStatus>("/recovery/status"),
+  /** The only call that ever returns the code; it cannot be fetched again. */
+  createRecoveryCode: (replace = false) =>
+    request<{ code: string }>("/recovery", {
+      method: "POST",
+      body: JSON.stringify({ replace }),
+    }),
+  confirmRecoveryCode: (code: string) =>
+    request<RecoveryStatus>("/recovery/confirm", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  /** 400 invalid code, 409 account already holds data, 429 locked out
+   *  (RateLimitError.retryAfter). */
+  restoreRecoveryCode: (code: string) =>
+    request<RecoveryRestoreResult>("/recovery/restore", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+  getContact: () => request<ContactState>("/contacts"),
+  optInContact: () => request<ContactState>("/contacts/opt-in", { method: "POST" }),
+  optOutContact: () => request<ContactState>("/contacts/opt-out", { method: "POST" }),
   acceptTerms: (version: number) =>
     request<Settings>("/settings/terms/accept", {
       method: "POST",

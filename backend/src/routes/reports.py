@@ -11,25 +11,42 @@ immediately and the frontend polls it.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from ..auth import Principal, require_user
 from ..config import settings
-from ..database import SessionLocal, get_db
+from ..deps import get_db
 from ..models.report import Report
+from ..crypto.core import KeyExpired, KeyRing
+from ..scoping import open_session
 from ..schemas.report import ReportIn, ReportOut, ReportStatus, ReportSummary
 from ..services import assessment, llm, llm_queue
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
-def _generate(report_id: int) -> None:
+def _generate(keyring: KeyRing, report_id: int) -> None:
     """Write one report, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since returned
-    and closed its own.
+    and closed its own. That session is scoped to the user who queued the job,
+    so the snapshot the model is shown can only ever be built from their rows,
+    and a job whose id belongs to someone else finds no report and does nothing.
+
+    `keyring` is the user's data key, handed over in memory by the request that
+    queued the job (a copy that expires after settings.job_key_seconds); the
+    row's prompt and answer are encrypted, and this is the only way the worker
+    can read the figures it is asked to write about or store what it wrote. It
+    is destroyed when the job ends, however it ends.
     """
-    db = SessionLocal()
+    db = open_session(keyring.user_id, keyring)
     try:
+        try:
+            keyring.export_dek()
+        except KeyExpired:
+            _fail_expired(db, Report, report_id)
+            return
         report = db.query(Report).filter(Report.id == report_id).first()
         if report is None:
             return
@@ -79,6 +96,22 @@ def _generate(report_id: int) -> None:
             db.commit()
     finally:
         db.close()
+        keyring.destroy()
+
+
+def _fail_expired(db, model, row_id: int) -> None:
+    """The key ran out before the job could use it (it sat in the queue longer
+    than settings.job_key_seconds). It cannot write an encrypted `error` without
+    the key, so the row fails with a plaintext note code instead."""
+    from ..models.jobnotes import KEY_EXPIRED
+
+    db.execute(
+        update(model)
+        .where(model.id == row_id)
+        .values(status="failed", status_note=KEY_EXPIRED)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
 
 
 @router.get("/status", response_model=ReportStatus)
@@ -108,7 +141,11 @@ def list_reports(limit: int = 20, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=ReportOut, status_code=202)
-def create_report(payload: ReportIn, db: Session = Depends(get_db)):
+def create_report(
+    payload: ReportIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
     """Queue an assessment and return the row to poll."""
     if not llm.configured():
         raise HTTPException(503, "No model is configured for assessments")
@@ -123,7 +160,10 @@ def create_report(payload: ReportIn, db: Session = Depends(get_db)):
     # up, then "running" in that case if a shutdown cuts it off mid-job, and
     # the page offers to generate again either way.
     report_id = report.id
-    llm_queue.enqueue(lambda: _generate(report_id))
+    # The job runs after this request has returned, so it gets its own copy of
+    # the user's key, with its own (separately bounded) allowance.
+    ring = principal.keyring.fork(settings.job_key_seconds)
+    llm_queue.enqueue(lambda: _generate(ring, report_id))
     return report
 
 

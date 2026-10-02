@@ -48,8 +48,31 @@ def demo_db(tmp_path_factory):
     )
     assert result.returncode == 0, f"demo_seed failed:\n{result.stdout}\n{result.stderr}"
 
+    from sqlalchemy import select
+
+    from src.crypto.core import LOCAL_SECRET, KeyRing, active_keks, unwrap_dek
+    from src.database import KEYRING_KEY, KeyedSession
+    from src.identity import LOCAL_USER_ID
+    from src.models.user import User
+
     engine = create_engine(db_url)
-    session_factory = sessionmaker(bind=engine)
+    # The demo wallet is the fixed local user's (what the app serves with
+    # authentication off), so this session is confined to that user - and holds
+    # their key, unwrapped the way a request would: the demo database's values
+    # are stored encrypted.
+    with engine.connect() as conn:
+        salt, wrapped, version = conn.execute(
+            select(User.key_salt, User.wrapped_dek, User.kek_version).where(User.id == LOCAL_USER_ID)
+        ).one()
+    keks = active_keks()
+    dek = unwrap_dek(
+        wrapped, user_id=LOCAL_USER_ID, kek=keks.get(version), kek_version=version,
+        salt=salt, secret=LOCAL_SECRET,
+    )
+    session_factory = sessionmaker(
+        bind=engine, class_=KeyedSession,
+        info={"user_id": LOCAL_USER_ID, KEYRING_KEY: KeyRing(LOCAL_USER_ID, dek)},
+    )
     session = session_factory()
     try:
         yield session

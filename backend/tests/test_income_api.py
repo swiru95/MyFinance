@@ -77,15 +77,17 @@ def test_override_net_wins_over_engine_net(client):
 
 
 def test_delete_source_removes_entries(client, db):
+    from sqlalchemy import func
+
     from src.models.income import IncomeEntry
 
     src = _create_uop_source(client)
     client.put(f"/api/income/sources/{src['id']}/entries/2026-03", json={"amount": 15_000})
-    assert db.query(IncomeEntry).filter(IncomeEntry.source_id == src["id"]).count() == 1
+    assert db.query(func.count(IncomeEntry.id)).filter(IncomeEntry.source_id == src["id"]).scalar() == 1
 
     r = client.delete(f"/api/income/sources/{src['id']}")
     assert r.status_code == 204
-    assert db.query(IncomeEntry).filter(IncomeEntry.source_id == src["id"]).count() == 0
+    assert db.query(func.count(IncomeEntry.id)).filter(IncomeEntry.source_id == src["id"]).scalar() == 0
     assert client.get(f"/api/income/sources/{src['id']}/year/2026").status_code == 404
 
 

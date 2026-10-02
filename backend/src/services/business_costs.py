@@ -71,7 +71,8 @@ def fixed_contributions(
     p = get_params(year)
 
     out: list[dict] = []
-    sources = db.query(IncomeSource).filter(IncomeSource.kind == "b2b").all()
+    # `kind` is encrypted, so it is matched here rather than in SQL.
+    sources = [s for s in db.query(IncomeSource).all() if s.kind == "b2b"]
     for src in sources:
         if not is_active_in_month(src, month):
             continue

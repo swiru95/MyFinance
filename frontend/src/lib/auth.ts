@@ -12,15 +12,24 @@ import { createContext, useContext } from "react";
 /** What GET /api/auth/config answers. */
 export interface AuthConfig {
   enabled: boolean;
+  /** The OIDC issuer the backend validates tokens against. */
+  issuer?: string;
+  audience?: string[];
   tenant_id?: string;
   client_id?: string;
   authority?: string;
   scopes?: string[];
 }
 
+/** Who is signed in, as shown in the account menu.
+ *
+ *  Name and email come from the signed-in token's own claims, read in the
+ *  browser. The API does not know either: the backend keeps only an opaque id
+ *  per user and never stores, returns or logs a name or an email, so there is
+ *  nothing to fetch and nothing here may be sourced from an API response. */
 export interface AuthUser {
   name: string;
-  username: string;
+  email: string;
   initials: string;
 }
 
@@ -183,8 +192,18 @@ export function authIsEnabled(): boolean {
   return msal !== null;
 }
 
+/** Read a string claim off the ID token MSAL already validated and cached. */
+function claim(account: AccountInfo, key: string): string {
+  const value = (account.idTokenClaims as Record<string, unknown> | undefined)?.[key];
+  return typeof value === "string" ? value : "";
+}
+
 export function toUser(account: AccountInfo): AuthUser {
-  const name = account.name || account.username || "";
+  // `email` is the claim; Entra often omits it and puts the sign-in name in
+  // `preferred_username` (which MSAL also exposes as `account.username`).
+  const email =
+    claim(account, "email") || claim(account, "preferred_username") || account.username || "";
+  const name = claim(account, "name") || account.name || email;
   const initials =
     name
       .split(/[\s@._-]+/)
@@ -192,5 +211,5 @@ export function toUser(account: AccountInfo): AuthUser {
       .slice(0, 2)
       .map((part) => part[0]!.toUpperCase())
       .join("") || "?";
-  return { name: account.name || account.username, username: account.username, initials };
+  return { name, email, initials };
 }
