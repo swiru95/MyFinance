@@ -10,8 +10,6 @@ row immediately and the frontend polls it.
 """
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -29,10 +27,12 @@ from ..schemas.insight import (
     LadderStateIn,
     ProfileAnswers,
 )
+from ..crypto.core import KeyExpired, KeyRing
 from ..scoping import open_session
 from ..services import insights
 from ..services import ladder as ladder_service
 from ..services import llm, llm_queue
+from . import reports as reports_routes
 
 router = APIRouter(prefix="/api/insights", tags=["insights"])
 
@@ -43,22 +43,30 @@ def _validate_kind(kind: str) -> str:
     return kind
 
 
-def _generate(user_id: uuid.UUID, insight_id: int) -> None:
+def _generate(keyring: KeyRing, insight_id: int) -> None:
     """Write one insight, start to finish, on the shared LLM queue's worker.
 
     Owns its own session: the request that queued this has long since
     returned and closed its own. That session is scoped to the user who queued
     the job, so the figures the model is shown can only be built from their
-    rows.
+    rows. `keyring` is the user's data key, handed over in memory by the request
+    that queued the job (see routes/reports._generate); destroyed when the job
+    ends.
     """
-    db = open_session(user_id)
+    db = open_session(keyring.user_id, keyring)
     try:
+        try:
+            keyring.export_dek()
+        except KeyExpired:
+            reports_routes._fail_expired(db, Insight, insight_id)
+            return
         insight = db.query(Insight).filter(Insight.id == insight_id).first()
         if insight is None:
             return
         insights.generate(db, insight)
     finally:
         db.close()
+        keyring.destroy()
 
 
 @router.get("/status", response_model=InsightStatus)
@@ -160,8 +168,8 @@ def create_insight(
     # up, then "running" in that case if a shutdown cuts it off mid-job, and
     # the page offers to generate again either way.
     row_id = row.id
-    user_id = principal.user_id
-    llm_queue.enqueue(lambda: _generate(user_id, row_id))
+    ring = principal.keyring.fork(settings.job_key_seconds)
+    llm_queue.enqueue(lambda: _generate(ring, row_id))
     return row
 
 

@@ -16,7 +16,7 @@ from sqlalchemy import select
 from src import auth, identity
 from src.config import settings
 from src.models.user import User
-from tests.conftest import make_client, owner_engine, system_session
+from tests.conftest import enable_encryption, make_client, owner_engine, system_session
 from tests.fake_oidc import AUDIENCE, ISSUER, JWKS_URI, PEPPER, FakeIdP
 
 
@@ -245,6 +245,7 @@ def entra(monkeypatch, db):
         ("subject_pepper", PEPPER),
     ):
         monkeypatch.setattr(settings, name, value)
+    enable_encryption(monkeypatch)
 
     def fetch(url):
         if url == f"{ENTRA_V2}/.well-known/openid-configuration":

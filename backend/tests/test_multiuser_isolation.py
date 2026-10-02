@@ -16,6 +16,7 @@ import uuid
 
 import pytest
 
+from src import identity
 from src.routes import insights as insights_routes
 from src.routes import reports as reports_routes
 from src.scoping import open_session
@@ -92,10 +93,26 @@ def llm(monkeypatch):
     return prompts
 
 
+def _ring_for(client):
+    """The key ring of whichever of the two signed-in users `client` is: unwrapped
+    from the database the way their own sign-in does it (their `sub` is their
+    key secret), so a test can read their encrypted rows as they could."""
+    from src.services.users import login
+    from tests.fake_oidc import ISSUER
+
+    uid = uuid.UUID(client.get("/api/auth/me").json()["user_id"])
+    for sub in ("sub-alice", "sub-bob"):
+        account = login(identity.subject_hash(ISSUER, sub), sub)
+        if account.user_id == uid:
+            return account.keyring
+    raise AssertionError("not one of the two test users")
+
+
 def _stored_snapshots(client, model) -> list:
     """What the model was shown for each of this user's rows (not exposed by
     the API for reports, so read through a session scoped to them)."""
-    db = open_session(uuid.UUID(client.get("/api/auth/me").json()["user_id"]))
+    ring = _ring_for(client)
+    db = open_session(ring.user_id, ring)
     try:
         return [row.snapshot for row in db.query(model).all()]
     finally:
@@ -122,7 +139,12 @@ def _pdf_text(content: bytes) -> str:
 
 # --- every route is behind authentication --------------------------------------
 
-OPEN_ROUTES = {("GET", "/api/health"), ("GET", "/api/auth/config")}
+# Open by design: the kubelet's probe, the sign-in discovery document, and the
+# unsubscribe link in an e-mail (its reader is not signed in; the link's token is
+# the credential - see routes/contacts.py).
+OPEN_ROUTES = {
+    ("GET", "/api/health"), ("GET", "/api/auth/config"), ("POST", "/api/contacts/unsubscribe"),
+}
 
 
 def _fill(path: str) -> str:
@@ -482,7 +504,7 @@ def test_a_queued_job_runs_as_the_user_who_queued_it_and_only_that_user(world, l
     _wait(alice, f"/api/insights/item/{ia['id']}")
 
     # Put both of Alice's rows back to "pending", as if freshly queued.
-    db = open_session(_user_id(alice))
+    db = open_session(_user_id(alice), _ring_for(alice))
     try:
         for model, row_id in ((Report, ra["id"]), (Insight, ia["id"])):
             row = db.query(model).filter(model.id == row_id).one()
@@ -492,15 +514,15 @@ def test_a_queued_job_runs_as_the_user_who_queued_it_and_only_that_user(world, l
         db.close()
 
     calls_before = len(llm)
-    reports_routes._generate(_user_id(bob), ra["id"])
-    insights_routes._generate(_user_id(bob), ia["id"])
+    reports_routes._generate(_ring_for(bob), ra["id"])
+    insights_routes._generate(_ring_for(bob), ia["id"])
     assert len(llm) == calls_before, "Bob's job reached the model with Alice's row"
     assert alice.get(f"/api/reports/{ra['id']}").json()["status"] == "pending"
     assert alice.get(f"/api/insights/item/{ia['id']}").json()["status"] == "pending"
 
     # The same jobs run as Alice do the work.
-    reports_routes._generate(_user_id(alice), ra["id"])
-    insights_routes._generate(_user_id(alice), ia["id"])
+    reports_routes._generate(_ring_for(alice), ra["id"])
+    insights_routes._generate(_ring_for(alice), ia["id"])
     assert alice.get(f"/api/reports/{ra['id']}").json()["status"] == "done"
     assert alice.get(f"/api/insights/item/{ia['id']}").json()["status"] == "done"
 

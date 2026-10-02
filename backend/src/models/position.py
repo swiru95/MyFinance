@@ -1,8 +1,9 @@
 """Position model - each row is a timestamped snapshot of an asset."""
 from datetime import date, datetime, timezone
-from sqlalchemy import Integer, String, Numeric, Date, ForeignKeyConstraint, Text
+from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ..crypto.fields import EncDate, EncDecimal, EncStr
 from ..database import Base
 from .types import UtcDateTime
 from .user import Owned
@@ -25,22 +26,22 @@ class Position(Owned, Base):
     asset_id: Mapped[int] = mapped_column(nullable=False, index=True)
     # For currency assets: amount in `currency`.
     # For gold: grams. For crypto: coin quantity.
-    amount: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
-    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
+    amount: Mapped[float] = mapped_column(EncDecimal(20, 6), nullable=False)
+    currency: Mapped[str] = mapped_column(EncStr(), nullable=False, default="PLN")
     # Only meaningful for currency-kind assets.
     # Snapshot of value in the base currency at the time of the update.
-    value_in_base: Mapped[float] = mapped_column(Numeric(20, 4), nullable=False, default=0.0)
+    value_in_base: Mapped[float] = mapped_column(EncDecimal(20, 4), nullable=False, default=0.0)
     # Price used for the snapshot (per gram / per coin / fx rate).
-    price_used: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False, default=0.0)
-    base_currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
-    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    price_used: Mapped[float] = mapped_column(EncDecimal(20, 6), nullable=False, default=0.0)
+    base_currency: Mapped[str] = mapped_column(EncStr(), nullable=False, default="PLN")
+    notes: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     # Only for kind="interest": the day the principal started accruing. NULL
     # everywhere else.
-    accrues_from: Mapped["date | None"] = mapped_column(Date, nullable=True)
+    accrues_from: Mapped["date | None"] = mapped_column(EncDate(), nullable=True)
     # Money moved into (+) or out of (-) this asset since the previous
     # snapshot, in base currency at this snapshot's prices. NULL means
     # unknown, not zero - a snapshot without a recorded flow says nothing
     # about whether money moved, so it must not be counted as a zero
     # contribution by anything that sums this column (see services/fire.py).
-    flow_in_base: Mapped["float | None"] = mapped_column(Numeric(20, 4), nullable=True)
+    flow_in_base: Mapped["float | None"] = mapped_column(EncDecimal(20, 4), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(UtcDateTime, default=lambda: datetime.now(timezone.utc), index=True)

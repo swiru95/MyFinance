@@ -21,14 +21,14 @@ import pytest
 from sqlalchemy import insert, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
 
-from src import rls, schema
+from src import encmigrate, rls, schema
+from src.crypto.fields import Encrypted
 from src.database import SessionLocal, engine
 from src.models import (
-    Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Position, Report, Setting,
+    Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Position, Report, Setting, UserContact,
 )
-from src.scoping import open_session, open_system_session
-from src.services.users import get_or_create_user
-from tests.conftest import TEST_OWNER_URL, owner_engine
+from src.scoping import open_system_session
+from tests.conftest import _RINGS, TEST_OWNER_URL, make_user, owner_engine, session_for
 
 pytestmark = pytest.mark.skipif(
     engine.dialect.name != "postgresql" or not TEST_OWNER_URL,
@@ -42,7 +42,7 @@ OWNED = [t.name for t in schema.owned_tables()]
 # --- a database with two users' data ----------------------------------------------
 
 def _populate(user_id: uuid.UUID, tag: str) -> None:
-    with open_session(user_id) as s:
+    with session_for(user_id) as s:
         asset = Asset(name=f"{tag}-asset", kind="currency")
         source = IncomeSource(name=f"{tag}-job", kind="uop", starts_on=date(2026, 1, 1))
         s.add_all([asset, source])
@@ -55,15 +55,34 @@ def _populate(user_id: uuid.UUID, tag: str) -> None:
             Insight(kind="digest"),
             Report(),
             Setting(key="base_currency", value=tag),
+            UserContact(notify_opt_in=False),
         ])
         s.commit()
+
+
+def _raw(table: str):
+    """The table as stored: encrypted columns plain binary, so a statement built
+    from it carries ciphertext through untouched (no key needed, none applied)."""
+    return encmigrate.raw_view(schema.Base.metadata.tables[table])
+
+
+def _sealed(table: str, user: uuid.UUID, **values) -> dict:
+    """A row's values with the encrypted ones sealed under `user`'s key, ready to
+    insert through `_raw(table)` - what raw SQL from a compromised code path would
+    have to send."""
+    t = schema.Base.metadata.tables[table]
+    ring = _RINGS[user]
+    return {
+        k: t.c[k].type.seal_with(ring, v) if isinstance(t.c[k].type, Encrypted) else v
+        for k, v in values.items()
+    }
 
 
 @pytest.fixture
 def two(db):
     """(alice, bob): two users, every owned table holding a row of each."""
-    alice = get_or_create_user(HASH_A, provision=False)
-    bob = get_or_create_user(HASH_B, provision=False)
+    alice = make_user(HASH_A, provision=False)
+    bob = make_user(HASH_B, provision=False)
     _populate(alice, "alice")
     _populate(bob, "bob")
     return alice, bob
@@ -72,7 +91,7 @@ def two(db):
 def _ids_seen(user: uuid.UUID | None, table: str) -> set:
     """The user_ids behind every row of `table` that raw SQL can see when run in
     a session for `user` (None: a session with no user)."""
-    s = open_session(user) if user else open_system_session()
+    s = session_for(user) if user else open_system_session()
     try:
         return {r[0] for r in s.execute(text(f'SELECT user_id FROM "{table}"'))}
     finally:
@@ -167,7 +186,7 @@ def test_raw_sql_sees_only_the_current_users_rows_in_every_table(two):
 
 def test_raw_sql_cannot_reach_another_users_rows_by_id_or_by_join(two):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         bob_asset = _owner("SELECT id FROM assets WHERE user_id = :u", u=bob)[0][0]
         assert s.execute(text("SELECT count(*) FROM assets WHERE id = :i"), {"i": bob_asset}).scalar() == 0
         assert s.execute(
@@ -214,7 +233,7 @@ def test_a_malformed_variable_fails_closed(two):
 # --- writes ------------------------------------------------------------------------------
 
 def _sample(table: str, user: uuid.UUID) -> dict:
-    t = schema.Base.metadata.tables[table]
+    t = _raw(table)
     with owner_engine().connect() as conn:
         return dict(conn.execute(select(t).where(t.c.user_id == user)).mappings().first())
 
@@ -227,8 +246,8 @@ def test_inserting_a_row_for_another_user_is_refused(two, table):
     row["user_id"] = bob
     if table == "settings":
         row["key"] = "smuggled"
-    t = schema.Base.metadata.tables[table]
-    with open_session(alice) as s:
+    t = _raw(table)
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="row-level security"):
             s.connection().execute(insert(t).values(**row))
 
@@ -237,7 +256,7 @@ def test_inserting_without_a_user_is_refused(two):
     alice, _ = two
     row = _sample("assets", alice)
     row.pop("id")
-    t = schema.Base.metadata.tables["assets"]
+    t = _raw("assets")
     with engine.connect() as conn:
         with pytest.raises(ProgrammingError, match="row-level security"):
             conn.execute(insert(t).values(**row))
@@ -247,32 +266,34 @@ def test_a_user_can_still_insert_their_own_rows_with_raw_sql(two):
     alice, _ = two
     row = _sample("assets", alice)
     row.pop("id")
-    row["name"] = "raw-insert"
-    t = schema.Base.metadata.tables["assets"]
-    with open_session(alice) as s:
+    row["name"] = _sealed("assets", alice, name="raw-insert")["name"]
+    t = _raw("assets")
+    with session_for(alice) as s:
+        before = s.execute(text("SELECT count(*) FROM assets")).scalar()
         s.connection().execute(insert(t).values(**row))
         s.commit()
-        assert s.execute(text("SELECT count(*) FROM assets WHERE name = 'raw-insert'")).scalar() == 1
+        assert s.execute(text("SELECT count(*) FROM assets")).scalar() == before + 1
+        assert "raw-insert" in [a.name for a in s.query(Asset).all()]  # and it reads back, decrypted
 
 
 @pytest.mark.parametrize("table", ["assets", "expenses", "reports", "insights", "monthly_records", "income_sources"])
 def test_updating_a_row_to_another_users_id_is_refused(two, table):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="row-level security"):
             s.execute(text(f'UPDATE "{table}" SET user_id = :b'), {"b": bob})
 
 
 def test_settings_cannot_be_handed_to_another_user(two):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="row-level security"):
             s.execute(text("UPDATE settings SET user_id = :b"), {"b": bob})
 
 
 def test_updating_or_deleting_another_users_rows_touches_nothing(two):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         for t in OWNED:
             n = s.execute(text(f'UPDATE "{t}" SET user_id = user_id WHERE user_id = :b'), {"b": bob}).rowcount
             assert n == 0, t
@@ -287,7 +308,7 @@ def test_updating_or_deleting_another_users_rows_touches_nothing(two):
 
 def test_a_user_sees_and_updates_only_their_own_user_row(two):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         assert [r[0] for r in s.execute(text("SELECT id FROM users"))] == [alice]
         assert s.execute(
             text("UPDATE users SET terms_version = 1 WHERE id = :i"), {"i": alice}
@@ -300,17 +321,17 @@ def test_a_user_sees_and_updates_only_their_own_user_row(two):
 
 def test_the_runtime_role_cannot_create_delete_or_rewrite_users(two):
     alice, bob = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="permission denied"):
             s.execute(text("INSERT INTO users (id, subject_hash, created_at) VALUES (:i, :h, now())"),
                       {"i": uuid.uuid4(), "h": "c" * 64})
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="permission denied"):
             s.execute(text("DELETE FROM users WHERE id = :i"), {"i": alice})
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="permission denied"):
             s.execute(text("UPDATE users SET subject_hash = :h WHERE id = :i"), {"h": "d" * 64, "i": alice})
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="permission denied"):
             s.execute(text("UPDATE users SET id = :n WHERE id = :i"), {"n": uuid.uuid4(), "i": alice})
 
@@ -318,21 +339,21 @@ def test_the_runtime_role_cannot_create_delete_or_rewrite_users(two):
 # --- composite foreign keys -----------------------------------------------------------------
 
 def _position(user: uuid.UUID, asset: int) -> dict:
-    return dict(user_id=user, asset_id=asset, amount=1, currency="PLN", value_in_base=1,
-                price_used=1, base_currency="PLN", notes="", timestamp=datetime(2026, 1, 1))
+    return _sealed("positions", user, user_id=user, asset_id=asset, amount=1, currency="PLN", value_in_base=1,
+                   price_used=1, base_currency="PLN", notes="", timestamp=datetime(2026, 1, 1))
 
 
 def test_a_position_cannot_point_at_another_users_asset(two):
     alice, bob = two
     bob_asset = _owner("SELECT id FROM assets WHERE user_id = :u", u=bob)[0][0]
-    t = schema.Base.metadata.tables["positions"]
+    t = _raw("positions")
     # As Alice, claiming to be Alice: row-level security lets her insert it, and
     # the foreign key is what refuses.
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(IntegrityError, match="fk_positions_user_asset"):
             s.connection().execute(insert(t).values(**_position(alice, bob_asset)))
     # As Alice, claiming to be Bob: row-level security.
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(ProgrammingError, match="row-level security"):
             s.connection().execute(insert(t).values(**_position(bob, bob_asset)))
 
@@ -342,7 +363,7 @@ def test_the_composite_key_holds_without_row_level_security_too(two):
     integrity rule and nothing else."""
     alice, bob = two
     bob_asset = _owner("SELECT id FROM assets WHERE user_id = :u", u=bob)[0][0]
-    t = schema.Base.metadata.tables["positions"]
+    t = _raw("positions")
     with owner_engine().connect() as conn:
         with pytest.raises(IntegrityError, match="fk_positions_user_asset"):
             conn.execute(insert(t).values(**_position(alice, bob_asset)))
@@ -351,29 +372,30 @@ def test_the_composite_key_holds_without_row_level_security_too(two):
 def test_an_income_entry_cannot_point_at_another_users_source(two):
     alice, bob = two
     bob_source = _owner("SELECT id FROM income_sources WHERE user_id = :u", u=bob)[0][0]
-    t = schema.Base.metadata.tables["income_entries"]
-    values = dict(source_id=bob_source, month="2026-09", amount=1, costs=0, notes="")
-    with open_session(alice) as s:
+    t = _raw("income_entries")
+    values = _sealed("income_entries", alice, user_id=alice, source_id=bob_source, month="2026-09", amount=1,
+                     costs=0, notes="", updated_at=datetime(2026, 1, 1))
+    with session_for(alice) as s:
         with pytest.raises(IntegrityError, match="fk_income_entries_user_source"):
-            s.connection().execute(insert(t).values(user_id=alice, **values))
+            s.connection().execute(insert(t).values(**values))
     with owner_engine().connect() as conn:
         with pytest.raises(IntegrityError, match="fk_income_entries_user_source"):
-            conn.execute(insert(t).values(user_id=alice, **values))
+            conn.execute(insert(t).values(**values))
 
 
 def test_repointing_an_existing_child_at_another_users_parent_is_refused(two):
     alice, bob = two
     bob_asset = _owner("SELECT id FROM assets WHERE user_id = :u", u=bob)[0][0]
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         with pytest.raises(IntegrityError, match="fk_positions_user_asset"):
             s.execute(text("UPDATE positions SET asset_id = :a"), {"a": bob_asset})
 
 
 def test_a_users_own_parent_is_accepted(two):
     alice, _ = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         asset = s.execute(text("SELECT id FROM assets")).scalar_one()
-        s.connection().execute(insert(schema.Base.metadata.tables["positions"]).values(**_position(alice, asset)))
+        s.connection().execute(insert(_raw("positions")).values(**_position(alice, asset)))
         s.commit()
 
 
@@ -388,7 +410,7 @@ def test_the_parent_unique_constraints_exist(two):
 def test_a_pooled_connection_forgets_the_user_when_the_transaction_ends(two):
     alice, bob = two
     engine.dispose()
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         pid = s.execute(text("SELECT pg_backend_pid()")).scalar()
         assert s.execute(text("SELECT current_setting('myfinance.user_id')")).scalar() == str(alice)
         s.commit()
@@ -403,14 +425,14 @@ def test_a_pooled_connection_forgets_the_user_when_the_transaction_ends(two):
         assert s.execute(text("SELECT pg_backend_pid()")).scalar() == pid
         assert s.execute(text("SELECT count(*) FROM assets")).scalar() == 0
     # And Bob, on it, sees Bob.
-    with open_session(bob) as s:
+    with session_for(bob) as s:
         assert s.execute(text("SELECT pg_backend_pid()")).scalar() == pid
         assert {r[0] for r in s.execute(text("SELECT user_id FROM assets"))} == {bob}
 
 
 def test_the_variable_is_set_at_the_start_of_every_transaction_of_a_session(two):
     alice, _ = two
-    with open_session(alice) as s:
+    with session_for(alice) as s:
         for _ in range(3):
             assert {r[0] for r in s.execute(text("SELECT user_id FROM assets"))} == {alice}
             s.commit()
@@ -428,7 +450,7 @@ def test_a_variable_left_on_a_connection_for_the_whole_session_is_overridden(two
         pid = conn.execute(text("SELECT pg_backend_pid()")).scalar()
         conn.execute(text("SELECT set_config('myfinance.user_id', :u, false)"), {"u": str(alice)})
         conn.commit()
-    with open_session(bob) as s:
+    with session_for(bob) as s:
         assert s.execute(text("SELECT pg_backend_pid()")).scalar() == pid
         assert {r[0] for r in s.execute(text("SELECT user_id FROM assets"))} == {bob}
     with open_system_session() as s:
@@ -444,7 +466,7 @@ def test_concurrent_requests_for_different_users_never_see_each_other(two):
     def work(user, other):
         try:
             for _ in range(25):
-                with open_session(user) as s:
+                with session_for(user) as s:
                     seen = {r[0] for r in s.execute(text("SELECT user_id FROM assets"))}
                     s.commit()
                     seen |= {r[0] for r in s.execute(text("SELECT user_id FROM positions"))}
@@ -464,9 +486,9 @@ def test_concurrent_requests_for_different_users_never_see_each_other(two):
 # --- the narrow doors ------------------------------------------------------------------------------------
 
 def test_user_creation_works_for_the_runtime_role_and_provisions_assets(db):
-    uid = get_or_create_user("e" * 64)
-    assert get_or_create_user("e" * 64) == uid
-    with open_session(uid) as s:
+    uid = make_user("e" * 64, provision=True)
+    assert make_user("e" * 64, provision=True) == uid
+    with session_for(uid) as s:
         assert s.execute(text("SELECT count(*) FROM assets")).scalar() == 9
     assert _owner("SELECT count(*) FROM users WHERE subject_hash = :h", h="e" * 64)[0][0] == 1
 
@@ -477,7 +499,7 @@ def test_two_first_requests_from_one_person_create_one_user(db):
 
     def first_request():
         try:
-            ids.append(get_or_create_user("f" * 64))
+            ids.append(make_user("f" * 64, provision=True))
         except Exception as exc:  # pragma: no cover
             errors.append(repr(exc))
 
@@ -497,8 +519,8 @@ def test_the_user_function_rejects_anything_but_a_hash(db):
     with engine.connect() as conn:
         for bad in ("short", "A" * 64, "g" * 64, ""):
             with pytest.raises(DBAPIError, match="subject hash"):
-                conn.execute(text(f"SELECT * FROM public.{rls.GET_OR_CREATE_USER}(:h, :i)"),
-                             {"h": bad, "i": uuid.uuid4()})
+                conn.execute(text(f"SELECT * FROM public.{rls.GET_OR_CREATE_USER}(:h, :i, :s, :w, :v)"),
+                             {"h": bad, "i": uuid.uuid4(), "s": b"", "w": b"", "v": 1})
             conn.rollback()
 
 
@@ -510,7 +532,9 @@ def test_the_functions_are_executable_by_the_runtime_role_only(db):
         "FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname LIKE 'myfinance_%'",
         rt=engine.url.username,
     )
-    assert {r[0] for r in rows} == {rls.GET_OR_CREATE_USER, rls.SWEEP_JOBS}
+    assert {r[0] for r in rows} == {
+        rls.GET_OR_CREATE_USER, rls.SWEEP_JOBS, rls.RECOVERY_LOOKUP, rls.RECOVER_ACCOUNT, rls.CONTACT_UNSUBSCRIBE,
+    }
     owner_name = _owner("SELECT current_user")[0][0]
     for name, definer, owner, public, runtime, config in rows:
         assert definer is True, name
@@ -521,13 +545,14 @@ def test_the_functions_are_executable_by_the_runtime_role_only(db):
 
 
 def test_the_sweep_works_across_users_for_the_runtime_role(two):
-    from src.services.llm_queue import (
-        INTERRUPTED_NOTE, TRANSLATION_INTERRUPTED_NOTE, cleanup_interrupted_jobs,
+    from src.models.jobnotes import (
+        INTERRUPTED, INTERRUPTED_NOTE, TRANSLATION_INTERRUPTED, TRANSLATION_INTERRUPTED_NOTE,
     )
+    from src.services.llm_queue import cleanup_interrupted_jobs
 
     alice, bob = two
     for user, tag in ((alice, "a"), (bob, "b")):
-        with open_session(user) as s:
+        with session_for(user) as s:
             s.add_all([
                 Report(status="running"),
                 Report(status="translating", content=f"{tag} english"),
@@ -537,16 +562,23 @@ def test_the_sweep_works_across_users_for_the_runtime_role(two):
             ])
             s.commit()
     cleanup_interrupted_jobs()
+    # Status and a plaintext note code only: the SQL function holds no key.
     for table in ("reports", "insights"):
-        for status, error in _owner(f'SELECT status, error FROM "{table}"'):
-            assert status in ("done", "failed")
-            if status == "failed":
-                assert error == INTERRUPTED_NOTE
-    done = _owner("SELECT user_id, status, error FROM reports WHERE content LIKE '% english'")
-    assert len(done) == 2
-    assert all(r[1] == "done" and r[2] == TRANSLATION_INTERRUPTED_NOTE for r in done)
-    # Finished work is left alone, and so is everything else about the row.
-    assert [r[0] for r in _owner("SELECT content FROM reports WHERE status = 'done' AND content = 'kept'")] == ["kept", "kept"]
+        for status, note in _owner(f'SELECT status, status_note FROM "{table}"'):
+            assert (status, note) in {
+                ("failed", INTERRUPTED), ("done", TRANSLATION_INTERRUPTED), ("done", ""),
+            }
+    # What a user reads is the text for that code - and finished work, and every
+    # other column of the row, is untouched.
+    for user, tag in ((alice, "a"), (bob, "b")):
+        with session_for(user) as s:
+            reports = {r.content: r for r in s.query(Report).all() if r.content}
+            assert reports[f"{tag} english"].status == "done"
+            assert reports[f"{tag} english"].error == TRANSLATION_INTERRUPTED_NOTE
+            assert reports["kept"].status == "done" and reports["kept"].error == ""
+            running = [r for r in s.query(Report).all() if not r.content and r.status == "failed"]
+            # (_populate's own pending Report is among them)
+            assert len(running) == 2 and {r.error for r in running} == {INTERRUPTED_NOTE}
     assert {r[0] for r in _owner("SELECT user_id FROM reports")} == {alice, bob}
 
 
@@ -635,3 +667,145 @@ def test_users_privileges_are_narrower_than_the_other_tables(two):
         r=rt,
     )[0]
     assert tuple(rows) == (True, False, False, False, True, False)
+    # The columns a user's own requests keep up to date (RLS limits them to the
+    # caller's row) - and the identity hash, the id and the creation time are not among them.
+    keep = _owner(
+        "SELECT " + ", ".join(
+            f"has_column_privilege(:r, 'users', '{c}', 'UPDATE')"
+            for c in ("wrapped_dek", "key_salt", "kek_version", "recovery_wrapped_dek", "recovery_failures",
+                      "recovery_locked_until", "birth_year", "id", "created_at")
+        ),
+        r=rt,
+    )[0]
+    assert tuple(keep) == (True,) * 7 + (False, False)
+    # key_check: readable, never writable, by the runtime role.
+    kc = _owner(
+        "SELECT has_table_privilege(:r, 'key_check', 'SELECT'), has_table_privilege(:r, 'key_check', 'INSERT'), "
+        "has_table_privilege(:r, 'key_check', 'UPDATE'), has_table_privilege(:r, 'key_check', 'DELETE')",
+        r=rt,
+    )[0]
+    assert tuple(kc) == (True, False, False, False)
+
+
+# --- key material, recovery and contacts through the runtime role ---------------------------------------
+
+def test_a_user_can_update_their_own_key_columns_and_nobody_elses(two):
+    alice, bob = two
+    with session_for(alice) as s:
+        assert s.execute(text("UPDATE users SET kek_version = kek_version WHERE id = :i"), {"i": alice}).rowcount == 1
+        assert s.execute(text("UPDATE users SET kek_version = kek_version WHERE id = :i"), {"i": bob}).rowcount == 0
+        assert s.execute(text("UPDATE users SET wrapped_dek = NULL WHERE id = :i"), {"i": bob}).rowcount == 0
+        s.rollback()
+    with session_for(alice) as s:
+        with pytest.raises(ProgrammingError, match="permission denied"):
+            s.execute(text("UPDATE key_check SET kek_version = kek_version"))
+    with session_for(alice) as s:
+        assert s.execute(text("SELECT count(*) FROM key_check")).scalar() >= 1
+
+
+def _proof_and_code(user: uuid.UUID):
+    """Give `user` a recovery code (as the application would) and return it with
+    the proof the database checks it against."""
+    from src.crypto import recovery as code_crypto
+    from src.services import recovery as service
+
+    with session_for(user) as s:
+        code = service.create(s, _RINGS[user])
+    parsed = code_crypto.parse(code)
+    with session_for(user) as s:
+        salt, kdf = s.execute(text("SELECT recovery_salt, recovery_kdf FROM users WHERE id = :i"), {"i": user}).one()
+    _, proof = code_crypto.derive(parsed.secret, bytes(salt), kdf)
+    return code, parsed.recovery_id, proof
+
+
+def _recover(as_user, recovery_id: str, proof: bytes):
+    from sqlalchemy import LargeBinary, bindparam
+
+    with session_for(as_user) as s:
+        row = s.execute(
+            text(f"SELECT out_status, out_user_id FROM public.{rls.RECOVER_ACCOUNT}(:r, :p, :s, :w, :v)").bindparams(
+                bindparam("p", type_=LargeBinary), bindparam("s", type_=LargeBinary), bindparam("w", type_=LargeBinary)),
+            {"r": recovery_id, "p": proof, "s": b"\x01" * 16, "w": b"\x02" * 60, "v": 2},
+        ).one()
+        s.commit()
+        return tuple(row)
+
+
+def test_the_recovery_function_moves_nothing_without_the_proof(two):
+    alice, bob = two
+    _, rid, proof = _proof_and_code(alice)
+    carol = make_user("c" * 64)  # a new, empty account
+    before = _owner("SELECT id, subject_hash FROM users ORDER BY id")
+    for bad_proof in (b"", b"\x00" * 32, proof[:-1] + bytes([proof[-1] ^ 1])):
+        assert _recover(carol, rid, bad_proof) == ("denied", None)
+    assert _recover(carol, "0" * 16, proof) == ("denied", None)  # unknown id
+    # No caller identity at all: refused as well, even with the right proof.
+    with open_system_session() as s:
+        from sqlalchemy import LargeBinary, bindparam
+
+        row = s.execute(
+            text(f"SELECT out_status FROM public.{rls.RECOVER_ACCOUNT}(:r, :p, :s, :w, :v)").bindparams(
+                bindparam("p", type_=LargeBinary), bindparam("s", type_=LargeBinary), bindparam("w", type_=LargeBinary)),
+            {"r": rid, "p": proof, "s": b"\x01" * 16, "w": b"\x02" * 60, "v": 2},
+        ).one()
+        assert row[0] == "denied"
+    assert _owner("SELECT id, subject_hash FROM users ORDER BY id") == before
+
+
+def test_the_recovery_function_will_not_delete_an_account_that_holds_data(two):
+    alice, bob = two
+    _, rid, proof = _proof_and_code(alice)
+    # Bob is a user with data of his own (every table has a row): the right proof
+    # from *his* session still does not let alice's account replace his.
+    before = _owner("SELECT id FROM users ORDER BY id")
+    assert _recover(bob, rid, proof) == ("not_empty", alice)
+    assert _owner("SELECT id FROM users ORDER BY id") == before
+
+
+def test_the_recovery_function_moves_the_identity_for_an_empty_account(two):
+    alice, _ = two
+    _, rid, proof = _proof_and_code(alice)
+    carol = make_user("c" * 64, provision=True)  # new account: nine default assets, nothing else
+    status, old = _recover(carol, rid, proof)
+    assert (status, old) == ("recovered", alice)
+    assert _owner("SELECT count(*) FROM users WHERE id = :c", c=carol)[0][0] == 0
+    assert _owner("SELECT count(*) FROM assets WHERE user_id = :c", c=carol)[0][0] == 0
+    assert _owner("SELECT subject_hash FROM users WHERE id = :a", a=alice)[0][0] == "c" * 64
+    assert _owner("SELECT kek_version, key_salt FROM users WHERE id = :a", a=alice)[0] == (2, b"\x01" * 16)
+
+
+def test_the_recovery_lookup_answers_only_for_a_known_id(two):
+    alice, _ = two
+    _, rid, _ = _proof_and_code(alice)
+    with session_for(alice) as s:
+        found = s.execute(text(f"SELECT out_user_id, out_kdf FROM public.{rls.RECOVERY_LOOKUP}(:r)"), {"r": rid}).all()
+        assert [r[0] for r in found] == [alice] and found[0][1].startswith("scrypt:")
+        assert s.execute(text(f"SELECT * FROM public.{rls.RECOVERY_LOOKUP}(:r)"), {"r": "nope"}).all() == []
+
+
+def test_the_unsubscribe_function_touches_only_the_row_the_token_names(two, monkeypatch):
+    from src.crypto import contacts
+    import base64
+    from sqlalchemy import LargeBinary, bindparam
+
+    from src.config import settings
+
+    alice, bob = two
+    monkeypatch.setattr(settings, "contact_key", base64.urlsafe_b64encode(bytes(range(32))).decode())
+    if True:
+        for user in (alice, bob):
+            token = contacts.unsubscribe_token(user, 1)
+            with session_for(user) as s:
+                row = s.get(UserContact, user)
+                row.email = contacts.seal_email(user, f"{user}@example.test")
+                row.notify_opt_in = True
+                row.unsubscribe_token_hash = contacts.token_hash(token)
+                s.commit()
+        token = contacts.unsubscribe_token(alice, 1)
+        with engine.begin() as conn:  # no user at all: the runtime role, signed in as nobody
+            fn = text(f"SELECT public.{rls.CONTACT_UNSUBSCRIBE}(:h)").bindparams(bindparam("h", type_=LargeBinary))
+            assert conn.execute(fn, {"h": contacts.token_hash(token)}).scalar() == 1
+            assert conn.execute(fn, {"h": b"\x00" * 32}).scalar() == 0
+            assert conn.execute(fn, {"h": None}).scalar() == 0
+        rows = {r[0]: (r[1], r[2]) for r in _owner("SELECT user_id, notify_opt_in, email IS NULL FROM user_contacts")}
+        assert rows[alice] == (False, True) and rows[bob] == (True, False)

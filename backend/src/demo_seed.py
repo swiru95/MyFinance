@@ -22,9 +22,9 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine
-from .schema import backfill_profiles, migrate, migrate_ownership, seed_features
+from .schema import migrate, migrate_ownership, seed_features
 from .scoping import open_session
-from .services.users import get_or_create_local_user
+from .services.users import local_account
 from .models.asset import Asset
 from .models.expense import Expense
 from .models.monthly import MonthlyRecord
@@ -663,13 +663,15 @@ def main() -> int:
     Base.metadata.create_all(bind=engine)
     migrate()
     migrate_ownership()
-    backfill_profiles()
     # The demo wallet belongs to the fixed local user - the one every request
     # is served as when authentication is off - and starts with the default
     # asset types, same as any new user.
-    local_user = get_or_create_local_user()
+    account = local_account()
+    local_user = account.user_id
 
-    db = open_session(local_user)
+    # The demo data is stored encrypted like any other (under the local user's
+    # key - the public development one unless MYFINANCE_KEKS is set).
+    db = open_session(local_user, account.keyring)
     try:
         # Check that database is empty
         _check_empty(db)
@@ -709,7 +711,7 @@ def main() -> int:
         db.close()
 
     print("demo_seed: seeding feature defaults")
-    seed_features(local_user)
+    seed_features(local_user, account.keyring)
     return 0
 
 

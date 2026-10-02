@@ -7,9 +7,16 @@ out; the app then connects with a role that can only read and write rows.
 
 Safe to run repeatedly: every step checks before it acts.
 
-On PostgreSQL the job also installs row-level security (rls.py) and the two
+On PostgreSQL the job also installs row-level security (rls.py) and the
 functions the application's role calls for the work that crosses users, and
 adds the composite foreign keys that keep a child row inside its owner's data.
+
+Per-user encryption (`migrate_encryption`, see encmigrate.py) is the last data
+step: it needs `MYFINANCE_KEKS`, and `MYFINANCE_BOOTSTRAP_SUB` when there are
+plaintext rows to encrypt. Before anything is written the job checks the
+configured KEK against the key-check values already in the database (a wrong
+Secret stops it here, by name), and the key-check value of every configured
+version is recorded.
 
 Multi-user ownership (`migrate_ownership`) is the one step that rewrites
 existing tables. It runs on both databases the application supports - SQLite
@@ -27,14 +34,17 @@ from datetime import datetime, timezone
 from sqlalchemy import Uuid, bindparam, insert, inspect, select, text
 from sqlalchemy.engine import Connection, Engine
 
-from . import auth, identity, rls
+from . import auth, encmigrate, identity, rls
 from .config import settings
+from .crypto.core import KekError, KeyRing
 from .database import Base, engine
 from .models import (  # noqa: F401 (import registers the tables on Base)
     asset,
+    contact,
     expense,
     income,
     insight,
+    keycheck,
     monthly,
     position,
     report,
@@ -43,7 +53,8 @@ from .models import (  # noqa: F401 (import registers the tables on Base)
 )
 from .models.asset import Asset
 from .models.user import Owned, User
-from .scoping import open_session, open_system_session
+from .scoping import open_session
+from .services import keys as key_service
 
 
 class SchemaError(RuntimeError):
@@ -59,6 +70,7 @@ def migrate() -> None:
     """
     inspector = inspect(engine)
     tables = inspector.get_table_names()
+    binary = "BYTEA" if engine.dialect.name == "postgresql" else "BLOB"
     # (table, column, DDL to add it, optional index DDL)
     wanted = [
         ("assets", "category",
@@ -94,6 +106,30 @@ def migrate() -> None:
         ("assets", "archived_at",
          "ALTER TABLE assets ADD COLUMN archived_at TIMESTAMP",
          None),
+        # --- per-user encryption: key material, recovery code, birth year ---
+        ("users", "key_salt", f"ALTER TABLE users ADD COLUMN key_salt {binary}", None),
+        ("users", "wrapped_dek", f"ALTER TABLE users ADD COLUMN wrapped_dek {binary}", None),
+        ("users", "kek_version", "ALTER TABLE users ADD COLUMN kek_version INTEGER", None),
+        ("users", "recovery_id",
+         "ALTER TABLE users ADD COLUMN recovery_id VARCHAR(32)",
+         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_recovery_id ON users (recovery_id)"),
+        ("users", "recovery_salt", f"ALTER TABLE users ADD COLUMN recovery_salt {binary}", None),
+        ("users", "recovery_kdf", "ALTER TABLE users ADD COLUMN recovery_kdf VARCHAR(64)", None),
+        ("users", "recovery_wrapped_dek",
+         f"ALTER TABLE users ADD COLUMN recovery_wrapped_dek {binary}", None),
+        ("users", "recovery_verifier", f"ALTER TABLE users ADD COLUMN recovery_verifier {binary}", None),
+        ("users", "recovery_created_at", "ALTER TABLE users ADD COLUMN recovery_created_at TIMESTAMP", None),
+        ("users", "recovery_confirmed_at",
+         "ALTER TABLE users ADD COLUMN recovery_confirmed_at TIMESTAMP", None),
+        ("users", "recovery_failures",
+         "ALTER TABLE users ADD COLUMN recovery_failures INTEGER NOT NULL DEFAULT 0", None),
+        ("users", "recovery_locked_until",
+         "ALTER TABLE users ADD COLUMN recovery_locked_until TIMESTAMP", None),
+        ("users", "birth_year", f"ALTER TABLE users ADD COLUMN birth_year {binary}", None),
+        ("reports", "status_note",
+         "ALTER TABLE reports ADD COLUMN status_note VARCHAR(24) NOT NULL DEFAULT ''", None),
+        ("insights", "status_note",
+         "ALTER TABLE insights ADD COLUMN status_note VARCHAR(24) NOT NULL DEFAULT ''", None),
     ]
     for table, column, add_sql, index_sql in wanted:
         if table not in tables:
@@ -297,7 +333,9 @@ def _migrate_sqlite(eng: Engine, legacy: list, boot) -> None:
                 ).fetchall()
                 for (name,) in stale:
                     conn.exec_driver_sql(f'DROP INDEX "{name}"')
-                t.create(conn)
+                # Rebuilt with the *plain* types the data has now (see
+                # encmigrate.plain_tables): encryption is a later step.
+                encmigrate.plain_tables()[t.name].create(conn)
                 cols = [c.name for c in t.columns if c.name != "user_id" and c.name in old_cols]
                 col_list = ", ".join(f'"{c}"' for c in cols)
                 if owner is not None:
@@ -414,57 +452,75 @@ def move_terms_to_users() -> None:
     """Terms acceptance used to be a per-database setting; it is now a column
     on the user. Carry any old `terms_accepted` setting over to the user that
     owns it and delete it, so a person who already accepted is not asked again.
-    """
-    from .models.settings import Setting
 
-    db = open_system_session()
-    try:
-        rows = db.query(Setting).filter(Setting.key == "terms_accepted").all()
-        for row in rows:
-            owner = db.get(User, row.user_id)
-            if owner is not None and owner.terms_version is None and row.value:
-                data = json.loads(row.value)
-                owner.terms_version = data.get("version")
+    Only possible while `settings.value` is still plaintext: it runs before the
+    encryption migration, which is also the only time such a row can exist (the
+    move has been part of every schema run since the column was added, so a
+    database that has been through one has none left). Once the column is
+    encrypted there is nothing to move and no key to read it with.
+    """
+    from sqlalchemy import delete
+
+    insp = inspect(engine)
+    if not insp.has_table("settings"):
+        return
+    value_type = {c["name"]: c["type"] for c in insp.get_columns("settings")}.get("value")
+    if value_type is None or encmigrate._is_binary(value_type):
+        return
+    settings_t = Base.metadata.tables["settings"]
+    users_t = User.__table__
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text("SELECT user_id, value FROM settings WHERE key = 'terms_accepted'")
+        ).all()
+        for user_id, value in rows:
+            user_id = user_id if isinstance(user_id, uuid.UUID) else uuid.UUID(str(user_id))
+            owner = conn.execute(
+                select(users_t.c.id, users_t.c.terms_version).where(users_t.c.id == user_id)
+            ).first()
+            if owner is not None and owner[1] is None and value:
+                data = json.loads(value)
                 accepted_at = data.get("accepted_at")
+                parsed = None
                 if accepted_at:
                     parsed = datetime.fromisoformat(accepted_at)
                     if parsed.tzinfo is not None:
                         # Naive UTC, like every other timestamp column.
                         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-                    owner.terms_accepted_at = parsed
-            db.delete(row)
+                conn.execute(
+                    users_t.update()
+                    .where(users_t.c.id == user_id)
+                    .values(terms_version=data.get("version"), terms_accepted_at=parsed)
+                )
         if rows:
-            db.commit()
-            print(f"  + moved terms acceptance to {len(rows)} user(s)")
-    finally:
-        db.close()
+            conn.execute(delete(settings_t).where(settings_t.c.key == "terms_accepted"))
+    if rows:
+        print(f"  + moved terms acceptance to {len(rows)} user(s)")
 
 
 # --- Data ---------------------------------------------------------------
 
 
-def backfill_profiles() -> None:
+def backfill_profiles(db) -> None:
     """Give every unclassified asset the band its class implies.
 
-    Only touches rows that have no profile yet, so a deliberate per-asset
-    override is never overwritten by a later run. Works across every user (it
-    is a system session) because it only derives one column from another.
+    Takes a keyed session (an asset's class and band are encrypted, so this has
+    to read them as the owner) and only touches rows that have no profile yet,
+    so a deliberate per-asset override is never overwritten by a later run.
+    Existing databases get this done while their rows are encrypted
+    (encmigrate); this is for what the demo seeder and tests create.
     """
     from .profiles import for_category
 
-    db = open_system_session()
-    try:
-        rows = db.query(Asset).filter((Asset.profile == "") | (Asset.profile.is_(None))).all()
-        for a in rows:
-            a.profile = for_category(a.category)
-        if rows:
-            db.commit()
-            print(f"  + classified {len(rows)} asset(s) by risk profile")
-    finally:
-        db.close()
+    rows = [a for a in db.query(Asset).all() if not a.profile]
+    for a in rows:
+        a.profile = for_category(a.category)
+    if rows:
+        db.commit()
+        print(f"  + classified {len(rows)} asset(s) by risk profile")
 
 
-def seed_features(user_id: uuid.UUID) -> None:
+def seed_features(user_id: uuid.UUID, keyring: KeyRing | None = None) -> None:
     """Decide one user's advanced-feature defaults, once.
 
     Only the demo seeder needs this now: a new user has no `features` row,
@@ -481,7 +537,11 @@ def seed_features(user_id: uuid.UUID) -> None:
     from .models.report import Report
     from .models.settings import Setting
 
-    db = open_session(user_id)
+    if keyring is None and user_id == identity.LOCAL_USER_ID:
+        from .services.users import local_account
+
+        keyring = local_account(provision=False).keyring
+    db = open_session(user_id, keyring)
     try:
         if db.query(Setting).filter(Setting.key == "features").first():
             return
@@ -512,9 +572,10 @@ def grant_runtime_role(role: str, eng: Engine | None = None) -> None:
 
     Rows it may read and write; tables and schemas it may not create, drop or
     alter. Sequences are needed because the primary keys are generated. On
-    `users` it may read (its own row, by policy) and update only the two
-    terms-acceptance columns: accounts are added through a function, never
-    inserted or deleted by the role.
+    `users` it may read (its own row, by policy) and update only the columns
+    listed below - terms acceptance, its own key material and recovery code, its
+    birth year: accounts are added through a function, never inserted or deleted
+    by the role. `key_check` it may only read.
 
     Refuses a role that would ignore row-level security - a superuser, one with
     BYPASSRLS, or one that is (a member of) the owner - because granting it
@@ -553,7 +614,16 @@ def grant_runtime_role(role: str, eng: Engine | None = None) -> None:
             # users: narrower than every other table.
             f"REVOKE ALL ON TABLE users FROM {q(role)}",
             f"GRANT SELECT ON TABLE users TO {q(role)}",
-            f"GRANT UPDATE (terms_version, terms_accepted_at) ON TABLE users TO {q(role)}",
+            # Its own key material, recovery code, throttle and birth year: the
+            # columns a signed-in user's own requests keep up to date (RLS limits
+            # these updates to the caller's row).
+            f"GRANT UPDATE (terms_version, terms_accepted_at, key_salt, wrapped_dek, kek_version, "
+            f"recovery_id, recovery_salt, recovery_kdf, recovery_wrapped_dek, recovery_verifier, "
+            f"recovery_created_at, recovery_confirmed_at, recovery_failures, recovery_locked_until, "
+            f"birth_year) ON TABLE users TO {q(role)}",
+            # Key-check values are written by this job only.
+            f"REVOKE ALL ON TABLE key_check FROM {q(role)}",
+            f"GRANT SELECT ON TABLE key_check TO {q(role)}",
         ]
         for sql in statements:
             conn.execute(text(sql))
@@ -562,22 +632,53 @@ def grant_runtime_role(role: str, eng: Engine | None = None) -> None:
     print(f"  + granted read/write on public to {role}")
 
 
+def verify_kek() -> None:
+    """Refuse to go on if the configured KEK is not the one this database was
+    initialised with. Read-only: runs before anything is written."""
+    keks = key_service.active_keks()
+    if not inspect(engine).has_table("key_check"):
+        return
+    with engine.connect() as conn:
+        problems = key_service.mismatches(keks, key_service._stored(conn))
+    if problems:
+        raise KekError("; ".join(problems))
+
+
+def record_key_checks() -> None:
+    with engine.begin() as conn:
+        added = key_service.ensure_key_check(conn)
+    if added:
+        print(f"  + key-check value(s) for KEK version(s) {', '.join(str(v) for v in added)}")
+
+
 def main() -> int:
     print(f"schema: {engine.url.drivername} -> {engine.url.database}")
     try:
-        auth.validate_config()
+        auth.validate_config(schema_job=True)
+        keks = key_service.active_keks()
+        if keks.development:
+            print(
+                "  ! no MYFINANCE_KEKS: using the public development KEK. Fine for a local "
+                "database, never for a real one."
+            )
+        # Is this the KEK the database was initialised with? First of all, before
+        # anything - even DDL - is written under a Secret that may be wrong.
+        verify_kek()
         # Brand-new tables (including `users`) come out of create_all with
         # ownership built in; tables that already exist are converted below.
         Base.metadata.create_all(bind=engine)
         migrate()
+        record_key_checks()
         migrate_ownership()
         migrate_integrity()
         move_terms_to_users()
-        backfill_profiles()
+        done = encmigrate.migrate_encryption()
+        if done:
+            print(f"  + encrypted: {', '.join(done)}")
         secure_postgresql()
         if engine.dialect.name == "postgresql":
             grant_runtime_role(os.environ.get("MYFINANCE_APP_ROLE", ""))
-    except (SchemaError, auth.AuthConfigError) as exc:
+    except (SchemaError, auth.AuthConfigError, KekError, encmigrate.MigrationError) as exc:
         print(f"schema: {exc}", file=sys.stderr)
         return 1
     print("schema: up to date")

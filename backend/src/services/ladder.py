@@ -50,7 +50,8 @@ def _active_sources(db: Session, month: str, kind: str) -> list:
     from ..models.income import IncomeSource
     from ..services.income import is_active_in_month
 
-    sources = db.query(IncomeSource).filter(IncomeSource.kind == kind).all()
+    # `kind` is encrypted, so it is matched here rather than in SQL.
+    sources = [s for s in db.query(IncomeSource).all() if s.kind == kind]
     return [s for s in sources if is_active_in_month(s, month)]
 
 
@@ -144,12 +145,11 @@ def _wrapper_flows_ytd(db: Session, today: date, wrapper: str) -> float:
     from ..models.position import Position
 
     year_start = date(today.year, 1, 1)
-    rows = (
-        db.query(Position)
-        .join(Asset, Position.asset_id == Asset.id)
-        .filter(Asset.wrapper == wrapper)
-        .all()
-    )
+    # `wrapper` is encrypted: pick the assets in Python, then their positions by id.
+    asset_ids = [a.id for a in db.query(Asset).all() if a.wrapper == wrapper]
+    if not asset_ids:
+        return 0.0
+    rows = db.query(Position).filter(Position.asset_id.in_(asset_ids)).all()
     return sum(
         float(p.flow_in_base)
         for p in rows

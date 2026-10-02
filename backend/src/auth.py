@@ -13,8 +13,11 @@ nothing but a tenant id and client id gets the Entra defaults for all three, so
 configuration written for the Entra-only version keeps meaning what it meant.
 
 What this module deliberately never does is keep or log the identity claims.
-`sub` is hashed (identity.subject_hash) and dropped; `name`, `email`,
-`preferred_username` and `oid` are not read.
+`sub` is hashed (identity.subject_hash) and dropped; `name`, `preferred_username`
+and `oid` are not read. Two claims are used for the length of the request and no
+longer: the one configured as the key secret (MYFINANCE_KEY_CLAIM, `sub` by
+default), which unwraps the user's data key, and - only on the endpoint where
+someone opts in to notifications - `email` together with `email_verified`.
 """
 from __future__ import annotations
 
@@ -31,7 +34,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from . import identity
 from .config import settings
-from .services.users import get_or_create_local_user, get_or_create_user
+from .crypto import contacts as contact_crypto
+from .crypto.core import LOCAL_SECRET, KekError, KeyRing, active_keks
+from .services.users import local_account, login
 
 log = logging.getLogger(__name__)
 
@@ -134,12 +139,17 @@ def _is_local(url: str) -> bool:
     return (urlsplit(url).hostname or "") in ("localhost", "127.0.0.1", "::1")
 
 
-def validate_config() -> None:
+def validate_config(*, schema_job: bool = False) -> None:
     """Refuse to start on a configuration that would be unsafe or useless.
 
     Called once at startup (main.lifespan). Nothing set at all is fine - that
     is the documented way to run locally. Something set but not enough to
     validate tokens is not: it would mean serving every user's data to anyone.
+
+    `schema_job`: the schema job needs the KEK (to encrypt, and to check it is
+    the right one) but never touches the contact key, so it is not asked for it
+    - the one process that holds the database owner's rights does not also need
+    the notification key.
     """
     touched = [
         name
@@ -163,6 +173,21 @@ def validate_config() -> None:
         raise AuthConfigError(
             "MYFINANCE_SUBJECT_PEPPER is required when authentication is enabled"
         )
+    # Encryption is not optional with authentication on: without these, either
+    # nothing could be unlocked or (worse) it would be done under a key that is
+    # not the one in the Secret. Checked for shape here; that the KEK is the
+    # *right* one is checked against the database (services/keys.py).
+    try:
+        active_keks()
+    except KekError as exc:
+        raise AuthConfigError(str(exc)) from exc
+    if not schema_job:
+        try:
+            contact_crypto.validate()
+        except contact_crypto.ContactKeyError as exc:
+            raise AuthConfigError(str(exc)) from exc
+    if not settings.key_claim:
+        raise AuthConfigError("MYFINANCE_KEY_CLAIM must name a token claim (default: sub)")
     if urlsplit(issuer()).scheme != "https" and not _is_local(issuer()):
         raise AuthConfigError("the OIDC issuer must be an https URL")
     if not requires_access_token_proof():
@@ -390,17 +415,116 @@ def verify_token(token: str) -> dict:
 
 
 class Principal:
-    """Who is making the request: this application's own id for them, and
-    nothing else. The token's claims are not kept, so there is no name, email
-    or subject on this object to end up in a log line or a response."""
+    """Who is making the request: this application's own id for them, their
+    key ring for the length of the request, and nothing else that identifies
+    them. The token's claims are not kept, so there is no name, email or subject
+    on this object to end up in a log line or a response.
 
-    __slots__ = ("user_id",)
+    Three things are held privately for the endpoints that need them and are
+    never part of the representation: the user's key secret (to wrap their data
+    key again after a recovery), and the token's `email`/`email_verified` (to
+    opt in to notifications).
+    """
 
-    def __init__(self, user_id: uuid.UUID):
+    __slots__ = ("user_id", "keyring", "locked", "_key_secret", "_email", "_email_verified")
+
+    def __init__(
+        self,
+        user_id: uuid.UUID,
+        keyring: KeyRing | None = None,
+        *,
+        locked: bool = False,
+        key_secret: str | None = None,
+        email: str | None = None,
+        email_verified: bool = False,
+    ):
         self.user_id = user_id
+        self.keyring = keyring
+        self.locked = locked
+        self._key_secret = key_secret
+        self._email = email
+        self._email_verified = email_verified
+
+    def key_secret(self) -> str:
+        if not self._key_secret:
+            raise RuntimeError("this principal carries no key secret")
+        return self._key_secret
+
+    def verified_email(self) -> str | None:
+        """The token's address, only if the identity provider vouched for it."""
+        return self._email if self._email_verified and self._email else None
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostics only
-        return f"<Principal {self.user_id}>"
+        return f"<Principal {self.user_id}{' locked' if self.locked else ''}>"
+
+
+def _is_true(value) -> bool:
+    return value is True or (isinstance(value, str) and value.lower() == "true")
+
+
+def _authenticate(request: Request, credentials: HTTPAuthorizationCredentials | None) -> Principal:
+    """Validate the token, find or create the user, and unlock their key."""
+    try:
+        if not auth_enabled():
+            account = local_account()
+            if account.locked:
+                # The local user's key is the dev one (or the configured KEK);
+                # this means the database was initialised under a different KEK.
+                log.error("the local user's data cannot be unlocked: was the database created under another KEK?")
+            principal = Principal(
+                account.user_id, account.keyring, locked=account.locked, key_secret=LOCAL_SECRET
+            )
+            request.state.principal = principal
+            return principal
+        if credentials is None or not credentials.credentials:
+            raise _unauthorized("Not authenticated")
+        claims = verify_token(credentials.credentials)
+        try:
+            subject = identity.subject_hash(issuer(), claims["sub"])
+        except identity.PepperMissing as exc:
+            log.error("%s", exc)
+            raise HTTPException(500, "Server identity configuration is incomplete") from exc
+        secret = claims.get(settings.key_claim)
+        if isinstance(secret, (int, float)) and not isinstance(secret, bool):
+            secret = str(secret)
+        if not isinstance(secret, str) or not secret:
+            raise _unauthorized(
+                f"Token has no `{settings.key_claim}` claim, which this deployment uses to "
+                "protect your data (MYFINANCE_KEY_CLAIM)"
+            )
+        # Valid until the token is - plus the clock skew the validator itself
+        # tolerated, so a token accepted at the edge of its life is not refused a
+        # moment later by the layer under it.
+        expires_at = float(claims["exp"]) + settings.auth_leeway_seconds
+        account = login(subject, secret, expires_at=expires_at)
+        email = claims.get("email")
+        principal = Principal(
+            account.user_id,
+            account.keyring,
+            locked=account.locked,
+            key_secret=secret,
+            email=email if isinstance(email, str) else None,
+            email_verified=_is_true(claims.get("email_verified")),
+        )
+    except KekError as exc:
+        log.error("%s", exc)
+        raise HTTPException(503, "Server encryption configuration is incomplete") from exc
+    # Handy for anything downstream that wants the caller without re-declaring
+    # the dependency (exception handlers, logging middleware).
+    request.state.principal = principal
+    return principal
+
+
+def require_identity(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> Principal:
+    """The authenticated caller, whether or not their data key could be unlocked.
+
+    Only the endpoints that exist for a locked account use this (recovery, the
+    whoami call); everything that touches data uses `require_user`.
+    """
+    return _authenticate(request, credentials)
 
 
 def require_user(
@@ -410,20 +534,20 @@ def require_user(
     """Router-level dependency guarding every data endpoint.
 
     Also what every database session is scoped by (deps.get_db), so a route
-    cannot be reached, or reach the database, without passing through here.
+    cannot be reached, or reach the database, without passing through here - and
+    cannot get a session without the user's key unlocked.
+
+    423 (Locked) when the caller is a real user whose data key this sign-in does
+    not open: the identity changed since the key was wrapped. Not 401 - they are
+    authenticated, and signing in again would change nothing - and not 403,
+    which says "not allowed". The recovery code is the way out.
     """
-    if not auth_enabled():
-        return Principal(get_or_create_local_user())
-    if credentials is None or not credentials.credentials:
-        raise _unauthorized("Not authenticated")
-    claims = verify_token(credentials.credentials)
-    try:
-        digest = identity.subject_hash(issuer(), claims["sub"])
-    except identity.PepperMissing as exc:
-        log.error("%s", exc)
-        raise HTTPException(500, "Server identity configuration is incomplete") from exc
-    principal = Principal(get_or_create_user(digest))
-    # Handy for anything downstream that wants the caller without re-declaring
-    # the dependency (exception handlers, logging middleware).
-    request.state.principal = principal
+    principal = _authenticate(request, credentials)
+    if principal.locked or principal.keyring is None:
+        raise HTTPException(
+            status_code=423,
+            detail="Your data is encrypted under a different sign-in identity; "
+            "enter your recovery code to restore access",
+            headers={"X-MyFinance-Locked": "recovery"},
+        )
     return principal

@@ -19,6 +19,14 @@ DISCOVERY_URL = f"{ISSUER}/.well-known/openid-configuration"
 
 PEPPER = "test-pepper-0123456789abcdef0123456789abcdef"
 
+# Fixed, throwaway keys for the encryption layer (never used outside the tests).
+KEK_V2 = "Q1pM5pbXk2o8kKqWwP9r3C0jYy6sJf1hP7uJxqk4s5A"
+KEK_V3 = "n6oQd1vV0m8Yb2sT4wXc9eZk7rLh3PjUaN5iGfOtDxE"
+# Version 1 is the public development KEK (what the local user of the `db` fixture is
+# wrapped under), kept listed as an old version would be during a rotation.
+KEKS = f"2:{KEK_V2}"
+CONTACT_KEY = "b0lHk3xT9uVq2mNw7YdE4sCz1AaRjP6gFhXtLoWiU5Q"
+
 # Generating an RSA key is the slow part; one per process is plenty. A second,
 # unrelated key is for tokens that must fail signature checks.
 _KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)

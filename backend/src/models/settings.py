@@ -1,9 +1,10 @@
 """Simple key/value settings, one set per user."""
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text, Uuid
+from sqlalchemy import ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ..crypto.fields import EncStr
 from ..database import Base
 from .user import Owned
 
@@ -17,4 +18,4 @@ class Setting(Owned, Base):
         Uuid, ForeignKey("users.id"), primary_key=True
     )
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
-    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    value: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")

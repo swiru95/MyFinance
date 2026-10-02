@@ -7,9 +7,10 @@ every month it applies to.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Numeric, Text, UniqueConstraint
+from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ..crypto.fields import EncDecimal, EncStr
 from ..database import Base
 from .types import UtcDateTime
 from .user import Owned
@@ -25,20 +26,20 @@ class MonthlyRecord(Owned, Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     # Calendar month as "YYYY-MM".
     month: Mapped[str] = mapped_column(String(7), nullable=False)
-    income: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False, default=0)
+    income: Mapped[float] = mapped_column(EncDecimal(20, 2), nullable=False, default=0)
     actual_spent: Mapped[float] = mapped_column(
-        Numeric(20, 2), nullable=False, default=0
+        EncDecimal(20, 2), nullable=False, default=0
     )
-    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
-    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    currency: Mapped[str] = mapped_column(EncStr(), nullable=False, default="PLN")
+    notes: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     # The "month checklist" breakdown behind actual_spent (WP-M): which
     # commitments were paid, at what amount, plus whatever else was spent.
     # JSON list of {"expense_id", "name", "amount", "currency", "paid"} - the
     # expense's own currency, not necessarily this record's. NULL on both
     # this and other_spent means a legacy "one total" record, which keeps
     # reading and writing exactly as before actual_spent became derived.
-    commitments_paid: Mapped[str | None] = mapped_column(Text, nullable=True)
-    other_spent: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    commitments_paid: Mapped[str | None] = mapped_column(EncStr(), nullable=True)
+    other_spent: Mapped[float | None] = mapped_column(EncDecimal(20, 2), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime,
         default=lambda: datetime.now(timezone.utc),

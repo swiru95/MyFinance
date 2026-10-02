@@ -122,6 +122,46 @@ class Settings(BaseSettings):
     bootstrap_iss: str = ""
     bootstrap_sub: str = ""
 
+    # --- Per-user encryption (src/crypto) ---------------------------------
+    # Key-encryption keys, from a Kubernetes Secret. A comma- or newline-
+    # separated list of `<version>:<base64 of >=32 random bytes>`, e.g.
+    # "2:Zm9v...,1:YmFy...". The highest version wraps new and rewrapped user
+    # keys (override with kek_current_version); the others stay listed for as
+    # long as any user is still wrapped under them (`python -m src.keystatus`
+    # says how many are). Required when authentication is on. With
+    # authentication off and nothing set, a fixed, PUBLIC development key is
+    # used so local runs still exercise the same code - that protects nothing.
+    keks: str = ""
+    kek_current_version: int | None = None
+    # Which token claim is the user's own secret, mixed into the key that
+    # wraps their data key. Never stored or logged. It must be stable for the
+    # person and unguessable by anyone who holds the database and the KEK
+    # (an opaque id such as Entra's pairwise `sub`, a Keycloak UUID - not an
+    # email address or a counter). `sub` by default; a deployment whose `sub`
+    # can change (IdP migration) can name a different claim.
+    key_claim: str = "sub"
+    # The *value* of that claim for the bootstrap user, when key_claim is not
+    # `sub` (with `sub` it is MYFINANCE_BOOTSTRAP_SUB). Read by the schema job
+    # only, to encrypt that user's existing plaintext rows in place.
+    bootstrap_key_secret: str = ""
+    # 32 random bytes, base64. Encrypts the notification e-mail addresses
+    # (user_contacts) and nothing else. Deliberately its own secret, not
+    # derived from the KEK: whatever may read addresses without the user
+    # present (a future notifier) can then never read a financial value.
+    # Required when authentication is on.
+    contact_key: str = ""
+    # How long a queued LLM job may hold its user's data key in memory: from the
+    # request that queued it until the job finishes. Past this the job fails
+    # ("generate again") instead of decrypting with a key the token that
+    # produced it no longer vouches for.
+    job_key_seconds: int = 3600
+    # Recovery code: scrypt cost, and how many wrong codes a user may submit
+    # before being locked out (the lock doubles each time, from
+    # recovery_lock_seconds, capped at a day).
+    recovery_scrypt_n: int = 2**15
+    recovery_max_failures: int = 5
+    recovery_lock_seconds: int = 900
+
     # --- Database ---------------------------------------------------------
     # On PostgreSQL the application must connect as a role that is subject to
     # row-level security (src/rls.py): not a superuser, no BYPASSRLS, not the

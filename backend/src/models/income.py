@@ -8,9 +8,10 @@ default. Shape of `params` depends on `kind` - see schemas/income.py.
 """
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, ForeignKeyConstraint, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ..crypto.fields import EncDate, EncDecimal, EncJSON, EncStr
 from ..database import Base
 from .types import UtcDateTime
 from .user import Owned
@@ -24,15 +25,15 @@ class IncomeSource(Owned, Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(EncStr(), nullable=False)
     # kind: uop | b2b | other
-    kind: Mapped[str] = mapped_column(String(12), nullable=False)
-    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="PLN")
-    params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    starts_on: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(EncStr(), nullable=False)
+    currency: Mapped[str] = mapped_column(EncStr(), nullable=False, default="PLN")
+    params: Mapped[dict] = mapped_column(EncJSON(), nullable=False, default=dict)
+    starts_on: Mapped[date] = mapped_column(EncDate(), nullable=False)
     # NULL => still running.
-    ends_on: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
-    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    ends_on: Mapped[date | None] = mapped_column(EncDate(), nullable=True)
+    notes: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime, default=lambda: datetime.now(timezone.utc)
     )
@@ -67,17 +68,17 @@ class IncomeEntry(Owned, Base):
     # Calendar month as "YYYY-MM".
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     # uop: gross; b2b: invoice net revenue; other: net.
-    amount: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False)
+    amount: Mapped[float] = mapped_column(EncDecimal(20, 2), nullable=False)
     # Days/hours actually worked this month, for a day/hour-billed b2b
     # source - reference only; `amount` above is always the frozen revenue
     # figure (rate x units, resolved once at write time by the route).
-    units: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    units: Mapped[float | None] = mapped_column(EncDecimal(10, 2), nullable=True)
     # b2b net business costs for the month.
-    costs: Mapped[float] = mapped_column(Numeric(20, 2), nullable=False, default=0)
+    costs: Mapped[float] = mapped_column(EncDecimal(20, 2), nullable=False, default=0)
     # The real net from a payslip/bank statement, when known; wins over
     # whatever the tax engine would estimate because it is not an estimate.
-    override_net: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    override_net: Mapped[float | None] = mapped_column(EncDecimal(20, 2), nullable=True)
+    notes: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime,
         default=lambda: datetime.now(timezone.utc),

@@ -10,11 +10,13 @@ interpretable against the figures that produced it, not today's.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, String, Text
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from ..crypto.fields import EncJSON, EncStr
 from ..database import Base
 from .types import UtcDateTime
+from .jobnotes import NOTE_TEXT
 from .user import Owned
 
 
@@ -33,14 +35,14 @@ class Insight(Owned, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     language: Mapped[str] = mapped_column(String(2), nullable=False, default="en")
     # The finished text in `language`, as Markdown.
-    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    content: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     # Kept when translated, so the original is never lost to a poor translation -
     # same reasoning as Report.content_en.
-    content_en: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    content_en: Mapped[str] = mapped_column(EncStr(), nullable=False, default="")
     # The model's structured JSON answer (profile: tolerance/capacity/
     # mismatches/priorities; next_steps: ranked steps). Empty for digest,
     # which is free-form Markdown like a wallet report.
-    data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    data: Mapped[dict] = mapped_column(EncJSON(), nullable=False, default=dict)
     # `data` with only its prose fields translated to Polish in one model
     # call (profile: summary_md, priorities[], mismatches[].about/stated/
     # actual/why_it_matters; next_steps: steps[].title/why_md) - enum
@@ -50,18 +52,31 @@ class Insight(Owned, Base):
     # translation was never attempted (en jobs, digest) or when it failed -
     # the reason for a failure is appended to `error` without failing the
     # job, and the frontend falls back to the English `data` with a note.
-    data_localized: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    data_localized: Mapped[dict | None] = mapped_column(EncJSON(), nullable=True, default=None)
     # The figures the model was given, so `content_en` stays interpretable
     # once the underlying numbers have moved on.
-    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    snapshot: Mapped[dict] = mapped_column(EncJSON(), nullable=False, default=dict)
     # Numbers in `content_en` the grounding check could not match to
     # `snapshot` (services/grounding.py), plus - for next_steps - any ranked
     # key the model invented that was not one of the candidate rungs. Never
     # silently dropped, only flagged; the UI shows a warning.
-    ungrounded: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    ungrounded: Mapped[list] = mapped_column(EncJSON(), nullable=False, default=list)
     model: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     translator: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # The model's or the job's own error text (encrypted: it can quote prompts
+    # and figures). What the restart sweep says is not in it - see jobnotes.py.
+    _error: Mapped[str] = mapped_column("error", EncStr(), nullable=False, default="")
+    # Plaintext on purpose: the startup sweep writes it and cannot decrypt.
+    status_note: Mapped[str] = mapped_column(String(24), nullable=False, default="", server_default="")
+
+    @property
+    def error(self) -> str:
+        return self._error or NOTE_TEXT.get(self.status_note, "")
+
+    @error.setter
+    def error(self, value: str) -> None:
+        self._error = value
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Insight {self.id} {self.kind}/{self.period} {self.status}>"

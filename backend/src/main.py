@@ -13,9 +13,11 @@ from .database import engine
 from .deps import get_db
 from .models import (  # noqa: F401 (register models)
     asset,
+    contact,
     expense,
     income,
     insight,
+    keycheck,
     monthly,
     position,
     report,
@@ -23,6 +25,8 @@ from .models import (  # noqa: F401 (register models)
     user,
 )
 from .routes import auth as auth_routes
+from .routes import contacts as contacts_routes
+from .routes import recovery as recovery_routes
 from .routes import positions as positions_routes
 from .routes import assets as assets_routes
 from .routes import expenses as expenses_routes
@@ -37,6 +41,7 @@ from .routes import statistics as statistics_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
 from .services.price_service import PriceService
+from .services import keys as key_service
 from .services import llm_queue
 
 
@@ -51,12 +56,15 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application startup and shutdown.
 
-    Startup: refuse an inconsistent authentication configuration, refuse a
-    database role that would bypass row-level security, then clean up
+    Startup: refuse an inconsistent authentication configuration (with
+    authentication on that includes a missing KEK or contact key), refuse a KEK
+    that is not the one this database was initialised under, refuse a database
+    role that would bypass row-level security, then clean up
     orphaned LLM jobs (pending/running/translating) left by a crash/restart of
     the previous instance.
     """
     validate_config()
+    key_service.startup_check(engine)
     if settings.rls_role_check:
         rls.check_runtime_role(engine)
     llm_queue.cleanup_interrupted_jobs()
@@ -90,6 +98,12 @@ app.add_middleware(
 # Unauthenticated by design: /api/auth/config is what the browser reads before
 # it has a token. /api/auth/me guards itself.
 app.include_router(auth_routes.router)
+# Recovery answers a caller whose data key could not be unlocked, so it cannot sit
+# behind the router-level `require_user`: each of its routes names the
+# authentication it needs (routes/recovery.py). The unsubscribe link is public
+# because whoever follows it is not signed in.
+app.include_router(recovery_routes.router)
+app.include_router(contacts_routes.public)
 
 # Everything that touches data is guarded here rather than endpoint by
 # endpoint, so adding a router to this list is the only step needed and there
@@ -112,6 +126,7 @@ protected = [
     statistics_routes.router,
     settings_routes.router,
     tax_routes.router,
+    contacts_routes.router,
 ]
 for router in protected:
     app.include_router(router, dependencies=[Depends(require_user)])

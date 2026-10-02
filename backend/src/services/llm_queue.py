@@ -31,11 +31,15 @@ from .. import rls
 
 logger = logging.getLogger(__name__)
 
-# What a job left behind by a crash or restart is told. Shared with the SQL
-# function that does the same sweep on PostgreSQL (rls.py), so the two cannot
-# drift apart.
-TRANSLATION_INTERRUPTED_NOTE = "Translation was interrupted by a server restart; showing English."
-INTERRUPTED_NOTE = "Interrupted by a server restart - generate again."
+# What a job left behind by a crash or restart is told lives in models/jobnotes
+# (the note codes the sweep writes, and the text they stand for). Re-exported
+# here because tests and callers import them from this module.
+from ..models.jobnotes import (  # noqa: E402
+    INTERRUPTED,
+    INTERRUPTED_NOTE,
+    TRANSLATION_INTERRUPTED,
+    TRANSLATION_INTERRUPTED_NOTE,
+)
 
 _jobs: "queue.Queue[Callable[[], None]]" = queue.Queue()
 _worker_lock = threading.Lock()
@@ -78,9 +82,12 @@ def enqueue(job: Callable[[], None]) -> None:
 
     Starts the single worker thread on first use. `job` takes no arguments -
     callers close over whatever id/args it needs, e.g.
-    `enqueue(lambda: _generate(user_id, report.id))`. Every job is closed over the
-    user who queued it and opens its own session scoped to that user - the queue
-    itself is shared by all users but knows nothing about them.
+    `enqueue(lambda: _generate(ring, report.id))`. Every job is closed over the
+    user who queued it - and a *copy of that user's key ring*, handed over in
+    memory by the request, which is what lets the job read and write the
+    encrypted figures - and opens its own session scoped to that user. The queue
+    itself is shared by all users but knows nothing about them, and holds a key
+    only as long as a job that closes over it is waiting.
     """
     _ensure_worker()
     _jobs.put(job)
@@ -90,17 +97,22 @@ def cleanup_interrupted_jobs() -> None:
     """Sweep both Report and Insight tables on startup to clean up orphaned
     jobs left by a crash/restart while they were pending/running/translating.
 
-    Rows in 'translating' that have content set -> mark done with a note.
-    All other pending/running/translating rows -> mark failed with a note.
+    Rows in 'translating' -> mark done, with a note code saying the translation
+    was cut short (the English text is always stored before that status is set,
+    so there is something to show). All other pending/running/translating rows
+    -> mark failed, with a note code saying the job was interrupted.
 
     Continues on errors to never block startup.
 
     Deliberately works across every user: it runs once, before any request, and
-    only ever changes the status of rows - it reads no content and builds no
-    prompt. On PostgreSQL the application's role cannot see other users' rows
-    at all (row-level security, rls.py), so this is one call to a SECURITY
+    only ever changes the status of rows - it reads no content, holds no key and
+    builds no prompt. It *cannot* decrypt, which is why the note is a plaintext
+    code (`status_note`) that the model turns back into text, not the encrypted
+    `error` column. On PostgreSQL the application's role cannot see other users'
+    rows at all (row-level security, rls.py), so this is one call to a SECURITY
     DEFINER function that does exactly this sweep and nothing else. On SQLite
-    there is no such boundary and a system session does it directly.
+    there is no such boundary and a system session does it directly, with
+    statements that never load a row (so never touch an encrypted column).
     """
     from ..database import engine
 
@@ -118,56 +130,33 @@ def cleanup_interrupted_jobs() -> None:
             logger.exception("Error cleaning up interrupted jobs")
         return
 
+    from sqlalchemy import case, update
+
     from ..scoping import open_system_session
     from ..models.report import Report
     from ..models.insight import Insight
 
     db = open_system_session()
     try:
-        # Clean up Reports
-        try:
-            pending_reports = db.query(Report).filter(
-                Report.status.in_(("pending", "running", "translating"))
-            ).all()
-
-            for report in pending_reports:
-                if report.status == "translating" and report.content:
-                    # Translation was interrupted but English is ready; mark done
-                    report.status = "done"
-                    report.error = TRANSLATION_INTERRUPTED_NOTE
-                else:
-                    # Generation was interrupted before completion
-                    report.status = "failed"
-                    report.error = INTERRUPTED_NOTE
-
-            if pending_reports:
+        for model, label in ((Report, "Report"), (Insight, "Insight")):
+            try:
+                result = db.execute(
+                    update(model)
+                    .where(model.status.in_(("pending", "running", "translating")))
+                    .values(
+                        status=case((model.status == "translating", "done"), else_="failed"),
+                        status_note=case(
+                            (model.status == "translating", TRANSLATION_INTERRUPTED),
+                            else_=INTERRUPTED,
+                        ),
+                    )
+                    .execution_options(synchronize_session=False)
+                )
                 db.commit()
-                logger.info(f"Cleaned up {len(pending_reports)} interrupted Report rows")
-        except Exception:
-            db.rollback()
-            logger.exception("Error cleaning up Report rows")
-
-        # Clean up Insights
-        try:
-            pending_insights = db.query(Insight).filter(
-                Insight.status.in_(("pending", "running", "translating"))
-            ).all()
-
-            for insight in pending_insights:
-                if insight.status == "translating" and insight.content:
-                    # Translation was interrupted but English is ready; mark done
-                    insight.status = "done"
-                    insight.error = TRANSLATION_INTERRUPTED_NOTE
-                else:
-                    # Generation was interrupted before completion
-                    insight.status = "failed"
-                    insight.error = INTERRUPTED_NOTE
-
-            if pending_insights:
-                db.commit()
-                logger.info(f"Cleaned up {len(pending_insights)} interrupted Insight rows")
-        except Exception:
-            db.rollback()
-            logger.exception("Error cleaning up Insight rows")
+                if result.rowcount:
+                    logger.info(f"Cleaned up {result.rowcount} interrupted {label} rows")
+            except Exception:
+                db.rollback()
+                logger.exception(f"Error cleaning up {label} rows")
     finally:
         db.close()

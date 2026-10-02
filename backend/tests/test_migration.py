@@ -1,5 +1,6 @@
-"""The ownership migration (src/schema.py): an existing single-user database
-is converted in place and every row ends up owned by the bootstrap user.
+"""The ownership and encryption migrations (src/schema.py, src/encmigrate.py): an
+existing single-user database is converted in place, every row ends up owned by
+the bootstrap user, and every value of theirs ends up encrypted under their key.
 
 The "existing" database is built from the DDL the single-user models produced
 (tests/fixtures/legacy_schema_*.sql), filled with dummy rows, and converted by
@@ -24,10 +25,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy import MetaData, Table, create_engine, func, inspect, select, text
+from sqlalchemy import MetaData, Table, create_engine, func, inspect, text
 from sqlalchemy.orm import Session
 
 from src import identity
+from tests.fake_oidc import CONTACT_KEY, KEK_V2
 
 BACKEND = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -41,6 +43,9 @@ OWNED = [
     "assets", "positions", "expenses", "income_sources", "income_entries",
     "monthly_records", "insights", "reports", "settings",
 ]
+
+# Owned by users too, but new in the encryption release: the legacy schema has no such table.
+NEW_OWNED = ["user_contacts"]
 
 POSTGRES_URL = os.environ.get("MYFINANCE_TEST_POSTGRES_URL")
 
@@ -169,12 +174,169 @@ AUTH_ENV = dict(
     MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP="true",
     MYFINANCE_SUBJECT_PEPPER=PEPPER,
     MYFINANCE_BOOTSTRAP_SUB=BOOT_SUB,
+    # Authentication on means encryption on: the KEK and the contact key are mandatory.
+    MYFINANCE_KEKS=f"2:{KEK_V2}",
+    MYFINANCE_CONTACT_KEY=CONTACT_KEY,
 )
+
+# Strings and figures the legacy dummy rows hold. After the migration none of
+# them may appear in the clear anywhere in an encrypted column.
+PLAINTEXT_MARKERS = [
+    "Cash", "Gold", "Rent", "Holiday", "Housing", "Travel", "bonus", "gross_monthly", "balanced",
+    "# text", "1000", "1500", "4000", "12000", "10000", "9000", "5200", "2500", "7000", "2026-01-01",
+]
+
+
+def _boot_ring(eng, secret: str = BOOT_SUB, keks="env"):
+    """The bootstrap user's key ring, unwrapped from the database the way their
+    next sign-in will do it. `keks=None`: the public development KEK."""
+    from src.crypto.core import DEV_KEK_VERSION, KekSet, KeyRing, _DEV_KEK, parse_keks, unwrap_dek
+
+    with eng.connect() as c:
+        uid, salt, wrapped, version = c.execute(
+            text("SELECT id, key_salt, wrapped_dek, kek_version FROM users")
+        ).one()
+    uid = uuid.UUID(str(uid))
+    keks = parse_keks(AUTH_ENV["MYFINANCE_KEKS"]) if keks == "env" else KekSet({DEV_KEK_VERSION: _DEV_KEK}, DEV_KEK_VERSION)
+    dek = unwrap_dek(wrapped, user_id=uid, kek=keks.get(version), kek_version=version,
+                     salt=salt, secret=secret)
+    return KeyRing(uid, dek)
+
+
+def _encrypted_cells(eng) -> list[tuple[str, str, bytes | None]]:
+    """(table, column, raw stored value) for every encrypted column, read as the
+    database holds it - no key, no type processing."""
+    from src import models  # noqa: F401  (registers the tables on Base)
+    from src.crypto.fields import encrypted_columns
+    from src.database import Base
+
+    out = []
+    with eng.connect() as c:
+        for table in Base.metadata.sorted_tables:
+            for col, _ in encrypted_columns(table):
+                if table.name == "users":
+                    continue
+                for (v,) in c.execute(text(f'SELECT "{col.name}" FROM "{table.name}"')):
+                    out.append((table.name, col.name, None if v is None else bytes(v)))
+    return out
+
+
+def _insert_sealed(conn, ring, table_name: str, **values) -> None:
+    """Insert one row, sealing its encrypted columns under `ring` - what a user's
+    own request would store."""
+    from sqlalchemy import insert
+
+    from src import encmigrate, models  # noqa: F401  (registers the tables on Base)
+    from src.crypto.fields import Encrypted
+    from src.database import Base
+
+    t = Base.metadata.tables[table_name]
+    row = {
+        k: t.c[k].type.seal_with(ring, v) if isinstance(t.c[k].type, Encrypted) else v
+        for k, v in values.items()
+    }
+    conn.execute(insert(encmigrate.raw_view(t)), [row])
 
 
 def _counts(eng) -> dict[str, int]:
     with eng.connect() as c:
         return {n: c.execute(text(f'SELECT count(*) FROM "{n}"')).scalar() for n in OWNED}
+
+
+def _read_as_owner(url: str, ring, check) -> None:
+    """Run `check(session)` on a session for the bootstrap user, over the
+    database at `url`, holding their key ring (bypassing the module-level engine,
+    which points at whatever the test process was started with)."""
+    from src.database import KEYRING_KEY, KeyedSession
+
+    eng = create_engine(url)
+    try:
+        with KeyedSession(eng, info={"user_id": ring.user_id, KEYRING_KEY: ring}) as db:
+            check(db)
+    finally:
+        eng.dispose()
+
+
+def _assert_dummy_rows_intact(db) -> None:
+    from src.models import Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Position, Report, Setting
+
+    positions = db.query(Position).order_by(Position.id).all()
+    assert [(p.id, p.asset_id, p.amount, p.currency, p.notes) for p in positions] == [
+        (1, 1, Decimal("1000"), "PLN", "a"),
+        (2, 1, Decimal("1500"), "PLN", "b"),
+        (3, 2, Decimal("10"), "PLN", ""),
+    ]
+    assert [p.flow_in_base for p in positions] == [None, Decimal("500"), None]
+    assert positions[1].price_used == Decimal("1") and positions[2].value_in_base == Decimal("4000")
+    assets = db.query(Asset).order_by(Asset.id).all()
+    assert [(a.name, a.kind, a.category, a.profile, a.units) for a in assets] == [
+        ("Cash", "currency", "Cash", "safe", ""), ("Gold", "gold", "Gold", "moderate", "g"),
+    ]
+    expenses = db.query(Expense).order_by(Expense.id).all()
+    assert [(e.name, e.amount, e.period, e.category, e.starts_on, e.ends_on) for e in expenses] == [
+        ("Rent", Decimal("2500"), "monthly", "Housing", date(2026, 1, 1), None),
+        ("Holiday", Decimal("4000"), "once", "Travel", date(2026, 8, 1), None),
+    ]
+    (source,) = db.query(IncomeSource).all()
+    assert source.params == {"gross_monthly": 10000} and source.kind == "uop"
+    entries = db.query(IncomeEntry).order_by(IncomeEntry.id).all()
+    assert [(e.month, e.amount, e.notes, e.override_net) for e in entries] == [
+        ("2026-03", Decimal("12000"), "bonus", None), ("2026-04", Decimal("10000"), "", Decimal("7000")),
+    ]
+    records = db.query(MonthlyRecord).order_by(MonthlyRecord.id).all()
+    assert [(r.month, r.income, r.actual_spent, r.commitments_paid, r.other_spent) for r in records] == [
+        ("2026-03", Decimal("9000"), Decimal("5000"), None, None),
+        ("2026-04", Decimal("9000"), Decimal("5200"), "[]", Decimal("0")),
+    ]
+    (insight,) = db.query(Insight).all()
+    assert (insight.content, insight.snapshot, insight.data, insight.data_localized, insight.ungrounded) == (
+        "# text", {"a": 1}, {}, None, [])
+    (report,) = db.query(Report).all()
+    assert (report.style, report.content, report.snapshot, report.error) == ("balanced", "# r", {"b": 2}, "")
+    settings_rows = {s.key: s.value for s in db.query(Setting).all()}
+    assert settings_rows["base_currency"] == "EUR"
+    assert json.loads(settings_rows["fire"]) == {"birth_year": 1990}
+
+
+def test_the_migrated_values_are_ciphertext_in_the_database(legacy_db):
+    """Raw SQL, no key: not one of the legacy strings or figures is in the clear
+    in any encrypted column, and every cell is a sealed blob."""
+    url, _ = legacy_db
+    assert _run_schema(url, **AUTH_ENV).returncode == 0
+    eng = create_engine(url)
+    cells = _encrypted_cells(eng)
+    assert len(cells) >= 90
+    for table, column, value in cells:
+        if value is None:
+            continue
+        assert value[:1] == b"\x01", (table, column)  # format version, then the nonce
+        for marker in PLAINTEXT_MARKERS:
+            assert marker.encode() not in value, (table, column, marker)
+    # Column types really changed, not just their contents.
+    insp = inspect(eng)
+    from sqlalchemy.types import _Binary
+
+    for table, column in (("positions", "amount"), ("assets", "name"), ("expenses", "starts_on"),
+                          ("settings", "value"), ("reports", "content"), ("insights", "snapshot")):
+        col = next(c for c in insp.get_columns(table) if c["name"] == column)
+        assert isinstance(col["type"], _Binary), (table, column, col["type"])
+    eng.dispose()
+
+
+def test_the_bootstrap_users_key_is_the_one_their_sign_in_derives(legacy_db):
+    """The migration creates the key from MYFINANCE_BOOTSTRAP_SUB exactly as a
+    login will: so signing in as that person unlocks the migrated data. And the
+    DB plus the KEK are not enough: another `sub` does not open it."""
+    url, _ = legacy_db
+    assert _run_schema(url, **AUTH_ENV).returncode == 0
+    eng = create_engine(url)
+    from src.crypto.core import DecryptionError
+
+    ring = _boot_ring(eng)
+    assert ring.user_id
+    with pytest.raises(DecryptionError):
+        _boot_ring(eng, secret="some-other-sub")
+    eng.dispose()
 
 
 # --- the migration -------------------------------------------------------------
@@ -208,18 +370,14 @@ def test_existing_rows_are_assigned_to_the_bootstrap_user(legacy_db):
             owners = {str(r[0]).replace("-", "") for r in c.execute(text(f'SELECT DISTINCT user_id FROM "{name}"'))}
             assert owners == {str(owner_id).replace("-", "")}, name
 
-    # ... and the data came across intact.
-    meta = MetaData()
-    pos = Table("positions", meta, autoload_with=eng)
+    # ... and the data came across intact: decrypted with the owner's key it is
+    # exactly what was there, with its Python types (Decimal, date, parsed JSON).
+    ring = _boot_ring(eng)
     with eng.connect() as c:
-        rows = c.execute(select(pos.c.id, pos.c.asset_id, pos.c.amount, pos.c.flow_in_base).order_by(pos.c.id)).all()
-    assert [(r.id, r.asset_id, float(r.amount)) for r in rows] == [(1, 1, 1000.0), (2, 1, 1500.0), (3, 2, 10.0)]
-    assert float(rows[1].flow_in_base) == 500.0
-    with eng.connect() as c:
-        assert c.execute(text("SELECT value FROM settings WHERE key = 'base_currency'")).scalar() == "EUR"
         assert c.execute(text("SELECT count(*) FROM settings WHERE key = 'terms_accepted'")).scalar() == 0
         assert c.execute(text("SELECT terms_accepted_at FROM users")).scalar() is not None
     eng.dispose()
+    _read_as_owner(url, ring, lambda db: _assert_dummy_rows_intact(db))
 
 
 def test_schema_after_migration_has_the_new_constraints(legacy_db):
@@ -246,9 +404,12 @@ def test_schema_after_migration_has_the_new_constraints(legacy_db):
     assert ("user_id", "source_id", "month") in uniques("income_entries")
     assert ("source_id", "month") not in uniques("income_entries")
 
-    # The old indexes survived the rebuild (SQLite recreates every table).
+    # The user_id index survived the rebuild (SQLite recreates every table); the
+    # indexes on columns that are ciphertext now (category, profile) are gone -
+    # an index over random bytes is a cost and no use.
     asset_indexes = {i["name"] for i in insp.get_indexes("assets")}
-    assert {"ix_assets_category", "ix_assets_profile", "ix_assets_user_id"} <= asset_indexes
+    assert "ix_assets_user_id" in asset_indexes
+    assert not {"ix_assets_category", "ix_assets_profile"} & asset_indexes
 
     # Per-user uniqueness works in practice: a second user may have the same
     # month, the same user may not.
@@ -261,16 +422,22 @@ def test_schema_after_migration_has_the_new_constraints(legacy_db):
         )
         other_param = other if dialect == "postgresql" else other.hex
         owner_param = owner if dialect == "postgresql" else str(owner)
-        ins = text(
-            "INSERT INTO monthly_records (id, user_id, month, income, actual_spent, currency, notes, updated_at) "
-            "VALUES (:id, :u, '2026-03', 1, 1, 'PLN', '', :t)"
-        )
-        conn.execute(ins.bindparams(id=100, u=other_param, t=datetime(2026, 1, 1)))
+        from src.crypto.core import KeyRing, new_dek
+
+        ring = KeyRing(other, new_dek())
+
+        def record(row_id):
+            _insert_sealed(
+                conn, ring, "monthly_records", id=row_id, user_id=other, month="2026-03",
+                income=1, actual_spent=1, currency="PLN", notes="", updated_at=datetime(2026, 1, 1),
+            )
+
+        record(100)
     from sqlalchemy.exc import IntegrityError
 
     with pytest.raises(IntegrityError):
         with eng.begin() as conn:
-            conn.execute(ins.bindparams(id=101, u=other_param, t=datetime(2026, 1, 1)))
+            record(101)
     eng.dispose()
 
 
@@ -329,18 +496,21 @@ def test_the_migrated_database_is_served_to_the_bootstrap_user_only(legacy_db):
     url, _ = legacy_db
     assert _run_schema(url, **AUTH_ENV).returncode == 0
 
+    from src.database import KEYRING_KEY, KeyedSession
     from src.models import Asset, Expense, Position, Setting
-    from src.models.user import User
+    from src.crypto.core import KeyRing, new_dek
 
     eng = create_engine(url)
-    with Session(eng) as plain:
-        owner = plain.execute(select(User)).scalar_one()
-    with Session(eng, info={"user_id": owner.id}) as mine:
+    ring = _boot_ring(eng)
+    with KeyedSession(eng, info={"user_id": ring.user_id, KEYRING_KEY: ring}) as mine:
         assert {a.name for a in mine.query(Asset).all()} == {"Cash", "Gold"}
         assert mine.query(func.count(Position.id)).scalar() == 3
         assert mine.query(Setting).filter(Setting.key == "base_currency").one().value == "EUR"
         assert mine.query(func.count(Expense.id)).scalar() == 2
-    with Session(eng, info={"user_id": uuid.uuid4()}) as stranger:
+    stranger_id = uuid.uuid4()
+    with KeyedSession(
+        eng, info={"user_id": stranger_id, KEYRING_KEY: KeyRing(stranger_id, new_dek())}
+    ) as stranger:
         assert stranger.query(Asset).all() == []
         assert stranger.query(Setting).all() == []
     eng.dispose()
@@ -351,15 +521,21 @@ def test_a_second_run_changes_nothing(legacy_db):
     assert _run_schema(url, **AUTH_ENV).returncode == 0
     eng = create_engine(url)
     snapshot = _counts(eng)
+    cells = _encrypted_cells(eng)
     with eng.connect() as c:
-        users_before = c.execute(text("SELECT id, subject_hash FROM users")).all()
+        users_before = c.execute(text(
+            "SELECT id, subject_hash, key_salt, wrapped_dek, kek_version FROM users")).all()
 
     again = _run_schema(url, **AUTH_ENV)
     assert again.returncode == 0, again.stdout + again.stderr
-    assert "ownership" not in again.stdout
+    assert "ownership" not in again.stdout and "encrypted:" not in again.stdout
     assert _counts(eng) == snapshot
+    # Byte-for-byte the same: a second run did not re-encrypt anything (a fresh
+    # nonce would change every cell) and did not touch the user's key.
+    assert _encrypted_cells(eng) == cells
     with eng.connect() as c:
-        assert c.execute(text("SELECT id, subject_hash FROM users")).all() == users_before
+        assert c.execute(text(
+            "SELECT id, subject_hash, key_salt, wrapped_dek, kek_version FROM users")).all() == users_before
     eng.dispose()
 
 
@@ -389,9 +565,218 @@ def test_with_auth_off_existing_data_goes_to_the_local_user(legacy_db):
     result = _run_schema(url)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "local development user" in result.stdout
+    assert "development KEK" in result.stdout  # said out loud: public key, protects nothing
     eng = create_engine(url)
     with eng.connect() as c:
         assert c.execute(text("SELECT subject_hash FROM users")).scalar() == identity.local_subject_hash()
+    # Encrypted all the same, under the local user's key (constant secret, public KEK).
+    from src.crypto.core import LOCAL_SECRET, DecryptionError
+
+    ring = _boot_ring(eng, secret=LOCAL_SECRET, keks=None)
+    assert ring.user_id == identity.LOCAL_USER_ID
+    assert all(v is None or bytes(v)[:1] == b"\x01" for _, _, v in _encrypted_cells(eng))
+    _read_as_owner(url, ring, _assert_dummy_rows_intact)
+    eng.dispose()
+
+
+# --- plaintext that must not be encrypted under a guess ---------------------------------------------------
+
+_UP_TO_ENCRYPTION = """
+from src import auth, schema
+from src.database import Base, engine
+auth.validate_config()
+Base.metadata.create_all(bind=engine)
+schema.migrate()
+schema.record_key_checks()
+schema.migrate_ownership()
+schema.migrate_integrity()
+schema.move_terms_to_users()
+"""
+
+
+def _phase_two(url: str, **env) -> None:
+    """Bring a legacy database to how the previous release left it: ownership
+    done, every value still plaintext. (The schema job minus its last data step.)"""
+    e = {k: v for k, v in os.environ.items() if not k.startswith("MYFINANCE_")}
+    e.update(MYFINANCE_DATABASE_URL=url, MYFINANCE_DATA_DIR="/tmp", **(env or AUTH_ENV))
+    r = subprocess.run([sys.executable, "-c", _UP_TO_ENCRYPTION], cwd=str(BACKEND), env=e, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def _is_plain(eng) -> bool:
+    from sqlalchemy.types import _Binary
+
+    return not any(
+        isinstance(c["type"], _Binary)
+        for c in inspect(eng).get_columns("positions") if c["name"] == "amount"
+    )
+
+
+def test_plaintext_rows_of_anyone_but_the_bootstrap_user_stop_the_migration_and_are_named(legacy_db):
+    url, dialect = legacy_db
+    _phase_two(url)
+    eng = create_engine(url)
+    stranger = uuid.uuid4()
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO users (id, subject_hash, created_at) VALUES (:i, :h, :t)"),
+                  {"i": stranger if dialect == "postgresql" else stranger.hex, "h": "7" * 64, "t": datetime(2026, 1, 1)})
+        c.execute(text(
+            "INSERT INTO assets (id, user_id, name, kind, category, interest_basis, profile, icon, units, wrapper, created_at) "
+            "VALUES (70, :u, 'Strangers asset', 'currency', 'Cash', '', 'safe', '', '', '', :t)"),
+            {"u": stranger if dialect == "postgresql" else stranger.hex, "t": datetime(2026, 1, 1)})
+    before = _counts(eng)
+    assert _is_plain(eng)
+
+    result = _run_schema(url, **AUTH_ENV)
+    assert result.returncode == 1, result.stdout + result.stderr
+    # Named: whose rows, and where. Not guessed, not skipped.
+    assert str(stranger) in result.stderr and "assets=1" in result.stderr
+    assert "other than the bootstrap user" in result.stderr
+    # ... and nothing was changed: still plaintext, still the same rows, no key made.
+    assert _is_plain(eng) and _counts(eng) == before
+    with eng.connect() as c:
+        assert c.execute(text("SELECT count(*) FROM users WHERE wrapped_dek IS NOT NULL")).scalar() == 0
+        assert c.execute(text("SELECT name FROM assets WHERE id = 70")).scalar() == "Strangers asset"
+    eng.dispose()
+
+
+def test_a_stranger_with_no_data_is_left_alone_and_gets_a_key_at_their_first_sign_in(legacy_db):
+    url, dialect = legacy_db
+    _phase_two(url)
+    eng = create_engine(url)
+    idle = uuid.uuid4()
+    with eng.begin() as c:
+        c.execute(text("INSERT INTO users (id, subject_hash, created_at) VALUES (:i, :h, :t)"),
+                  {"i": idle if dialect == "postgresql" else idle.hex, "h": "6" * 64, "t": datetime(2026, 1, 1)})
+    result = _run_schema(url, **AUTH_ENV)
+    assert result.returncode == 0, result.stdout + result.stderr
+    with eng.connect() as c:
+        keyed = dict(c.execute(text("SELECT subject_hash, wrapped_dek IS NOT NULL FROM users")).all())
+    assert keyed["6" * 64] in (0, False) and keyed[identity.subject_hash(ISSUER, BOOT_SUB, pepper=PEPPER)] in (1, True)
+    eng.dispose()
+
+
+def test_a_wrong_bootstrap_sub_stops_the_migration_untouched(legacy_db):
+    url, _ = legacy_db
+    _phase_two(url)
+    eng = create_engine(url)
+    before = _counts(eng)
+    result = _run_schema(url, **{**AUTH_ENV, "MYFINANCE_BOOTSTRAP_SUB": "somebody-else"})
+    assert result.returncode == 1 and "bootstrap identity" in result.stderr
+    assert _is_plain(eng) and _counts(eng) == before
+    eng.dispose()
+
+
+def test_an_existing_key_that_the_bootstrap_sub_does_not_open_stops_the_migration(legacy_db):
+    """The user already has a data key (so a sign-in has been through) but the
+    configured sub is not the one it was wrapped with: encrypting more data under a
+    different key would split their data across two keys. Refused, by name."""
+    url, dialect = legacy_db
+    _phase_two(url)
+    eng = create_engine(url)
+    from src.crypto.core import new_dek, new_salt, parse_keks, wrap_dek
+
+    with eng.connect() as c:
+        uid = c.execute(text("SELECT id FROM users")).scalar()
+    keks = parse_keks(AUTH_ENV["MYFINANCE_KEKS"])
+    salt = new_salt()
+    wrapped = wrap_dek(new_dek(), user_id=uuid.UUID(str(uid)), kek=keks.current_key, kek_version=2, salt=salt, secret="another-sub")
+    with eng.begin() as c:
+        c.execute(text("UPDATE users SET key_salt = :s, wrapped_dek = :w, kek_version = 2"), {"s": salt, "w": wrapped})
+    result = _run_schema(url, **AUTH_ENV)
+    assert result.returncode == 1 and "does not open" in result.stderr
+    assert _is_plain(eng)
+    eng.dispose()
+
+
+def test_a_wrong_kek_stops_the_schema_job_before_it_writes_anything(legacy_db):
+    url, _ = legacy_db
+    assert _run_schema(url, **AUTH_ENV).returncode == 0
+    eng = create_engine(url)
+    cells = _encrypted_cells(eng)
+    users = None
+    with eng.connect() as c:
+        users = c.execute(text("SELECT id, subject_hash, wrapped_dek FROM users")).all()
+    import base64
+
+    wrong = base64.urlsafe_b64encode(os.urandom(32)).decode()
+    result = _run_schema(url, **{**AUTH_ENV, "MYFINANCE_KEKS": f"2:{wrong}"})
+    assert result.returncode == 1
+    assert "KEK version 2 does not open the key-check value" in result.stderr
+    assert "Nothing has been written" in result.stderr
+    assert _encrypted_cells(eng) == cells
+    with eng.connect() as c:
+        assert c.execute(text("SELECT id, subject_hash, wrapped_dek FROM users")).all() == users
+    eng.dispose()
+
+
+def test_a_database_with_users_on_a_kek_that_is_no_longer_listed_stops_the_schema_job(legacy_db):
+    url, _ = legacy_db
+    assert _run_schema(url, **AUTH_ENV).returncode == 0
+    from tests.fake_oidc import KEK_V3
+
+    result = _run_schema(url, **{**AUTH_ENV, "MYFINANCE_KEKS": f"3:{KEK_V3}"})
+    assert result.returncode == 1 and "v2 (1 user)" in result.stderr
+
+
+def test_a_failure_part_way_through_encrypting_leaves_the_plaintext_intact(legacy_db, monkeypatch):
+    """Transactional on both databases: an error after some tables were converted
+    rolls all of it back - old types, old plaintext, no key stored."""
+    url, _ = legacy_db
+    _phase_two(url)
+    eng = create_engine(url)
+    before = _counts(eng)
+
+    from src import encmigrate
+    from src.config import settings
+
+    for name, value in (("auth_issuer", ISSUER), ("auth_audience", AUDIENCE), ("auth_require_at_jwt_typ", True),
+                        ("subject_pepper", PEPPER), ("bootstrap_sub", BOOT_SUB),
+                        ("keks", AUTH_ENV["MYFINANCE_KEKS"]), ("contact_key", CONTACT_KEY)):
+        monkeypatch.setattr(settings, name, value)
+    real = encmigrate._convert_rows
+    calls = {"n": 0}
+
+    def flaky(p, rows, keys):
+        calls["n"] += 1
+        if calls["n"] == 4:
+            raise RuntimeError("boom")
+        return real(p, rows, keys)
+
+    monkeypatch.setattr(encmigrate, "_convert_rows", flaky)
+    with pytest.raises(RuntimeError, match="boom"):
+        encmigrate.migrate_encryption(eng)
+    assert calls["n"] == 4
+    assert _is_plain(eng) and _counts(eng) == before
+    insp = inspect(eng)
+    assert not [t for t in insp.get_table_names() if t.endswith("__plain")]
+    with eng.connect() as c:
+        assert c.execute(text("SELECT count(*) FROM users WHERE wrapped_dek IS NOT NULL")).scalar() == 0
+        assert c.execute(text("SELECT name FROM assets WHERE id = 1")).scalar() == "Cash"
+    eng.dispose()
+
+    # And the same run, un-sabotaged, then succeeds from that state.
+    monkeypatch.setattr(encmigrate, "_convert_rows", real)
+    result = _run_schema(url, **AUTH_ENV)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_a_key_claim_other_than_sub_needs_its_own_bootstrap_value(legacy_db):
+    url, _ = legacy_db
+    _phase_two(url)
+    env = {**AUTH_ENV, "MYFINANCE_KEY_CLAIM": "uid"}
+    refused = _run_schema(url, **env)
+    assert refused.returncode == 1 and "MYFINANCE_BOOTSTRAP_KEY_SECRET" in refused.stderr
+    ok = _run_schema(url, **env, MYFINANCE_BOOTSTRAP_KEY_SECRET="the-uid-claim-value")
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    assert "the-uid-claim-value" not in ok.stdout + ok.stderr
+    eng = create_engine(url)
+    ring = _boot_ring(eng, secret="the-uid-claim-value")
+    _read_as_owner(url, ring, _assert_dummy_rows_intact)
+    from src.crypto.core import DecryptionError
+
+    with pytest.raises(DecryptionError):
+        _boot_ring(eng, secret=BOOT_SUB)  # the sub is not what unlocks it here
     eng.dispose()
 
 
@@ -403,8 +788,8 @@ def test_an_empty_legacy_database_is_converted_without_inventing_a_user(legacy_d
                      "monthly_records", "insights", "reports", "settings"):
             conn.execute(text(f'DELETE FROM "{name}"'))
     # No data and no bootstrap settings: nothing to ask the operator.
-    result = _run_schema(url, MYFINANCE_AUTH_ISSUER=ISSUER, MYFINANCE_AUTH_AUDIENCE=AUDIENCE,
-                         MYFINANCE_AUTH_REQUIRE_AT_JWT_TYP="true", MYFINANCE_SUBJECT_PEPPER=PEPPER)
+    env = {k: v for k, v in AUTH_ENV.items() if k != "MYFINANCE_BOOTSTRAP_SUB"}
+    result = _run_schema(url, **env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "user_id" in {c["name"] for c in inspect(eng).get_columns("positions")}
     with eng.connect() as c:
@@ -429,7 +814,14 @@ def test_users_table_holds_no_personal_data_columns(tmp_path):
     assert _run_schema(url).returncode == 0
     eng = create_engine(url)
     cols = {c["name"] for c in inspect(eng).get_columns("users")}
-    assert cols == {"id", "subject_hash", "created_at", "terms_version", "terms_accepted_at"}
+    assert cols == {
+        "id", "subject_hash", "created_at", "terms_version", "terms_accepted_at",
+        # per-user encryption: wrapped key and its recovery copy (no name, e-mail or id)
+        "key_salt", "wrapped_dek", "kek_version",
+        "recovery_id", "recovery_salt", "recovery_kdf", "recovery_wrapped_dek", "recovery_verifier",
+        "recovery_created_at", "recovery_confirmed_at", "recovery_failures", "recovery_locked_until",
+        "birth_year",
+    }
     eng.dispose()
 
 
@@ -520,12 +912,16 @@ def _as_phase_one(eng) -> None:
     functions, and plain single-column foreign keys for positions and
     income_entries."""
     with eng.begin() as c:
-        for t in OWNED + ["users"]:
+        for t in OWNED + NEW_OWNED + ["users"]:
             c.execute(text(f'ALTER TABLE "{t}" NO FORCE ROW LEVEL SECURITY'))
             c.execute(text(f'ALTER TABLE "{t}" DISABLE ROW LEVEL SECURITY'))
         for (name, table) in c.execute(text("SELECT policyname, tablename FROM pg_policies")).all():
             c.execute(text(f'DROP POLICY "{name}" ON "{table}"'))
-        c.execute(text("DROP FUNCTION public.myfinance_get_or_create_user(text, uuid)"))
+        c.execute(text("DROP FUNCTION public.myfinance_get_or_create_user(text, uuid, bytea, bytea, integer)"))
+        for name, args in (("myfinance_recovery_lookup", "text"),
+                           ("myfinance_recover_account", "text, bytea, bytea, bytea, integer"),
+                           ("myfinance_contact_unsubscribe", "bytea")):
+            c.execute(text(f"DROP FUNCTION public.{name}({args})"))
         c.execute(text("DROP FUNCTION public.myfinance_sweep_interrupted_jobs()"))
         c.execute(text("ALTER TABLE positions DROP CONSTRAINT fk_positions_user_asset"))
         c.execute(text("ALTER TABLE income_entries DROP CONSTRAINT fk_income_entries_user_source"))
@@ -560,8 +956,8 @@ def test_the_schema_job_installs_row_security_and_a_second_run_changes_nothing(l
     assert "row-level security" in first.stdout
     eng = create_engine(url)
     cat = _catalog(eng)
-    assert {p[0] for p in cat["policies"]} == set(OWNED) | {"users"}
-    assert all(f[1] and f[2] for f in cat["flags"] if f[0] in OWNED + ["users"])
+    assert {p[0] for p in cat["policies"]} == set(OWNED) | set(NEW_OWNED) | {"users"}
+    assert all(f[1] and f[2] for f in cat["flags"] if f[0] in OWNED + NEW_OWNED + ["users"])
     names = {c[1] for c in cat["constraints"]}
     assert {"fk_positions_user_asset", "fk_income_entries_user_source"} <= names
     # The single-column foreign keys the composite ones replace are gone.
@@ -586,12 +982,15 @@ def test_a_phase_one_database_is_upgraded_and_ends_up_like_a_fresh_one(legacy_db
         other = uuid.uuid4()
         c.execute(text("INSERT INTO users (id, subject_hash, created_at) VALUES (:i, :h, now())"),
                   {"i": other, "h": "9" * 64})
-        c.execute(text(
-            "INSERT INTO assets (id, user_id, name, kind, category, interest_basis, profile, icon, units, wrapper, created_at) "
-            "VALUES (50, :u, 'Other cash', 'currency', 'Cash', '', 'safe', '', '', '', now())"), {"u": other})
-        c.execute(text(
-            "INSERT INTO positions (id, user_id, asset_id, amount, currency, value_in_base, price_used, base_currency, notes, timestamp) "
-            "VALUES (50, :u, 50, 5, 'PLN', 5, 1, 'PLN', '', now())"), {"u": other})
+        from src.crypto.core import KeyRing, new_dek
+
+        ring = KeyRing(other, new_dek())
+        _insert_sealed(c, ring, "assets", id=50, user_id=other, name="Other cash", kind="currency",
+                       category="Cash", interest_basis="", profile="safe", icon="", units="", wrapper="",
+                       created_at=datetime(2026, 1, 1))
+        _insert_sealed(c, ring, "positions", id=50, user_id=other, asset_id=50, amount=5, currency="PLN",
+                       value_in_base=5, price_used=1, base_currency="PLN", notes="",
+                       timestamp=datetime(2026, 1, 1))
     before = _counts(eng)
     pre = _catalog(eng)
     assert pre["policies"] == [] and pre["functions"] == []
@@ -636,9 +1035,11 @@ def test_rows_that_cross_users_stop_the_upgrade_before_anything_changes(legacy_d
         c.execute(text("INSERT INTO users (id, subject_hash, created_at) VALUES (:i, :h, now())"),
                   {"i": other, "h": "8" * 64})
         # A position of the second user that points at the first user's asset.
-        c.execute(text(
-            "INSERT INTO positions (id, user_id, asset_id, amount, currency, value_in_base, price_used, base_currency, notes, timestamp) "
-            "VALUES (60, :u, 1, 5, 'PLN', 5, 1, 'PLN', '', now())"), {"u": other})
+        from src.crypto.core import KeyRing, new_dek
+
+        _insert_sealed(c, KeyRing(other, new_dek()), "positions", id=60, user_id=other, asset_id=1,
+                       amount=5, currency="PLN", value_in_base=5, price_used=1, base_currency="PLN",
+                       notes="", timestamp=datetime(2026, 1, 1))
     pre = _catalog(eng)
     result = _run_schema(url, **AUTH_ENV)
     assert result.returncode == 1
@@ -671,6 +1072,8 @@ def test_an_old_database_is_served_to_the_runtime_role_under_row_security(legacy
         with Session(rt, info={"user_id": owner}) as mine:
             assert mine.execute(text("SELECT count(*) FROM positions")).scalar() == 3
             assert mine.execute(text("SELECT count(*) FROM settings")).scalar() == 3
+            # The runtime role can see its own rows - and they are ciphertext.
+            assert mine.execute(text("SELECT amount FROM positions ORDER BY id LIMIT 1")).scalar()[:1] == b"\x01"
         with Session(rt, info={"user_id": uuid.uuid4()}) as stranger:
             assert stranger.execute(text("SELECT count(*) FROM positions")).scalar() == 0
         with Session(rt) as nobody:

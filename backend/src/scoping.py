@@ -11,6 +11,11 @@ then on:
 - every new row is stamped with that user's id when it is flushed, and a row
   that already names a different user is refused.
 
+A session also carries its user's *key ring* (`session.info["keyring"]`, see
+database.KeyedSession and crypto/): the encrypted columns read and write
+transparently under it, and a session opened without one - the system session,
+a bare `SessionLocal()` - raises `KeysUnavailable` the moment it touches one.
+
 A session opened for *nobody* fails closed: touching an owned table raises
 `UnscopedAccess` instead of quietly returning everyone's rows. The few places
 that really do work across users (the schema job, the startup sweep of
@@ -45,7 +50,8 @@ from sqlalchemy.sql.visitors import iterate
 from sqlalchemy.orm import ORMExecuteState, Session, with_loader_criteria
 
 from . import rls
-from .database import SessionLocal
+from .crypto.core import KeyRing
+from .database import KEYRING_KEY, SessionLocal
 from .models.user import Owned
 
 USER_KEY = "user_id"
@@ -56,11 +62,22 @@ class UnscopedAccess(RuntimeError):
     """A session with no user touched a table that belongs to users."""
 
 
-def open_session(user_id: uuid.UUID) -> Session:
-    """A session confined to `user_id`'s rows."""
+def open_session(user_id: uuid.UUID, keyring: KeyRing | None = None) -> Session:
+    """A session confined to `user_id`'s rows, decrypting them with `keyring`.
+
+    Without a key ring the session can still read and write the plaintext
+    columns (ids, statuses, dates and months kept in the clear), but any
+    encrypted column raises `crypto.core.KeysUnavailable`: nothing here falls
+    back to "no encryption".
+    """
     if not isinstance(user_id, uuid.UUID):
         raise TypeError("open_session needs the user's UUID")
-    return SessionLocal(info={USER_KEY: user_id})
+    if keyring is not None and keyring.user_id != user_id:
+        raise ValueError("the key ring belongs to a different user than the session")
+    info = {USER_KEY: user_id}
+    if keyring is not None:
+        info[KEYRING_KEY] = keyring
+    return SessionLocal(info=info)
 
 
 def open_system_session() -> Session:
@@ -68,6 +85,10 @@ def open_system_session() -> Session:
 
     For the schema job (and tests that inspect across users) only. Rows it
     creates must name their owner themselves.
+
+    It holds no key, so it cannot read or write an encrypted column - which is
+    what keeps the cross-user jobs (the startup sweep, the schema job) honest:
+    they work on ids, statuses and key material only.
 
     This lifts the ORM's filtering and nothing else. On PostgreSQL it does not
     set the row-level-security variable, so it sees every user's rows only when

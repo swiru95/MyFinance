@@ -179,6 +179,29 @@ export interface Settings {
   default_timezone: string;
   features: FeatureFlags;
   terms: TermsState;
+  /** Optional, stored encrypted; only for age-based analysis. */
+  birth_year: number | null;
+}
+
+/** GET /api/recovery/status - answers even when the account is locked. */
+export interface RecoveryStatus {
+  locked: boolean;
+  configured: boolean;
+  confirmed: boolean;
+  created_at: string | null;
+}
+
+/** POST /api/recovery/restore. */
+export interface RecoveryRestoreResult {
+  restored: boolean;
+  result: "recovered" | "rewrapped";
+}
+
+/** GET/POST /api/contacts[/opt-in|/opt-out]. The browser never sends an
+ *  address; the server reads it from the sign-in token. */
+export interface ContactState {
+  opted_in: boolean;
+  can_opt_in: boolean;
 }
 
 export type ExpensePeriod = "monthly" | "quarterly" | "yearly" | "once";

@@ -4,6 +4,7 @@ The engine in src/database.py is built from settings at import time, so the
 URL has to be in the environment before anything under src is imported -
 which is why it is set at module level rather than inside a fixture.
 """
+import base64
 import os
 import tempfile
 from datetime import date
@@ -26,12 +27,17 @@ if not TEST_OWNER_URL:
     # That one role owns the tables, so the startup check (rightly) objects.
     os.environ["MYFINANCE_RLS_ROLE_CHECK"] = "false"
 os.environ["MYFINANCE_DATA_DIR"] = _TMP
+# The recovery code's scrypt cost: the minimum the code accepts, so tests that
+# make several of them stay fast. Production's default is 2**15.
+os.environ["MYFINANCE_RECOVERY_SCRYPT_N"] = "1024"
 # Never inherit a real tenant or model server from the developer's shell.
 for _var in ("MYFINANCE_AUTH_TENANT_ID", "MYFINANCE_AUTH_CLIENT_ID",
              "MYFINANCE_AUTH_ISSUER", "MYFINANCE_AUTH_AUDIENCE",
              "MYFINANCE_AUTH_API_SCOPE", "MYFINANCE_AUTH_REQUIRED_ROLE",
              "MYFINANCE_SUBJECT_PEPPER", "MYFINANCE_BOOTSTRAP_ISS",
-             "MYFINANCE_BOOTSTRAP_SUB",
+             "MYFINANCE_BOOTSTRAP_SUB", "MYFINANCE_BOOTSTRAP_KEY_SECRET",
+             "MYFINANCE_KEKS", "MYFINANCE_KEK_CURRENT_VERSION", "MYFINANCE_KEY_CLAIM",
+             "MYFINANCE_CONTACT_KEY",
              "MYFINANCE_LLM_BASE_URL", "MYFINANCE_LLM_API_KEY"):
     os.environ.pop(_var, None)
 
@@ -68,6 +74,56 @@ def offline_prices(monkeypatch):
 
 
 _owner_engine = None
+
+# Key rings of the users a test has made by hand (make_user), so a test can open
+# a session for any of them the way the application would, with that user's key.
+_RINGS: dict = {}
+
+
+def make_user(subject_hash: str, secret: str | None = None, *, provision: bool = False):
+    """Create (or find) a user as a first sign-in would, remembering their key
+    ring. `secret` is their token claim; it defaults to the hash, which is as
+    good as any value for a test."""
+    from src.services.users import login
+
+    account = login(subject_hash, secret or subject_hash, provision=provision)
+    _RINGS[account.user_id] = account.keyring
+    return account.user_id
+
+
+def account_for(sub: str, *, provision: bool = False):
+    """Sign `sub` in the way a request does (the key secret is the `sub` itself,
+    as by default), returning the Account. Creates the user if new."""
+    from src import identity
+    from src.services.users import login
+    from tests.fake_oidc import ISSUER
+
+    return login(identity.subject_hash(ISSUER, sub), sub, provision=provision)
+
+
+def ring_for(sub: str):
+    """The key ring of the user whose token carries `sub`: unwrapped from the
+    database exactly as their own sign-in would, so a test can read their
+    encrypted rows as they could."""
+    account = account_for(sub)
+    assert account.keyring is not None, "that sign-in does not unlock the account"
+    return account.keyring
+
+
+def raw(sql: str, **params):
+    """Rows as the database holds them: owner connection, no key, no type processing."""
+    from sqlalchemy import text
+
+    with owner_engine().connect() as conn:
+        return [tuple(r) for r in conn.execute(text(sql), params)]
+
+
+def session_for(user_id):
+    """A session scoped to `user_id` and carrying their key ring, if the test
+    made them with make_user (or they are the local user of the `db` fixture)."""
+    from src.scoping import open_session
+
+    return open_session(user_id, _RINGS.get(user_id))
 
 
 def owner_engine():
@@ -111,9 +167,12 @@ def create_schema() -> None:
     PostgreSQL: row-level security, and the runtime role's grants."""
     from src import schema
     from src.database import Base, engine
+    from src.services import keys
 
     owner = owner_engine()
     Base.metadata.create_all(bind=owner)
+    with owner.begin() as conn:
+        keys.ensure_key_check(conn)
     if owner.dialect.name == "postgresql":
         schema.secure_postgresql(owner)
         if TEST_OWNER_URL:
@@ -139,13 +198,17 @@ def db():
     from src.database import Base
     from src.models.settings import Setting
     from src.scoping import open_session
-    from src.services.users import get_or_create_local_user
+    from src.services.users import local_account
 
     create_schema()
     # The session is the fixed local user's, which is who the `client` fixture
     # (authentication off) is served as - so rows a test adds here are the rows
-    # its API calls see. No default asset types: these tests start empty.
-    session = open_session(get_or_create_local_user(provision=False))
+    # its API calls see. No default asset types: these tests start empty. It
+    # carries that user's key ring, so it reads and writes the encrypted columns
+    # exactly as a request would.
+    account = local_account(provision=False)
+    _RINGS[account.user_id] = account.keyring
+    session = open_session(account.user_id, account.keyring)
     session.add(Setting(
         key="features",
         value=json.dumps({"portfolio": True, "fire": True, "tax": True, "insights": True}),
@@ -155,6 +218,7 @@ def db():
         yield session
     finally:
         session.close()
+        _RINGS.clear()
         Base.metadata.drop_all(bind=owner_engine())
 
 
@@ -171,6 +235,28 @@ def client(db):
 
 # --- Authentication on, against a fake OIDC issuer ---------------------------
 
+def enable_encryption(monkeypatch, keks: str | None = None) -> None:
+    """What authentication being on requires (auth.validate_config): a KEK and a
+    contact key. Version 2 is current; the development key's version 1, which
+    `db` has already used for the local user, stays listed as an old version
+    would be during a rotation. Also records the key-check values, as the schema
+    job would."""
+    from src.config import settings
+    from src.crypto.core import _DEV_KEK
+    from src.services import keys
+    from tests.fake_oidc import CONTACT_KEY, KEKS
+
+    for name, value in (
+        ("keks", keks or f"{KEKS},1:{base64.urlsafe_b64encode(_DEV_KEK).decode()}"),
+        ("kek_current_version", None),
+        ("key_claim", "sub"),
+        ("contact_key", CONTACT_KEY),
+    ):
+        monkeypatch.setattr(settings, name, value)
+    with owner_engine().begin() as conn:
+        keys.ensure_key_check(conn)
+
+
 @pytest.fixture
 def idp(monkeypatch, db):
     """Authentication enabled for a generic OIDC issuer, served by FakeIdP.
@@ -182,6 +268,7 @@ def idp(monkeypatch, db):
     """
     from src import auth
     from src.config import settings
+    from src.crypto.core import _DEV_KEK
     from tests.fake_oidc import AUDIENCE, ISSUER, PEPPER, FakeIdP
 
     fake = FakeIdP()
@@ -198,6 +285,7 @@ def idp(monkeypatch, db):
         ("subject_pepper", PEPPER),
     ):
         monkeypatch.setattr(settings, name, value)
+    enable_encryption(monkeypatch)
     monkeypatch.setattr(auth, "_fetch_json", fake.fetch)
     auth.reset_key_cache()
     yield fake

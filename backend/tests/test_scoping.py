@@ -10,20 +10,21 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import aliased
 
 from src.database import Base, SessionLocal
+from src.crypto.core import KeysUnavailable
 from src.models import (
     Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Owned, Position, Report, Setting, User,
+    UserContact,
 )
 from src.scoping import UnscopedAccess, open_session
-from tests.conftest import TEST_OWNER_URL, system_session
-from src.services.users import get_or_create_user
+from tests.conftest import TEST_OWNER_URL, make_user, session_for, system_session
 
 
 @pytest.fixture
 def two(db):
     """(alice_id, bob_id) with one asset each, plus their sessions."""
-    a = get_or_create_user("a" * 64, provision=False)
-    b = get_or_create_user("b" * 64, provision=False)
-    sa, sb = open_session(a), open_session(b)
+    a = make_user("a" * 64, provision=False)
+    b = make_user("b" * 64, provision=False)
+    sa, sb = session_for(a), session_for(b)
     sa.add(Asset(name="alice-asset", kind="currency"))
     sb.add(Asset(name="bob-asset", kind="currency"))
     sa.commit()
@@ -39,7 +40,9 @@ def test_every_data_table_is_owned_with_a_not_null_foreign_key_to_users(db):
     tables = {t.name: t for t in Base.metadata.sorted_tables}
     assert "users" in tables
     for name, table in tables.items():
-        if name == "users":
+        # `users` is the people themselves; `key_check` holds one sealed constant
+        # per KEK version and no user data.
+        if name in ("users", "key_check"):
             continue
         col = table.c.user_id
         assert col.nullable is False, name
@@ -49,7 +52,7 @@ def test_every_data_table_is_owned_with_a_not_null_foreign_key_to_users(db):
         assert "users.id" in targets, name
         assert targets - {"users.id"} <= {"assets.user_id", "income_sources.user_id"}, name
     # ...and every one of them carries the mixin that switches scoping on.
-    assert {t.name for t in tables.values()} - {"users"} == {
+    assert {t.name for t in tables.values()} - {"users", "key_check"} == {
         cls.__tablename__ for cls in Owned.__subclasses__()
     }
 
@@ -57,6 +60,7 @@ def test_every_data_table_is_owned_with_a_not_null_foreign_key_to_users(db):
 def test_the_expected_tables_are_owned():
     assert {cls for cls in Owned.__subclasses__()} == {
         Asset, Expense, IncomeEntry, IncomeSource, Insight, MonthlyRecord, Position, Report, Setting,
+        UserContact,
     }
 
 
@@ -80,6 +84,11 @@ def test_unique_constraints_are_per_user():
 def test_user_columns():
     assert {c.name for c in User.__table__.columns} == {
         "id", "subject_hash", "created_at", "terms_version", "terms_accepted_at",
+        # per-user encryption: key material, recovery code and its throttle, birth year
+        "key_salt", "wrapped_dek", "kek_version",
+        "recovery_id", "recovery_salt", "recovery_kdf", "recovery_wrapped_dek",
+        "recovery_verifier", "recovery_created_at", "recovery_confirmed_at",
+        "recovery_failures", "recovery_locked_until", "birth_year",
     }
 
 
@@ -130,7 +139,8 @@ def test_joins_and_aliases_are_scoped(two):
 
 def test_bulk_delete_and_update_only_touch_own_rows(two):
     a, b, sa, sb = two
-    assert sa.query(Asset).filter(Asset.name == "bob-asset").delete() == 0
+    bobs_id = sb.query(Asset).one().id
+    assert sa.query(Asset).filter(Asset.id == bobs_id).delete() == 0
     assert sa.execute(update(Asset).values(name="hacked")).rowcount == 1
     sa.commit()
     assert [x.name for x in sb.query(Asset).all()] == ["bob-asset"]
@@ -158,20 +168,18 @@ def test_adding_a_row_that_names_another_user_is_refused(two):
 
 def test_moving_another_users_row_into_a_session_is_refused(two):
     a, b, sa, sb = two
-    sysdb = system_session()
-    foreign = sysdb.query(Asset).filter(Asset.user_id == b).one()
-    sysdb.expunge(foreign)
-    sysdb.close()
+    # Bob's row, as bob's own session loads it (the system session holds no key
+    # and could not read its encrypted columns).
+    foreign = sb.query(Asset).one()
+    sb.expunge(foreign)
     sa.add(foreign)
     foreign.name = "edited"
     with pytest.raises(UnscopedAccess):
         sa.commit()
     sa.rollback()
 
-    sysdb = system_session()
-    foreign = sysdb.query(Asset).filter(Asset.user_id == b).one()
-    sysdb.expunge(foreign)
-    sysdb.close()
+    foreign = sb.query(Asset).one()
+    sb.expunge(foreign)
     sa.add(foreign)
     sa.delete(foreign)
     with pytest.raises(UnscopedAccess):
@@ -211,10 +219,16 @@ def test_a_session_without_a_user_can_still_read_users(two):
         bare.close()
 
 
-def test_the_system_session_sees_everyone(two):
+def test_the_system_session_sees_everyone_but_cannot_read_them(two):
+    a, b, sa, sb = two
     s = system_session()
     try:
-        assert {x.name for x in s.query(Asset).all()} == {"alice-asset", "bob-asset"}
+        # Every user's rows are visible to it - but it holds no key, so it can
+        # count and list them and cannot read a name.
+        assert s.query(func.count(Asset.id)).scalar() == 2
+        assert {x for (x,) in s.query(Asset.user_id).all()} == {a, b}
+        with pytest.raises(KeysUnavailable):
+            s.query(Asset).all()
     finally:
         s.close()
 

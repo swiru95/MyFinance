@@ -15,9 +15,11 @@ def get_db(principal: Principal = Depends(require_user)) -> Iterator[Session]:
 
     Depending on `require_user` is what makes this safe: there is no way to get
     a session from here without a validated user, and none that is not scoped
-    to that user.
+    to that user. The session carries that user's key ring (unwrapped from the
+    live token for this request), which is what lets the encrypted columns
+    read and write transparently - and nothing else can.
     """
-    db = open_session(principal.user_id)
+    db = open_session(principal.user_id, principal.keyring)
     try:
         yield db
     finally:

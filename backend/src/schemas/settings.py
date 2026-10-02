@@ -45,3 +45,20 @@ class TermsAcceptIn(BaseModel):
     or a raced release can't record acceptance of the wrong text."""
 
     version: int
+
+
+class BirthYearIn(BaseModel):
+    """Body of PUT /api/settings/birth-year. `null` clears it. Optional, and only
+    the year: it is for the age analysis the insights will use, and it is stored
+    encrypted under the user's own key like every other personal figure."""
+
+    birth_year: int | None = Field(None, ge=1900, le=2100)
+
+    @field_validator("birth_year")
+    @classmethod
+    def _plausible(cls, v: int | None) -> int | None:
+        from datetime import date
+
+        if v is not None and v > date.today().year:
+            raise ValueError("birth_year cannot be in the future")
+        return v

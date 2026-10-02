@@ -14,7 +14,7 @@ from ..auth import Principal, require_user
 from ..deps import get_db
 from ..models.user import User
 from ..models.settings import Setting
-from ..schemas.settings import SettingsIn, TermsAcceptIn
+from ..schemas.settings import BirthYearIn, SettingsIn, TermsAcceptIn
 from ..config import BASE_CURRENCIES, DEFAULT_TIMEZONE, TERMS_VERSION, TIMEZONES
 from .helpers import get_features, get_timezone
 
@@ -32,6 +32,11 @@ def _terms_state(db: Session, user_id) -> dict:
     }
 
 
+def _birth_year(db: Session, user_id) -> int | None:
+    user = db.get(User, user_id)
+    return user.birth_year if user else None
+
+
 def _payload(db: Session, user_id) -> dict:
     s = db.query(Setting).filter(Setting.key == "base_currency").first()
     return {
@@ -44,6 +49,8 @@ def _payload(db: Session, user_id) -> dict:
         # has no row, and get_features turns that into "everything off".
         "features": get_features(db).model_dump(),
         "terms": _terms_state(db, user_id),
+        # Optional; encrypted at rest under the user's own key (models/user.py).
+        "birth_year": _birth_year(db, user_id),
     }
 
 
@@ -92,5 +99,18 @@ def accept_terms(
     user.terms_version = payload.version
     # Naive UTC, like every other timestamp column here.
     user.terms_accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    return _payload(db, principal.user_id)
+
+
+@router.put("/birth-year")
+def set_birth_year(
+    payload: BirthYearIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
+    """Set (or clear, with null) the optional birth year."""
+    user = db.get(User, principal.user_id)
+    user.birth_year = payload.birth_year
     db.commit()
     return _payload(db, principal.user_id)
