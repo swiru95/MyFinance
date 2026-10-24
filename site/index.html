@@ -208,6 +208,19 @@
   </div>
 </section>
 
+<section id="why">
+  <div class="wrap">
+    <p class="eyebrow">Why it matters</p>
+    <h2>Poland's money got modern fast. Knowing your own numbers is the next step.</h2>
+    <p class="lead">Polish banking is among the most modern in Europe: BLIK, instant transfers and mobile-first banks are everyday tools. Households are building real wealth too, in IKE and IKZE accounts, PPK, treasury bonds and ETFs. Economic culture grows from understanding what you own, what it costs you to live and how your choices add up over years.</p>
+    <div class="cards">
+      <div class="card"><h3>Wealth worth understanding</h3><p>More people hold savings, retirement wrappers and investments than ever. One clear picture of all of it, in your own currency, beats a dozen apps that each show a slice.</p></div>
+      <div class="card"><h3>Literacy by doing</h3><p>Info tips explain the terms as you go: what KUP is, what a safe withdrawal rate means, why a market drop counts as spending. The tax pages show every step of ZUS, the health contribution and PIT, on your own data rather than a textbook example.</p></div>
+      <div class="card"><h3>A tool, not a salesperson</h3><p>MyFinance shows the arithmetic and leaves the decision to you. It never recommends a product, so what you learn is how money works, not what to buy.</p></div>
+    </div>
+  </div>
+</section>
+
 <section id="start-simple">
   <div class="wrap">
     <div class="feature">
@@ -465,6 +478,18 @@
   </div>
 </section>
 
+<section id="portable">
+  <div class="wrap">
+    <p class="eyebrow">Your data, portable</p>
+    <h2>Take your numbers with you</h2>
+    <div class="cards">
+      <div class="card"><h3>A PDF report for any period</h3><p>Last month, quarter, year to date, twelve months or all time: total value, allocation by class and by tax wrapper, deposits against growth per asset, a line that reconciles start, deposits and growth to today, and the portfolio's XIRR. In English or Polish, with optional commentary from your own model.</p></div>
+      <div class="card"><h3>Export and import a wallet</h3><p>Download your setup (assets in their current state, income sources, recurring expenses and settings) as a versioned JSON file, or import one after a dry-run preview. Import only ever adds: it never overwrites or deletes.</p></div>
+      <div class="card"><h3>Room for the whole household</h3><p>Turn sign-in on and every person gets their own wallet, isolated from the others and encrypted with their own key.</p></div>
+    </div>
+  </div>
+</section>
+
 <section id="security">
   <div class="wrap">
     <p class="eyebrow">Security</p>
@@ -472,11 +497,27 @@
     <div class="grid4">
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-        <h3>Entra ID sign-on</h3><p class="muted">Authorization code with PKCE. There's no client secret in the code, the chart or the image.</p>
+        <h3>Any OIDC sign-on</h3><p class="muted">Authorization code with PKCE and no client secret. Entra ID works out of the box, with an app role that keeps out the rest of the tenant; any other OIDC issuer can be configured. A half-finished setup stops the app instead of leaving the API open.</p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 11l2 2 4-4"/></svg>
-        <h3>Role-gated access</h3><p class="muted">Only accounts assigned the app role get in, not everyone in the tenant.</p>
+        <h3>One wallet per person</h3><p class="muted">Every account sees only its own data. The filter is applied once, in the database session, and a session without a user fails closed.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+        <h3>Row-level security</h3><p class="muted">On PostgreSQL every table has a forced row-level security policy as a second layer, and the app's database role cannot bypass it.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+        <h3>Encrypted per user</h3><p class="muted">Amounts, notes and everything else about your money are stored as AES-256-GCM ciphertext under your own key, so a database dump shows no figures.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        <h3>Recovery code</h3><p class="muted">A one-time code reattaches your encrypted data if your sign-in identity ever changes. Attempts are rate-limited.</p>
+      </div>
+      <div class="card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3.2 4.1M6.6 6.6A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.7 9.7 0 0 0 4.4-1"/></svg>
+        <h3>No personal data</h3><p class="muted">A user is kept as a hash of issuer and subject. Your name and e-mail come from the sign-in token and are never stored or logged.</p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>
@@ -516,12 +557,12 @@
 <span class="p">$</span> docker compose up --build
 
 <span class="c"># open http://localhost:3000</span></pre>
-      <p class="lead" style="margin-top:24px">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away.</p>
+      <p class="lead" style="margin-top:24px">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away. Turn sign-in on and each person gets their own encrypted wallet.</p>
     </div>
     <table class="stack-table">
       <tr><td>Frontend</td><td>Next.js 15, TypeScript, Tailwind, Recharts</td></tr>
       <tr><td>Backend</td><td>Python, FastAPI, SQLAlchemy</td></tr>
-      <tr><td>Database</td><td>SQLite, or PostgreSQL over mutual TLS</td></tr>
+      <tr><td>Database</td><td>SQLite, or PostgreSQL over mutual TLS with row-level security</td></tr>
       <tr><td>Deploy</td><td>Docker Compose, or a Helm chart on Kubernetes with images on GHCR</td></tr>
       <tr><td>Prices</td><td>Public FX, precious-metal and crypto APIs, with offline fallbacks</td></tr>
       <tr><td>Models</td><td>Any OpenAI-compatible server, such as llama-server</td></tr>
