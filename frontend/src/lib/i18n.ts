@@ -10,11 +10,13 @@ import * as recoveryStrings from "./strings/recovery";
 import * as walletStrings from "./strings/wallet";
 
 export type Language = "en" | "pl";
+export type LanguageSetting = Language | "auto";
 
 export const LANGUAGE_KEY = "myfinance-language";
-export const LANGUAGES: Language[] = ["en", "pl"];
+export const LANGUAGES: LanguageSetting[] = ["auto", "pl", "en"];
 
-export const LANGUAGE_NAMES: Record<Language, string> = {
+export const LANGUAGE_NAMES: Record<LanguageSetting, string> = {
+  auto: "Auto",
   en: "English",
   pl: "Polski",
 };
@@ -767,18 +769,26 @@ export function translateData(lang: Language, value: string): string {
   return DATA_DICTS[lang]?.[value] ?? value;
 }
 
-export function readLanguage(): Language {
-  if (typeof window === "undefined") return "en";
+export function readLanguage(): LanguageSetting {
+  if (typeof window === "undefined") return "auto";
   try {
     const stored = window.localStorage.getItem(LANGUAGE_KEY);
-    if (stored === "en" || stored === "pl") return stored;
+    if (stored === "auto" || stored === "en" || stored === "pl") return stored as LanguageSetting;
   } catch {
     // Blocked storage - fall back to the default.
   }
-  return "en";
+  return "auto";
 }
 
-export function storeLanguage(lang: Language): void {
+export function resolveLanguage(setting: LanguageSetting): Language {
+  if (setting === "auto") {
+    const navLang = typeof navigator !== "undefined" ? navigator.language.toLowerCase() : "";
+    return navLang.startsWith("pl") ? "pl" : "en";
+  }
+  return setting;
+}
+
+export function storeLanguage(lang: LanguageSetting): void {
   try {
     window.localStorage.setItem(LANGUAGE_KEY, lang);
   } catch {
@@ -802,8 +812,9 @@ export function translate(
 
 export interface I18nValue {
   lang: Language;
+  langSetting: LanguageSetting;
   locale: string;
-  setLang: (lang: Language) => void;
+  setLang: (lang: LanguageSetting) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
   /** Translate a label that came from the API rather than from a dictionary
    *  key - an asset name or class. Unknown values pass through unchanged. */
@@ -812,6 +823,7 @@ export interface I18nValue {
 
 export const I18nContext = createContext<I18nValue>({
   lang: "en",
+  langSetting: "auto",
   locale: "en-US",
   setLang: () => {},
   t: (key, vars) => translate("en", key, vars),
