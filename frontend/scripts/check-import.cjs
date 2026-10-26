@@ -103,6 +103,49 @@ check("csv: debit and credit columns, own account on every row", () => {
   );
 });
 
+// mBank-like: "#" before every header name, a period line ("01.10.2026;31.10.2026") above the header that has dates
+// but no amount, a trailing ";" on every line.
+const MBANK = [
+  "mBank S.A.;",
+  "#Za okres:;",
+  "01.10.2026;31.10.2026;",
+  "#dla rachunków:;",
+  `eKonto - ${OWN.replace(/ /g, "")};`,
+  "",
+  "#Data operacji;#Opis operacji;#Rachunek;#Kategoria;#Kwota;",
+  '2026-10-03;"ŻABKA Z1234 K.1 WARSZAWA  ZAKUP PRZY UŻYCIU KARTY";"eKonto 1234";"Żywność";-23,47 PLN;',
+  '2026-10-04;"PRZELEW WŁASNY";"eKonto 1234";"Oszczędności";-300,00 PLN;',
+  '2026-10-05;"WPŁATA";"eKonto 1234";"Wpływy";1 000,00 PLN;',
+].join("\r\n");
+
+check("csv: mBank-like, # headers and a period line", () => {
+  const table = csv.readCsv(MBANK);
+  assert.equal(table.header[0], "#Data operacji");
+  assert.equal(table.data.length, 3);
+  const out = csv.applyMapping(csv.guessHeuristic(table), table, "PLN");
+  assert.deepEqual(out.rows.map((r) => [r.date, r.amount]), [["2026-10-03", 23.47], ["2026-10-04", 300]]);
+  assert.match(out.rows[0].note, /^ŻABKA Z1234/);
+});
+
+// PKO-like: the merchant is in unnamed columns with labels; "Opis transakcji" is generic.
+const PKO = [
+  '"Data operacji","Data waluty","Typ transakcji","Kwota","Waluta","Saldo po transakcji","Opis transakcji","","","",""',
+  '"2026-10-06","2026-10-07","Płatność kartą","-49.99","PLN","+7450.01","Tytuł:  000498849 74230786127190310660541 ","Lokalizacja: Adres: SKLEP TESTOWY 12 Miasto: TORUN Kraj: POLSKA","Data wykonania operacji: 2026-10-06","Oryginalna kwota operacji: 49.99","Numer karty: 425125******0000"',
+  '"2026-10-08","2026-10-08","Przelew z rachunku","-120.00","PLN","+7330.01","Rachunek odbiorcy: 00 0000 0000 0000 0000 0000 0000","Nazwa odbiorcy: JAN TESTOWY","Tytuł: Zwrot za bilety","",""',
+].join("\n");
+
+check("csv: PKO-like, merchant from labelled columns", () => {
+  const table = csv.readCsv(PKO);
+  const out = csv.applyMapping(csv.guessHeuristic(table), table, "PLN");
+  assert.deepEqual(
+    out.rows.map((r) => [r.date, r.amount, r.note]),
+    [
+      ["2026-10-06", 49.99, "SKLEP TESTOWY 12 TORUN"],
+      ["2026-10-08", 120, "JAN TESTOWY · Zwrot za bilety"],
+    ],
+  );
+});
+
 // A PDF's text lines (as lib/import/pdfText.ts gives them): a transaction over several lines, a balance after each.
 const PDF = [
   "Lista transakcji",
