@@ -1,17 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MyFinance — self-hosted budget &amp; portfolio tracker</title>
-<meta name="description" content="A self-hosted budget and portfolio tracker built for Poland: what you own in its real unit, what you really spend, and when you could stop working. Self-hosted, open source.">
-<meta property="og:title" content="MyFinance — your whole net worth, one honest number">
-<meta property="og:description" content="A self-hosted budget and portfolio tracker for everything you own, from cash and bonds to precious metals and crypto, with Polish tax and retirement calculators.">
+<title>MyFinance — budżet i portfel inwestycyjny na własnym serwerze</title>
+<meta name="description" content="Budżet i portfel inwestycyjny dla Polski: wszystko, co masz, w prawdziwych jednostkach, ile naprawdę wydajesz i kiedy możesz przestać pracować. Open source na własnym serwerze albo za darmo w becie na mojefinanse.eu.">
+<meta property="og:title" content="MyFinance — cały majątek, jedna uczciwa liczba">
+<meta property="og:description" content="Budżet i portfel inwestycyjny dla wszystkiego, co masz, od gotówki i obligacji po metale szlachetne i krypto, z polskimi kalkulatorami podatkowymi i emerytalnymi. Wersja SaaS: mojefinanse.eu, darmowa beta.">
 <meta property="og:image" content="img/dashboard.webp">
+<meta property="og:locale" content="pl_PL">
+<meta property="og:locale:alternate" content="en_GB">
+<link rel="alternate" hreflang="pl" href="https://demo.mojefinanse.eu/?lang=pl">
+<link rel="alternate" hreflang="en" href="https://demo.mojefinanse.eu/?lang=en">
+<link rel="alternate" hreflang="x-default" href="https://demo.mojefinanse.eu/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235B54E8'/%3E%3Ctext x='32' y='45' font-family='Arial' font-size='36' font-weight='700' fill='white' text-anchor='middle'%3E%E2%82%A3%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script>
+  // Polish is the default. A ?lang= link wins, then the visitor's saved choice, then the first
+  // of Polish or English in the browser's language list. Runs before paint so there is no flash.
+  (function () {
+    var langs = ['pl', 'en'], lang = 'pl', saved = null;
+    var q = new URLSearchParams(location.search).get('lang');
+    try { saved = localStorage.getItem('lang'); } catch (e) {}
+    if (langs.indexOf(q) >= 0) lang = q;
+    else if (langs.indexOf(saved) >= 0) lang = saved;
+    else {
+      var prefs = navigator.languages || [navigator.language || ''];
+      for (var i = 0; i < prefs.length; i++) {
+        var l = String(prefs[i]).slice(0, 2).toLowerCase();
+        if (langs.indexOf(l) >= 0) { lang = l; break; }
+      }
+    }
+    document.documentElement.lang = lang;
+  })();
+</script>
 <style>
   :root {
     --ink: #121629; --ink-2: #1C2140; --ink-line: #2C3150;
@@ -21,6 +45,8 @@
     --head: 'Fraunces', Georgia, serif; --body: 'DM Sans', Arial, sans-serif; --mono: 'JetBrains Mono', 'Courier New', monospace;
     --wrap: 1180px; --gutter: 24px;
   }
+  /* every text comes in a lang="pl" and a lang="en" copy; only the page's language shows */
+  html[lang="pl"] [lang="en"], html[lang="en"] [lang="pl"] { display: none !important; }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 18px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
@@ -48,12 +74,19 @@
   .nav-links { display: flex; gap: 28px; }
   .nav-links a { color: var(--muted-dark); text-decoration: none; font-size: 15px; }
   .nav-links a:hover { color: var(--paper); }
+  .nav-end { display: flex; align-items: center; gap: 10px; }
+  .lang-switch { display: inline-flex; border: 1px solid var(--ink-line); border-radius: 10px; overflow: hidden; }
+  .lang-switch button { background: none; border: 0; color: var(--muted-dark); font: 600 13px var(--body); letter-spacing: 0.06em; padding: 8px 10px; cursor: pointer; }
+  .lang-switch button:hover { color: var(--paper); }
+  .lang-switch button[aria-pressed="true"] { background: var(--ink-2); color: var(--paper); }
   .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 16px; text-decoration: none; transition: transform .15s, background .15s; }
   .btn:hover { transform: translateY(-1px); }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #4B44D6; }
   .btn-ghost { border: 1px solid var(--ink-line); color: var(--paper); }
   .btn-ghost:hover { background: var(--ink-2); }
+  .btn-light { border: 1px solid var(--line); color: var(--ink); }
+  .btn-light:hover { background: var(--paper); }
   nav .btn { padding: 8px 14px; font-size: 14px; }
 
   /* hero */
@@ -63,6 +96,10 @@
   .hero .lead { margin-top: 24px; font-size: 21px; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
   .hero-shot { border-radius: 16px 16px 0 0; border: 1px solid var(--ink-line); border-bottom: 0; box-shadow: 0 40px 120px rgba(0,0,0,.55); overflow: hidden; }
+  .badge { display: inline-block; background: var(--amber); color: var(--ink); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1; padding: 6px 10px; border-radius: 999px; vertical-align: middle; }
+  .beta-note { display: flex; gap: 14px; align-items: flex-start; margin-top: 28px; max-width: 640px; padding: 16px 18px; border: 1px solid var(--ink-line); border-radius: 14px; background: rgba(28, 33, 64, 0.7); color: #d9d7ff; font-size: 17px; }
+  .beta-note .badge { flex: none; margin-top: 3px; }
+  .beta-note a { color: var(--paper); font-weight: 700; }
 
   /* frames */
   .frame { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(18, 22, 41, 0.14); }
@@ -76,6 +113,17 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
   .card h3 { font-family: var(--head); font-weight: 600; font-size: 26px; margin-bottom: 10px; }
   .card p { color: var(--muted); }
+
+  /* editions: hosted beta vs self-hosted */
+  .editions { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+  .editions .card { display: flex; flex-direction: column; padding: 32px; }
+  .editions .card.hosted { border: 2px solid var(--accent); }
+  .editions .card h3 { margin-bottom: 4px; }
+  .editions .card .domain { font-family: var(--mono); font-size: 15px; color: var(--accent); margin-bottom: 8px; }
+  .editions .ticks { margin-bottom: 28px; }
+  .editions .ticks li { color: var(--muted); }
+  .editions .card .btn { margin-top: auto; align-self: flex-start; }
+  .editions-note { margin-top: 20px; font-size: 15px; }
 
   /* feature rows */
   .feature { display: grid; grid-template-columns: 5fr 7fr; gap: 64px; align-items: center; }
@@ -98,7 +146,7 @@
   /* bands */
   .bands { display: grid; gap: 0; margin-top: 24px; }
   .bands div { display: flex; gap: 16px; padding: 12px 0; border-top: 1px solid var(--ink-line); }
-  .bands b { width: 110px; flex: none; }
+  .bands b { width: 130px; flex: none; }
 
   /* statement */
   .statement { background: var(--accent); color: var(--paper); text-align: left; }
@@ -137,6 +185,7 @@
   pre { margin: 24px 0 0; background: var(--ink-2); border: 1px solid var(--ink-line); border-radius: 14px; padding: 22px 24px; overflow-x: auto; font-family: var(--mono); font-size: 16px; line-height: 1.7; color: var(--paper); }
   pre .c { color: var(--muted-dark); }
   pre .p { color: var(--amber); }
+  .qs .lead a { color: var(--paper); font-weight: 700; }
   .stack-table { width: 100%; border-collapse: collapse; font-size: 16px; }
   .stack-table td { padding: 14px 0; border-top: 1px solid var(--ink-line); vertical-align: top; }
   .stack-table td:first-child { width: 120px; font-weight: 700; color: var(--accent-soft); }
@@ -150,7 +199,8 @@
 
   @media (max-width: 960px) {
     section { padding: 80px 0; }
-    .feature, .feature.flip, .qs { grid-template-columns: 1fr; gap: 36px; }
+    .feature, .feature.flip, .qs, .editions { grid-template-columns: 1fr; gap: 36px; }
+    .editions { gap: 20px; }
     .feature.flip .text { order: 0; }
     .feature + .feature { margin-top: 88px; }
     .cards { grid-template-columns: 1fr; }
@@ -162,6 +212,7 @@
     body { font-size: 17px; }
     .pair, .grid4 { grid-template-columns: 1fr; }
     .hero { padding-top: 64px; }
+    .editions .card { padding: 24px; }
   }
 </style>
 </head>
@@ -171,53 +222,97 @@
   <div class="wrap">
     <a class="brand" href="#top"><i>₣</i>MyFinance</a>
     <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#effective">Effective spend</a>
-      <a href="#ai">Insights</a>
-      <a href="#security">Security</a>
-      <a href="#start">Get started</a>
+      <a href="#editions"><span lang="pl">Wersja SaaS</span><span lang="en">Hosted beta</span></a>
+      <a href="#features"><span lang="pl">Funkcje</span><span lang="en">Features</span></a>
+      <a href="#effective"><span lang="pl">Wydatki efektywne</span><span lang="en">Effective spend</span></a>
+      <a href="#ai"><span lang="pl">Analizy</span><span lang="en">Insights</span></a>
+      <a href="#security"><span lang="pl">Bezpieczeństwo</span><span lang="en">Security</span></a>
+      <a href="#start"><span lang="pl">Jak zacząć</span><span lang="en">Get started</span></a>
     </div>
-    <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">GitHub</a>
+    <div class="nav-end">
+      <div class="lang-switch" role="group" aria-label="Język / Language">
+        <button type="button" data-set-lang="pl" aria-pressed="false" title="Polski">PL</button>
+        <button type="button" data-set-lang="en" aria-pressed="false" title="English">EN</button>
+      </div>
+      <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">GitHub</a>
+    </div>
   </div>
 </nav>
 
 <header class="hero dark" id="top">
   <div class="wrap">
     <div>
-      <p class="eyebrow">Public beta · myfinanse.eu</p>
-      <h1>Your whole net worth. One honest number.</h1>
-      <p class="lead">A budget and portfolio tracker for everything you own, from cash and bonds to precious metals and crypto, all valued live in one currency. It works out what you really spend and, with the Polish tax and retirement calculators switched on, when you could afford to stop working. A private AI analyst on your own GPU explains all three.</p>
-      <p class="lead" style="margin-top: 18px; color: #d9d7ff;">This beta is live on myfinanse.eu and is being actively improved before the wider release.</p>
+      <p class="eyebrow"><span lang="pl">Open source · Na własnym serwerze · Dla Polski</span><span lang="en">Open source · Self-hosted · Built for Poland</span></p>
+      <h1><span lang="pl">Cały majątek. Jedna uczciwa liczba.</span><span lang="en">Your whole net worth. One honest number.</span></h1>
+      <p class="lead"><span lang="pl">Budżet i portfel inwestycyjny dla wszystkiego, co masz, od gotówki i obligacji po metale szlachetne i kryptowaluty, wyceniane na bieżąco w jednej walucie. Pokazuje, ile naprawdę wydajesz, a po włączeniu polskich kalkulatorów podatkowych i emerytalnych także to, kiedy możesz przestać pracować. Prywatny analityk AI na Twoim własnym GPU objaśnia wszystkie trzy liczby.</span><span lang="en">A budget and portfolio tracker for everything you own, from cash and bonds to precious metals and crypto, all valued live in one currency. It works out what you really spend and, with the Polish tax and retirement calculators switched on, when you could afford to stop working. A private AI analyst on your own GPU explains all three.</span></p>
+      <p class="beta-note"><span class="badge">Beta</span><span><span lang="pl">Nie chcesz stawiać własnego serwera? Wersja SaaS, <a href="https://mojefinanse.eu">Moje Finanse na mojefinanse.eu</a>, jest już dostępna i w czasie bety jest darmowa.</span><span lang="en">Rather not run your own server? The hosted (SaaS) edition, <a href="https://mojefinanse.eu">Moje Finanse at mojefinanse.eu</a>, is live and free during the beta.</span></span></p>
       <div class="cta">
-        <a class="btn btn-primary" href="#start">Run it in one command</a>
-        <a class="btn btn-ghost" href="https://github.com/swiru95/MyFinance">View on GitHub</a>
+        <a class="btn btn-primary" href="https://mojefinanse.eu"><span lang="pl">Wypróbuj za darmo na mojefinanse.eu</span><span lang="en">Try it free at mojefinanse.eu</span></a>
+        <a class="btn btn-ghost" href="#start"><span lang="pl">Uruchom u siebie jednym poleceniem</span><span lang="en">Run it in one command</span></a>
       </div>
     </div>
-    <div class="hero-shot"><img src="img/dashboard.webp" width="2880" height="1800" alt="MyFinance dashboard: total portfolio, monthly commitment, reserve cover, and live precious-metal and crypto prices"></div>
+    <div class="hero-shot"><img src="img/dashboard.webp" width="2880" height="1800" alt="Pulpit MyFinance: łączna wartość portfela, miesięczne zobowiązania, pokrycie rezerwy oraz bieżące ceny metali szlachetnych i kryptowalut" data-alt-en="MyFinance dashboard: total portfolio, monthly commitment, reserve cover, and live precious-metal and crypto prices"></div>
   </div>
 </header>
 
+<section id="editions">
+  <div class="wrap">
+    <p class="eyebrow"><span lang="pl">Dwie drogi</span><span lang="en">Two ways to use it</span></p>
+    <h2><span lang="pl">W chmurze, bez instalacji, albo na własnym serwerze.</span><span lang="en">In the cloud with nothing to install, or on your own server.</span></h2>
+    <div class="editions">
+      <div class="card hosted">
+        <p><span class="badge"><span lang="pl">Darmowa beta</span><span lang="en">Free beta</span></span></p>
+        <h3 style="margin-top:14px">Moje Finanse</h3>
+        <p class="domain">mojefinanse.eu</p>
+        <p><span lang="pl">Wersja SaaS: zakładasz konto i zaczynasz od razu.</span><span lang="en">The hosted (SaaS) edition: create an account and start straight away.</span></p>
+        <ul class="ticks">
+          <li><span lang="pl">Bez instalacji i bez łączenia z bankiem</span><span lang="en">Nothing to install, and no link to your bank</span></li>
+          <li><span lang="pl">Logowanie e-mailem i hasłem, kontem Google albo Microsoft</span><span lang="en">Sign in with e-mail and password, Google or Microsoft</span></li>
+          <li><span lang="pl">Dane szyfrowane osobnym kluczem Twojego konta i przechowywane w centrum danych w Polsce</span><span lang="en">Data encrypted with your account's own key and stored in a data centre in Poland</span></li>
+          <li><span lang="pl">Eksport do pliku w każdej chwili, usunięcie konta jednym przyciskiem</span><span lang="en">Export to a file at any time, delete the account with one button</span></li>
+          <li><span lang="pl">Bez reklam i skryptów śledzących; w czasie bety za darmo</span><span lang="en">No ads or tracking scripts; free during the beta</span></li>
+        </ul>
+        <a class="btn btn-primary" href="https://mojefinanse.eu"><span lang="pl">Załóż darmowe konto</span><span lang="en">Create a free account</span></a>
+      </div>
+      <div class="card">
+        <p><span class="badge" style="background:var(--line)">Open source</span></p>
+        <h3 style="margin-top:14px">MyFinance</h3>
+        <p class="domain">github.com/swiru95/MyFinance</p>
+        <p><span lang="pl">Wersja self-hosted: cała aplikacja na Twoim serwerze lub klastrze.</span><span lang="en">The self-hosted edition: the whole app on your own server or cluster.</span></p>
+        <ul class="ticks">
+          <li><span lang="pl">Kod otwarty na GitHubie</span><span lang="en">Open source on GitHub</span></li>
+          <li><span lang="pl">Docker Compose albo Helm chart na Kubernetesie</span><span lang="en">Docker Compose, or a Helm chart on Kubernetes</span></li>
+          <li><span lang="pl">Dane finansowe nie opuszczają Twojego serwera</span><span lang="en">Your financial data never leaves your server</span></li>
+          <li><span lang="pl">Analizy AI na Twoim własnym GPU</span><span lang="en">AI insights on your own GPU</span></li>
+        </ul>
+        <a class="btn btn-light" href="#start"><span lang="pl">Jak uruchomić</span><span lang="en">How to run it</span></a>
+      </div>
+    </div>
+    <p class="muted editions-note"><span lang="pl">Wersja SaaS jest w becie i szybko się zmienia, a jej zakres funkcji może różnić się od wersji self-hosted opisanej niżej.</span><span lang="en">The hosted edition is in beta and changes quickly, and its features may differ from the self-hosted edition described below.</span></p>
+  </div>
+</section>
+
 <section id="problem">
   <div class="wrap">
-    <p class="eyebrow">The problem</p>
-    <h2>Your money lives in a dozen places, so three simple questions go unanswered.</h2>
+    <p class="eyebrow"><span lang="pl">Problem</span><span lang="en">The problem</span></p>
+    <h2><span lang="pl">Pieniądze leżą w kilkunastu miejscach, więc trzy proste pytania zostają bez odpowiedzi.</span><span lang="en">Your money lives in a dozen places, so three simple questions go unanswered.</span></h2>
     <div class="cards">
-      <div class="card"><h3>What am I worth today?</h3><p>Cash in the bank, ETFs at a broker, coins on an exchange and gold in a safe, all in different units and currencies.</p></div>
-      <div class="card"><h3>Where did the money go?</h3><p>Budgets only catch what you remember to type in. The rest disappears quietly.</p></div>
-      <div class="card"><h3>How much risk am I taking?</h3><p>A market drawdown and an illiquid watch collection are different risks, and a spreadsheet treats them the same.</p></div>
+      <div class="card"><h3><span lang="pl">Ile jestem dziś wart?</span><span lang="en">What am I worth today?</span></h3><p><span lang="pl">Gotówka w banku, ETF-y u brokera, kryptowaluty na giełdzie i złoto w sejfie, każde w innej jednostce i walucie.</span><span lang="en">Cash in the bank, ETFs at a broker, coins on an exchange and gold in a safe, all in different units and currencies.</span></p></div>
+      <div class="card"><h3><span lang="pl">Gdzie się podziały pieniądze?</span><span lang="en">Where did the money go?</span></h3><p><span lang="pl">Budżet łapie tylko to, co pamiętasz wpisać. Reszta znika po cichu.</span><span lang="en">Budgets only catch what you remember to type in. The rest disappears quietly.</span></p></div>
+      <div class="card"><h3><span lang="pl">Jakie ryzyko podejmuję?</span><span lang="en">How much risk am I taking?</span></h3><p><span lang="pl">Spadek na rynku i niepłynna kolekcja zegarków to różne ryzyka, a arkusz kalkulacyjny traktuje je tak samo.</span><span lang="en">A market drawdown and an illiquid watch collection are different risks, and a spreadsheet treats them the same.</span></p></div>
     </div>
   </div>
 </section>
 
 <section id="why">
   <div class="wrap">
-    <p class="eyebrow">Why it matters</p>
-    <h2>Poland's money got modern fast. Knowing your own numbers is the next step.</h2>
-    <p class="lead">Polish banking is among the most modern in Europe: BLIK, instant transfers and mobile-first banks are everyday tools. Households are building real wealth too, in IKE and IKZE accounts, PPK, treasury bonds and ETFs. Economic culture grows from understanding what you own, what it costs you to live and how your choices add up over years.</p>
+    <p class="eyebrow"><span lang="pl">Dlaczego to ważne</span><span lang="en">Why it matters</span></p>
+    <h2><span lang="pl">Polskie finanse szybko się unowocześniły. Następny krok to znajomość własnych liczb.</span><span lang="en">Poland's money got modern fast. Knowing your own numbers is the next step.</span></h2>
+    <p class="lead"><span lang="pl">Polska bankowość należy do najnowocześniejszych w Europie: BLIK, przelewy natychmiastowe i banki mobilne to codzienność. Gospodarstwa domowe budują też realny majątek: na IKE i IKZE, w PPK, obligacjach skarbowych i ETF-ach. Kultura ekonomiczna rośnie ze zrozumienia, co masz, ile kosztuje Cię życie i jak Twoje wybory sumują się przez lata.</span><span lang="en">Polish banking is among the most modern in Europe: BLIK, instant transfers and mobile-first banks are everyday tools. Households are building real wealth too, in IKE and IKZE accounts, PPK, treasury bonds and ETFs. Economic culture grows from understanding what you own, what it costs you to live and how your choices add up over years.</span></p>
     <div class="cards">
-      <div class="card"><h3>Wealth worth understanding</h3><p>More people hold savings, retirement wrappers and investments than ever. One clear picture of all of it, in your own currency, beats a dozen apps that each show a slice.</p></div>
-      <div class="card"><h3>Literacy by doing</h3><p>Info tips explain the terms as you go: what KUP is, what a safe withdrawal rate means, why a market drop counts as spending. The tax pages show every step of ZUS, the health contribution and PIT, on your own data rather than a textbook example.</p></div>
-      <div class="card"><h3>A tool, not a salesperson</h3><p>MyFinance shows the arithmetic and leaves the decision to you. It never recommends a product, so what you learn is how money works, not what to buy.</p></div>
+      <div class="card"><h3><span lang="pl">Majątek, który warto rozumieć</span><span lang="en">Wealth worth understanding</span></h3><p><span lang="pl">Więcej osób niż kiedykolwiek ma oszczędności, konta emerytalne i inwestycje. Jeden przejrzysty obraz całości, w Twojej walucie, jest lepszy niż kilkanaście aplikacji, z których każda pokazuje wycinek.</span><span lang="en">More people hold savings, retirement wrappers and investments than ever. One clear picture of all of it, in your own currency, beats a dozen apps that each show a slice.</span></p></div>
+      <div class="card"><h3><span lang="pl">Wiedza przez praktykę</span><span lang="en">Literacy by doing</span></h3><p><span lang="pl">Podpowiedzi wyjaśniają pojęcia na bieżąco: czym są KUP, co oznacza bezpieczna stopa wypłaty, dlaczego spadek na rynku liczy się jak wydatek. Strony podatkowe pokazują każdy krok ZUS, składki zdrowotnej i PIT na Twoich danych, a nie na przykładzie z podręcznika.</span><span lang="en">Info tips explain the terms as you go: what KUP is, what a safe withdrawal rate means, why a market drop counts as spending. The tax pages show every step of ZUS, the health contribution and PIT, on your own data rather than a textbook example.</span></p></div>
+      <div class="card"><h3><span lang="pl">Narzędzie, nie sprzedawca</span><span lang="en">A tool, not a salesperson</span></h3><p><span lang="pl">MyFinance pokazuje rachunki, a decyzję zostawia Tobie. Nigdy nie poleca produktu, więc uczysz się, jak działają pieniądze, a nie co kupić.</span><span lang="en">MyFinance shows the arithmetic and leaves the decision to you. It never recommends a product, so what you learn is how money works, not what to buy.</span></p></div>
     </div>
   </div>
 </section>
@@ -226,12 +321,12 @@
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Start simple</p>
-        <h2>Start with a budget. Turn on the rest when you want it.</h2>
-        <p class="muted">A new wallet opens with just Dashboard, Income, Expenses and Settings — enough to see what comes in and what goes out. Assets, Retirement, Insights and Calculators stay off until you switch them on, one at a time, in Settings.</p>
-        <p class="muted">Plain language throughout, with a small info tip next to anything that needs a definition — what KUP is, what a safe withdrawal rate means, why a market drop counts as spending.</p>
+        <p class="eyebrow"><span lang="pl">Na początek prosto</span><span lang="en">Start simple</span></p>
+        <h2><span lang="pl">Zacznij od budżetu. Resztę włączysz, kiedy zechcesz.</span><span lang="en">Start with a budget. Turn on the rest when you want it.</span></h2>
+        <p class="muted"><span lang="pl">Nowy portfel startuje tylko z Pulpitem, Przychodami, Wydatkami i Ustawieniami, co wystarczy, żeby widzieć, co wpływa, a co wypływa. Aktywa, Emerytura, Analizy i Kalkulatory pozostają wyłączone, dopóki nie włączysz ich po kolei w Ustawieniach.</span><span lang="en">A new wallet opens with just Dashboard, Income, Expenses and Settings — enough to see what comes in and what goes out. Assets, Retirement, Insights and Calculators stay off until you switch them on, one at a time, in Settings.</span></p>
+        <p class="muted"><span lang="pl">Prosty język wszędzie, a przy każdym pojęciu, które wymaga definicji, mała podpowiedź: czym są KUP, co oznacza bezpieczna stopa wypłaty, dlaczego spadek na rynku liczy się jak wydatek.</span><span lang="en">Plain language throughout, with a small info tip next to anything that needs a definition — what KUP is, what a safe withdrawal rate means, why a market drop counts as spending.</span></p>
       </div>
-      <figure class="frame"><img src="img/features.webp" width="898" height="784" loading="lazy" alt="Settings page: toggles for Assets, Retirement, Insights and Calculators, each off by default with a one-line description"></figure>
+      <figure class="frame"><img src="img/features.webp" width="898" height="784" loading="lazy" alt="Strona Ustawień: przełączniki Aktywów, Emerytury, Analiz i Kalkulatorów, każdy domyślnie wyłączony, z jednozdaniowym opisem" data-alt-en="Settings page: toggles for Assets, Retirement, Insights and Calculators, each off by default with a one-line description"></figure>
     </div>
   </div>
 </section>
@@ -240,43 +335,43 @@
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Assets</p>
-        <h2>Track each asset in its real unit</h2>
-        <p class="muted">Enter gold, silver, platinum or palladium in grams or troy ounces, and crypto in coins. MyFinance fetches live prices and converts everything into your base currency, with offline fallbacks if a price API is unreachable.</p>
+        <p class="eyebrow"><span lang="pl">Aktywa</span><span lang="en">Assets</span></p>
+        <h2><span lang="pl">Każde aktywo w jego prawdziwej jednostce</span><span lang="en">Track each asset in its real unit</span></h2>
+        <p class="muted"><span lang="pl">Złoto, srebro, platynę i pallad wpisujesz w gramach lub uncjach trojańskich, a kryptowaluty w liczbie monet. MyFinance pobiera bieżące ceny i przelicza wszystko na walutę bazową, z zapasowymi cenami offline, gdy API cenowe jest niedostępne.</span><span lang="en">Enter gold, silver, platinum or palladium in grams or troy ounces, and crypto in coins. MyFinance fetches live prices and converts everything into your base currency, with offline fallbacks if a price API is unreachable.</span></p>
         <table class="units">
-          <tr><td>Cash, savings, bonds</td><td>PLN, EUR, USD or CHF; bonds carry their own interest rate</td></tr>
-          <tr><td>Gold, silver, platinum, palladium</td><td>grams or troy ounces, at the live price per gram</td></tr>
-          <tr><td>Bitcoin, Ethereum, Solana, XRP, BNB</td><td>coin quantity, priced live</td></tr>
-          <tr><td>Stocks, funds, pensions</td><td>value in any currency</td></tr>
-          <tr><td>Watches, vehicles</td><td>revalue whenever you like</td></tr>
+          <tr><td><span lang="pl">Gotówka, oszczędności, obligacje</span><span lang="en">Cash, savings, bonds</span></td><td><span lang="pl">PLN, EUR, USD lub CHF; obligacje mają własne oprocentowanie</span><span lang="en">PLN, EUR, USD or CHF; bonds carry their own interest rate</span></td></tr>
+          <tr><td><span lang="pl">Złoto, srebro, platyna, pallad</span><span lang="en">Gold, silver, platinum, palladium</span></td><td><span lang="pl">gramy lub uncje trojańskie, po bieżącej cenie za gram</span><span lang="en">grams or troy ounces, at the live price per gram</span></td></tr>
+          <tr><td>Bitcoin, Ethereum, Solana, XRP, BNB</td><td><span lang="pl">liczba monet, wyceniana na bieżąco</span><span lang="en">coin quantity, priced live</span></td></tr>
+          <tr><td><span lang="pl">Akcje, fundusze, emerytura</span><span lang="en">Stocks, funds, pensions</span></td><td><span lang="pl">wartość w dowolnej walucie</span><span lang="en">value in any currency</span></td></tr>
+          <tr><td><span lang="pl">Zegarki, pojazdy</span><span lang="en">Watches, vehicles</span></td><td><span lang="pl">wyceniasz ponownie, kiedy chcesz</span><span lang="en">revalue whenever you like</span></td></tr>
         </table>
-        <p class="muted">IKE, IKZE, PPK, OIPE and OKI wrappers get their own coloured frame and show the age you can access them without a penalty. Every update is timestamped, so your history builds itself.</p>
+        <p class="muted"><span lang="pl">Konta IKE, IKZE, PPK, OIPE i OKI mają własną kolorową ramkę i pokazują wiek, od którego można z nich korzystać bez kary. Każda aktualizacja ma znacznik czasu, więc historia buduje się sama.</span><span lang="en">IKE, IKZE, PPK, OIPE and OKI wrappers get their own coloured frame and show the age you can access them without a penalty. Every update is timestamped, so your history builds itself.</span></p>
       </div>
-      <figure class="frame"><img src="img/positions.webp" width="2880" height="1800" loading="lazy" alt="Assets page: the Your money, Growth and Value now summary above cards for cash, gold in grams, stocks and a coloured IKE wrapper"></figure>
+      <figure class="frame"><img src="img/positions.webp" width="2880" height="1800" loading="lazy" alt="Strona Aktywów: podsumowanie Twoje wpłaty, Wzrost i Wartość teraz nad kartami gotówki, złota w gramach, akcji i kolorowego konta IKE" data-alt-en="Assets page: the Your money, Growth and Value now summary above cards for cash, gold in grams, stocks and a coloured IKE wrapper"></figure>
     </div>
 
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Your money vs growth</p>
-        <h2>Tell your own deposits apart from market growth</h2>
-        <p class="muted">When you update a position you can say how much you paid in — for metals and crypto, leaving it blank works it out from the change in quantity at today's price. MyFinance splits every change into deposit and growth, per asset and for the whole portfolio, so "Your money" and "Growth" show up as two numbers instead of one that mixes them.</p>
+        <p class="eyebrow"><span lang="pl">Twoje wpłaty a wzrost</span><span lang="en">Your money vs growth</span></p>
+        <h2><span lang="pl">Oddziel własne wpłaty od wzrostu rynku</span><span lang="en">Tell your own deposits apart from market growth</span></h2>
+        <p class="muted"><span lang="pl">Przy aktualizacji pozycji możesz podać kwotę wpłaty; dla metali i kryptowalut puste pole oznacza, że zostanie ona wyliczona ze zmiany ilości po dzisiejszej cenie. MyFinance dzieli każdą zmianę na wpłatę i wzrost, dla każdego aktywa i dla całego portfela, więc „Twoje wpłaty” i „Wzrost” to dwie osobne liczby, a nie jedna, która je miesza.</span><span lang="en">When you update a position you can say how much you paid in — for metals and crypto, leaving it blank works it out from the change in quantity at today's price. MyFinance splits every change into deposit and growth, per asset and for the whole portfolio, so "Your money" and "Growth" show up as two numbers instead of one that mixes them.</span></p>
       </div>
-      <figure class="frame"><img src="img/growth-update.webp" width="770" height="1228" loading="lazy" alt="Update modal on the Stocks card: amount changed by +120, paid in 100, live preview reads +120 = paid in +100 + growth +20"></figure>
+      <figure class="frame"><img src="img/growth-update.webp" width="770" height="1228" loading="lazy" alt="Okno aktualizacji karty Akcje: kwota zmieniona o +120, wpłacono 100, podgląd na żywo: +120 = wpłata +100 + wzrost +20" data-alt-en="Update modal on the Stocks card: amount changed by +120, paid in 100, live preview reads +120 = paid in +100 + growth +20"></figure>
     </div>
 
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">History</p>
-        <h2>See how the portfolio grew, and what drove it</h2>
-        <p class="muted">One chart, four views: total, per asset, per class and per risk band. Past points keep the prices of their own day, so you see what actually happened rather than today's prices applied to last year.</p>
+        <p class="eyebrow"><span lang="pl">Historia</span><span lang="en">History</span></p>
+        <h2><span lang="pl">Zobacz, jak rósł portfel i co go napędzało</span><span lang="en">See how the portfolio grew, and what drove it</span></h2>
+        <p class="muted"><span lang="pl">Jeden wykres, cztery widoki: łącznie, według aktywów, według klas i według pasm ryzyka. Dawne punkty zachowują ceny z własnego dnia, więc widzisz, co faktycznie się wydarzyło, a nie dzisiejsze ceny przyłożone do zeszłego roku.</span><span lang="en">One chart, four views: total, per asset, per class and per risk band. Past points keep the prices of their own day, so you see what actually happened rather than today's prices applied to last year.</span></p>
         <ul class="ticks">
-          <li>Projection with cautious and optimistic scenarios</li>
-          <li>Six-month reserve line drawn on the chart</li>
+          <li><span lang="pl">Projekcja z wariantem ostrożnym i optymistycznym</span><span lang="en">Projection with cautious and optimistic scenarios</span></li>
+          <li><span lang="pl">Linia sześciomiesięcznej rezerwy na wykresie</span><span lang="en">Six-month reserve line drawn on the chart</span></li>
         </ul>
       </div>
       <div class="stack-v">
-        <figure class="frame"><img src="img/chart-classes.webp" width="2242" height="924" loading="lazy" alt="Stacked area chart of portfolio value over a year, split by asset class"></figure>
-        <figure class="frame"><img src="img/chart-risk.webp" width="2242" height="876" loading="lazy" alt="Stacked area chart of portfolio value split by risk band"></figure>
+        <figure class="frame"><img src="img/chart-classes.webp" width="2242" height="924" loading="lazy" alt="Skumulowany wykres wartości portfela w ciągu roku, z podziałem na klasy aktywów" data-alt-en="Stacked area chart of portfolio value over a year, split by asset class"></figure>
+        <figure class="frame"><img src="img/chart-risk.webp" width="2242" height="876" loading="lazy" alt="Skumulowany wykres wartości portfela z podziałem na pasma ryzyka" data-alt-en="Stacked area chart of portfolio value split by risk band"></figure>
       </div>
     </div>
   </div>
@@ -286,31 +381,31 @@
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Risk profile</p>
-        <h2>Know how exposed you really are</h2>
-        <p class="lead">Allocation tells you what you hold. The risk profile tells you how exposed you are and how quickly you could get your money out.</p>
+        <p class="eyebrow"><span lang="pl">Profil ryzyka</span><span lang="en">Risk profile</span></p>
+        <h2><span lang="pl">Zobacz, jak bardzo naprawdę ryzykujesz</span><span lang="en">Know how exposed you really are</span></h2>
+        <p class="lead"><span lang="pl">Alokacja mówi, co masz. Profil ryzyka mówi, jak bardzo ryzykujesz i jak szybko możesz wypłacić pieniądze.</span><span lang="en">Allocation tells you what you hold. The risk profile tells you how exposed you are and how quickly you could get your money out.</span></p>
         <div class="bands">
-          <div><b>Safe</b><span class="muted">cash, savings, bonds: available tomorrow</span></div>
-          <div><b>Moderate</b><span class="muted">funds, gold, retirement</span></div>
-          <div><b>Risky</b><span class="muted">stocks, crypto: can fall sharply</span></div>
-          <div><b>Illiquid</b><span class="muted">watches, vehicles, receivables: slow to sell</span></div>
+          <div><b><span lang="pl">Bezpieczne</span><span lang="en">Safe</span></b><span class="muted"><span lang="pl">gotówka, oszczędności, obligacje: dostępne od jutra</span><span lang="en">cash, savings, bonds: available tomorrow</span></span></div>
+          <div><b><span lang="pl">Umiarkowane</span><span lang="en">Moderate</span></b><span class="muted"><span lang="pl">fundusze, złoto, emerytura</span><span lang="en">funds, gold, retirement</span></span></div>
+          <div><b><span lang="pl">Ryzykowne</span><span lang="en">Risky</span></b><span class="muted"><span lang="pl">akcje, krypto: mogą gwałtownie spaść</span><span lang="en">stocks, crypto: can fall sharply</span></span></div>
+          <div><b><span lang="pl">Niepłynne</span><span lang="en">Illiquid</span></b><span class="muted"><span lang="pl">zegarki, pojazdy, należności: sprzedaż trwa</span><span lang="en">watches, vehicles, receivables: slow to sell</span></span></div>
         </div>
       </div>
-      <figure class="frame"><img src="img/breakdown.webp" width="2242" height="1204" loading="lazy" alt="Allocation and risk-profile donut charts with the percentage for each class and band"></figure>
+      <figure class="frame"><img src="img/breakdown.webp" width="2242" height="1204" loading="lazy" alt="Wykresy kołowe alokacji i profilu ryzyka z udziałem procentowym każdej klasy i pasma" data-alt-en="Allocation and risk-profile donut charts with the percentage for each class and band"></figure>
     </div>
     <div class="cards dark-cards">
-      <div class="card"><h3>Two axes, not one</h3><p>Volatility and liquidity are measured separately. A watch collection won't crash, but it can't pay next month's rent either, so it gets its own band instead of inflating "risky".</p></div>
-      <div class="card"><h3>Your safety net comes from it</h3><p>Reserve cover counts only the safe band against your monthly commitments. Split the value chart by risk to see whether that band stays above the six-month line.</p></div>
-      <div class="card"><h3>Each asset has its own band</h3><p>Every asset starts in its class's band but keeps its own, so one holding can be classed differently from the rest. The AI review is told the bands too.</p></div>
+      <div class="card"><h3><span lang="pl">Dwie osie, nie jedna</span><span lang="en">Two axes, not one</span></h3><p><span lang="pl">Zmienność i płynność są mierzone osobno. Kolekcja zegarków nie runie, ale nie zapłaci też czynszu w przyszłym miesiącu, więc ma własne pasmo, zamiast zawyżać „ryzykowne”.</span><span lang="en">Volatility and liquidity are measured separately. A watch collection won't crash, but it can't pay next month's rent either, so it gets its own band instead of inflating "risky".</span></p></div>
+      <div class="card"><h3><span lang="pl">Z niego wynika Twoja poduszka</span><span lang="en">Your safety net comes from it</span></h3><p><span lang="pl">Pokrycie rezerwy liczy tylko pasmo bezpieczne względem miesięcznych zobowiązań. Podziel wykres wartości według ryzyka, żeby sprawdzić, czy to pasmo trzyma się nad linią sześciu miesięcy.</span><span lang="en">Reserve cover counts only the safe band against your monthly commitments. Split the value chart by risk to see whether that band stays above the six-month line.</span></p></div>
+      <div class="card"><h3><span lang="pl">Każde aktywo ma własne pasmo</span><span lang="en">Each asset has its own band</span></h3><p><span lang="pl">Każde aktywo zaczyna w paśmie swojej klasy, ale ma własne, więc jedną pozycję można zaklasyfikować inaczej niż resztę. Ocena AI też zna pasma.</span><span lang="en">Every asset starts in its class's band but keeps its own, so one holding can be classed differently from the rest. The AI review is told the bands too.</span></p></div>
     </div>
   </div>
 </section>
 
 <section class="statement" id="effective">
   <div class="wrap">
-    <p class="eyebrow">Effective spend</p>
-    <p class="formula">effective spend =<br>income − change in net worth</p>
-    <p class="lead">Everything you earn either ends up in your portfolio or gets spent. MyFinance works out your real spending from your net worth, including everything you forgot to log. It's honest about markets too: a drawdown counts in the month it happens, and the app tells you so.</p>
+    <p class="eyebrow"><span lang="pl">Wydatki efektywne</span><span lang="en">Effective spend</span></p>
+    <p class="formula"><span lang="pl">wydatki efektywne =<br>przychód − zmiana majątku</span><span lang="en">effective spend =<br>income − change in net worth</span></p>
+    <p class="lead"><span lang="pl">Wszystko, co zarabiasz, albo trafia do portfela, albo zostaje wydane. MyFinance wylicza Twoje rzeczywiste wydatki ze zmiany majątku, łącznie z tym, co umknęło przy wpisywaniu. Uczciwie traktuje też rynki: spadek liczy się w miesiącu, w którym nastąpił, i aplikacja mówi to wprost.</span><span lang="en">Everything you earn either ends up in your portfolio or gets spent. MyFinance works out your real spending from your net worth, including everything you forgot to log. It's honest about markets too: a drawdown counts in the month it happens, and the app tells you so.</span></p>
   </div>
 </section>
 
@@ -318,43 +413,43 @@
   <div class="wrap">
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">Expenses</p>
-        <h2>Plan for what you've already committed to</h2>
-        <p class="muted">Rent, leases, subscriptions and one-off bills, in any currency, on a monthly, quarterly, yearly or one-off schedule. Upcoming payments and contracts ending soon are highlighted, and fixing an expense corrects every past month it applies to.</p>
+        <p class="eyebrow"><span lang="pl">Wydatki</span><span lang="en">Expenses</span></p>
+        <h2><span lang="pl">Zaplanuj zobowiązania, które już masz</span><span lang="en">Plan for what you've already committed to</span></h2>
+        <p class="muted"><span lang="pl">Czynsz, leasing, subskrypcje i jednorazowe rachunki, w dowolnej walucie, płatne co miesiąc, co kwartał, co rok albo jednorazowo. Nadchodzące płatności i kończące się umowy są wyróżnione, a poprawka wydatku koryguje każdy miniony miesiąc, którego dotyczy.</span><span lang="en">Rent, leases, subscriptions and one-off bills, in any currency, on a monthly, quarterly, yearly or one-off schedule. Upcoming payments and contracts ending soon are highlighted, and fixing an expense corrects every past month it applies to.</span></p>
         <ul class="ticks">
-          <li>Reserve cover projects how many months your safe assets last, including the bills already booked</li>
+          <li><span lang="pl">Pokrycie rezerwy pokazuje, na ile miesięcy wystarczą bezpieczne aktywa, wliczając już zaplanowane rachunki</span><span lang="en">Reserve cover projects how many months your safe assets last, including the bills already booked</span></li>
         </ul>
       </div>
       <div class="stack-v">
-        <figure class="frame"><img src="img/expenses.webp" width="2880" height="1800" loading="lazy" alt="Expenses page with the monthly commitment, a breakdown by category and the recurring expense list"></figure>
-        <figure class="frame"><img src="img/reserve.webp" width="2242" height="636" loading="lazy" alt="Reserve cover over time, with a six-month target line and a dashed projection"></figure>
+        <figure class="frame"><img src="img/expenses.webp" width="2880" height="1800" loading="lazy" alt="Strona Wydatków z miesięcznymi zobowiązaniami, podziałem na kategorie i listą wydatków cyklicznych" data-alt-en="Expenses page with the monthly commitment, a breakdown by category and the recurring expense list"></figure>
+        <figure class="frame"><img src="img/reserve.webp" width="2242" height="636" loading="lazy" alt="Pokrycie rezerwy w czasie, z linią celu sześciu miesięcy i przerywaną prognozą" data-alt-en="Reserve cover over time, with a six-month target line and a dashed projection"></figure>
       </div>
     </div>
 
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Expenses</p>
-        <h2>Tick off what you actually paid</h2>
-        <p class="muted">Every month the app lists the commitments due and asks which ones went out — untick anything skipped, and correct the amount right there if a bill came in different from usual, like a higher electricity charge. Add one figure for everything else that left your accounts; next to it is a hint worked out from your income and how the portfolio moved, so you're not starting from nothing. The total for the month is computed from the checklist, never typed in directly.</p>
+        <p class="eyebrow"><span lang="pl">Wydatki</span><span lang="en">Expenses</span></p>
+        <h2><span lang="pl">Zaznacz, co faktycznie wyszło z konta</span><span lang="en">Tick off what you actually paid</span></h2>
+        <p class="muted"><span lang="pl">Co miesiąc aplikacja wyświetla należne zobowiązania i pyta, które zostały zapłacone. Odznacz pominięte i popraw kwotę na miejscu, jeśli rachunek był inny niż zwykle, np. wyższy za prąd. Dopisz jedną kwotę na wszystko inne, co wyszło z kont; obok jest podpowiedź wyliczona z przychodu i ruchu portfela, więc nie zaczynasz od zera. Suma za miesiąc wynika z listy i nigdy nie jest wpisywana ręcznie.</span><span lang="en">Every month the app lists the commitments due and asks which ones went out — untick anything skipped, and correct the amount right there if a bill came in different from usual, like a higher electricity charge. Add one figure for everything else that left your accounts; next to it is a hint worked out from your income and how the portfolio moved, so you're not starting from nothing. The total for the month is computed from the checklist, never typed in directly.</span></p>
         <ul class="ticks">
-          <li>Untick a commitment you didn't pay, or edit its amount for the month</li>
-          <li>One number for everything else, with a suggested figure to start from</li>
+          <li><span lang="pl">Odznacz zobowiązanie, którego nie zapłacono, albo zmień jego kwotę w danym miesiącu</span><span lang="en">Untick a commitment you didn't pay, or edit its amount for the month</span></li>
+          <li><span lang="pl">Jedna kwota na wszystko inne, z sugerowaną wartością na start</span><span lang="en">One number for everything else, with a suggested figure to start from</span></li>
         </ul>
       </div>
-      <figure class="frame"><img src="img/month-form.webp" width="1154" height="2392" loading="lazy" alt="Month editor on the Expenses page: commitments ticked off with their amounts, an everything-else figure with a hint, and the computed total"></figure>
+      <figure class="frame"><img src="img/month-form.webp" width="1154" height="2392" loading="lazy" alt="Edytor miesiąca na stronie Wydatków: zaznaczone zobowiązania z kwotami, kwota na wszystko inne z podpowiedzią i wyliczona suma" data-alt-en="Month editor on the Expenses page: commitments ticked off with their amounts, an everything-else figure with a hint, and the computed total"></figure>
     </div>
 
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">Effective spend</p>
-        <h2>What a month really cost, not what you typed in</h2>
-        <p class="muted">Expand "Show analysis" on the same page and the checklist total sits next to effective spend — income minus the change in portfolio value — so anything that never got ticked off or typed in still shows up.</p>
+        <p class="eyebrow"><span lang="pl">Wydatki efektywne</span><span lang="en">Effective spend</span></p>
+        <h2><span lang="pl">Ile naprawdę kosztował miesiąc, a nie ile wpisano</span><span lang="en">What a month really cost, not what you typed in</span></h2>
+        <p class="muted"><span lang="pl">Rozwiń „Pokaż analizę” na tej samej stronie, a suma z listy stanie obok wydatków efektywnych (przychód minus zmiana wartości portfela), więc wszystko, czego nie zaznaczono ani nie wpisano, i tak się pojawi.</span><span lang="en">Expand "Show analysis" on the same page and the checklist total sits next to effective spend — income minus the change in portfolio value — so anything that never got ticked off or typed in still shows up.</span></p>
         <ul class="ticks">
-          <li>Savings rate and surplus for every month</li>
-          <li>Committed, actual and effective spend, side by side</li>
+          <li><span lang="pl">Stopa oszczędności i nadwyżka dla każdego miesiąca</span><span lang="en">Savings rate and surplus for every month</span></li>
+          <li><span lang="pl">Zobowiązania, wydatki rzeczywiste i efektywne obok siebie</span><span lang="en">Committed, actual and effective spend, side by side</span></li>
         </ul>
       </div>
-      <figure class="frame"><img src="img/expenses-months.webp" width="2240" height="1256" loading="lazy" alt="Show analysis on the Expenses page, expanded: surplus, actual vs committed, effective spend and savings-rate stat tiles above the committed/income/actual chart"></figure>
+      <figure class="frame"><img src="img/expenses-months.webp" width="2240" height="1256" loading="lazy" alt="Rozwinięta analiza na stronie Wydatków: kafelki nadwyżki, wydatków rzeczywistych wobec zobowiązań, wydatków efektywnych i stopy oszczędności nad wykresem zobowiązań, przychodu i wydatków" data-alt-en="Show analysis on the Expenses page, expanded: surplus, actual vs committed, effective spend and savings-rate stat tiles above the committed/income/actual chart"></figure>
     </div>
   </div>
 </section>
@@ -363,25 +458,25 @@
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Income &amp; Polish tax</p>
-        <h2>Umowa o pracę or B2B, worked out to the grosz</h2>
-        <p class="muted">Recurring income sources — UoP, B2B through your own JDG, or anything already net — each get their own defaults and month-by-month exceptions. Every figure comes from a deterministic tax engine, not a rule of thumb: ZUS, the health contribution, PIT advances, PPK, VAT and a working-day calendar for day- and hour-billed rates, all computed year to date so annual thresholds are respected.</p>
+        <p class="eyebrow"><span lang="pl">Przychody i polskie podatki</span><span lang="en">Income &amp; Polish tax</span></p>
+        <h2><span lang="pl">Umowa o pracę czy B2B, policzone co do grosza</span><span lang="en">Umowa o pracę or B2B, worked out to the grosz</span></h2>
+        <p class="muted"><span lang="pl">Cykliczne źródła przychodu (UoP, B2B na własnej JDG albo cokolwiek już netto) mają własne ustawienia domyślne i wyjątki miesiąc po miesiącu. Każda liczba pochodzi z deterministycznego silnika podatkowego, a nie z reguły kciuka: ZUS, składka zdrowotna, zaliczki na PIT, PPK, VAT i kalendarz dni roboczych dla stawek dziennych i godzinowych, wszystko liczone narastająco od początku roku, więc roczne progi są uwzględnione.</span><span lang="en">Recurring income sources — UoP, B2B through your own JDG, or anything already net — each get their own defaults and month-by-month exceptions. Every figure comes from a deterministic tax engine, not a rule of thumb: ZUS, the health contribution, PIT advances, PPK, VAT and a working-day calendar for day- and hour-billed rates, all computed year to date so annual thresholds are respected.</span></p>
         <ul class="ticks">
-          <li>B2B: skala, liniowy or ryczałt, each with its own ZUS stage and health-contribution tier</li>
-          <li>UoP: ZUS, KUP, PIT-2, the under-26 relief, PPK and employer cost</li>
+          <li><span lang="pl">B2B: skala, liniowy albo ryczałt, każdy z własnym etapem ZUS i progiem składki zdrowotnej</span><span lang="en">B2B: skala, liniowy or ryczałt, each with its own ZUS stage and health-contribution tier</span></li>
+          <li><span lang="pl">UoP: ZUS, KUP, PIT-2, ulga dla młodych, PPK i koszt pracodawcy</span><span lang="en">UoP: ZUS, KUP, PIT-2, the under-26 relief, PPK and employer cost</span></li>
         </ul>
       </div>
-      <figure class="frame"><img src="img/income.webp" width="2880" height="1800" loading="lazy" alt="Income page: sources list plus the monthly net income and tax breakdown"></figure>
+      <figure class="frame"><img src="img/income.webp" width="2880" height="1800" loading="lazy" alt="Strona Przychodów: lista źródeł oraz miesięczny przychód netto z rozbiciem podatków" data-alt-en="Income page: sources list plus the monthly net income and tax breakdown"></figure>
     </div>
 
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">Calculators</p>
-        <h2>UoP vs B2B, and working backwards from a target net</h2>
-        <p class="muted">Compare an umowa o pracę offer against a B2B invoice for the same net, including unpaid leave and the gap in what reaches your ZUS pension account, or run the reverse calculator from a target net income. Parameters are per year (2025, 2026), each with its source and the date it was checked.</p>
-        <p class="muted">These are planning estimates, not tax advice, and the page says so.</p>
+        <p class="eyebrow"><span lang="pl">Kalkulatory</span><span lang="en">Calculators</span></p>
+        <h2><span lang="pl">UoP czy B2B, i wstecz od docelowej kwoty netto</span><span lang="en">UoP vs B2B, and working backwards from a target net</span></h2>
+        <p class="muted"><span lang="pl">Porównaj ofertę na umowę o pracę z fakturą B2B na to samo netto, z uwzględnieniem bezpłatnego urlopu i różnicy w tym, co trafia na Twoje konto emerytalne w ZUS, albo policz odwrotnie, od docelowego dochodu netto. Parametry są osobne dla każdego roku (2025, 2026), każdy ze źródłem i datą weryfikacji.</span><span lang="en">Compare an umowa o pracę offer against a B2B invoice for the same net, including unpaid leave and the gap in what reaches your ZUS pension account, or run the reverse calculator from a target net income. Parameters are per year (2025, 2026), each with its source and the date it was checked.</span></p>
+        <p class="muted"><span lang="pl">To szacunki do planowania, a nie porada podatkowa, i strona mówi to wprost.</span><span lang="en">These are planning estimates, not tax advice, and the page says so.</span></p>
       </div>
-      <figure class="frame"><img src="img/tax.webp" width="2880" height="1800" loading="lazy" alt="Calculators page: UoP vs B2B comparison and the year's tax parameters"></figure>
+      <figure class="frame"><img src="img/tax.webp" width="2880" height="1800" loading="lazy" alt="Strona Kalkulatorów: porównanie UoP i B2B oraz parametry podatkowe roku" data-alt-en="Calculators page: UoP vs B2B comparison and the year's tax parameters"></figure>
     </div>
   </div>
 </section>
@@ -390,16 +485,16 @@
   <div class="wrap">
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Retirement</p>
-        <h2>When you could afford to stop working</h2>
-        <p class="muted">The Retirement page answers two questions from your own data: how much to save to be financially independent by a target age, and how much you'd need to earn — as a UoP gross or a B2B invoice — to get there.</p>
+        <p class="eyebrow"><span lang="pl">Emerytura</span><span lang="en">Retirement</span></p>
+        <h2><span lang="pl">Kiedy możesz przestać pracować</span><span lang="en">When you could afford to stop working</span></h2>
+        <p class="muted"><span lang="pl">Strona Emerytura odpowiada z Twoich danych na dwa pytania: ile odkładać, żeby osiągnąć niezależność finansową w docelowym wieku, i ile trzeba zarabiać (brutto na UoP albo z faktury B2B), żeby tam dojść.</span><span lang="en">The Retirement page answers two questions from your own data: how much to save to be financially independent by a target age, and how much you'd need to earn — as a UoP gross or a B2B invoice — to get there.</span></p>
         <ul class="ticks">
-          <li>Lean, barista and coast variants, not just the full number</li>
-          <li>The ZUS pension covers the gap once it starts; the portfolio carries everything before it</li>
-          <li>Money in IKE, IKZE, PPK and OIPE counts, but the bridge check asks whether money you can reach before 60 (everything outside those four; OKI counts as reachable) carries you there</li>
+          <li><span lang="pl">Warianty lean, barista i coast, a nie tylko pełna kwota</span><span lang="en">Lean, barista and coast variants, not just the full number</span></li>
+          <li><span lang="pl">Emerytura z ZUS pokrywa lukę, odkąd zacznie być wypłacana; wcześniej wszystko niesie portfel</span><span lang="en">The ZUS pension covers the gap once it starts; the portfolio carries everything before it</span></li>
+          <li><span lang="pl">Pieniądze na IKE, IKZE, PPK i OIPE się liczą, ale test pomostu sprawdza, czy pieniądze dostępne przed 60. rokiem życia (wszystko poza tymi czterema; OKI liczy się jako dostępne) wystarczą do tego czasu</span><span lang="en">Money in IKE, IKZE, PPK and OIPE counts, but the bridge check asks whether money you can reach before 60 (everything outside those four; OKI counts as reachable) carries you there</span></li>
         </ul>
       </div>
-      <figure class="frame"><img src="img/fire.webp" width="2880" height="1800" loading="lazy" alt="Retirement page: target age, monthly saving needed, and the lean, barista and coast variants"></figure>
+      <figure class="frame"><img src="img/fire.webp" width="2880" height="1800" loading="lazy" alt="Strona Emerytury: docelowy wiek, potrzebna miesięczna kwota oszczędności oraz warianty lean, barista i coast" data-alt-en="Retirement page: target age, monthly saving needed, and the lean, barista and coast variants"></figure>
     </div>
   </div>
 </section>
@@ -407,72 +502,72 @@
 <section class="dark" id="ai">
   <div class="wrap">
     <div class="ai-hook">
-      <p class="eyebrow">AI inside</p>
-      <h2>Insights: next steps, a monthly digest and a portfolio review, all on your own GPU.</h2>
+      <p class="eyebrow"><span lang="pl">AI w środku</span><span lang="en">AI inside</span></p>
+      <h2><span lang="pl">Analizy: kolejne kroki, podsumowanie miesiąca i ocena portfela, wszystko na Twoim własnym GPU.</span><span lang="en">Insights: next steps, a monthly digest and a portfolio review, all on your own GPU.</span></h2>
       <div class="hook-stats">
-        <div><b>122B</b><span>parameters in the model that writes your insights</span></div>
-        <div><b>4</b><span>investing styles to judge your portfolio against</span></div>
-        <div><b>0</b><span>figures sent to a cloud AI provider</span></div>
+        <div><b>122B</b><span><span lang="pl">parametrów w modelu, który pisze Twoje analizy</span><span lang="en">parameters in the model that writes your insights</span></span></div>
+        <div><b>4</b><span><span lang="pl">style inwestowania, z którymi porównasz portfel</span><span lang="en">investing styles to judge your portfolio against</span></span></div>
+        <div><b>0</b><span><span lang="pl">liczb wysłanych do chmurowego dostawcy AI</span><span lang="en">figures sent to a cloud AI provider</span></span></div>
       </div>
     </div>
     <div class="feature">
       <div class="text">
-        <p class="eyebrow">Insights</p>
-        <h2>A next-best-step list, a monthly digest, and a risk profile — no chat</h2>
-        <p class="lead">Nine standing questions about the wallet — from "do you have a starter buffer?" to "have you used this year's IKE and IKZE room?" — are answered deterministically from figures the app already computes. The model only orders them and explains why; it never decides what's done, and there's no chat box to type into.</p>
+        <p class="eyebrow"><span lang="pl">Analizy</span><span lang="en">Insights</span></p>
+        <h2><span lang="pl">Lista kolejnych kroków, podsumowanie miesiąca i profil ryzyka, bez czatu</span><span lang="en">A next-best-step list, a monthly digest, and a risk profile — no chat</span></h2>
+        <p class="lead"><span lang="pl">Dziewięć stałych pytań o portfel, od „czy masz poduszkę na start?” po „czy wykorzystano tegoroczny limit IKE i IKZE?”, dostaje odpowiedź deterministycznie, z liczb, które aplikacja już liczy. Model tylko je porządkuje i wyjaśnia dlaczego; nigdy nie decyduje, co jest zrobione, i nie ma okienka czatu.</span><span lang="en">Nine standing questions about the wallet — from "do you have a starter buffer?" to "have you used this year's IKE and IKZE room?" — are answered deterministically from figures the app already computes. The model only orders them and explains why; it never decides what's done, and there's no chat box to type into.</span></p>
         <ul class="ticks">
-          <li>Next steps: a ranked ladder from an emergency buffer to catching up on IKE/IKZE room</li>
-          <li>Monthly digest: a short written summary of the month just closed</li>
-          <li>Risk profile: a short questionnaire that suggests which of the four assessment styles fits you</li>
-          <li>Every number in the model's text is checked against the figures it was given (grounding), and flagged if it doesn't match</li>
+          <li><span lang="pl">Kolejne kroki: uszeregowana drabina od poduszki finansowej po nadrabianie limitów IKE/IKZE</span><span lang="en">Next steps: a ranked ladder from an emergency buffer to catching up on IKE/IKZE room</span></li>
+          <li><span lang="pl">Podsumowanie miesiąca: krótki opis właśnie zamkniętego miesiąca</span><span lang="en">Monthly digest: a short written summary of the month just closed</span></li>
+          <li><span lang="pl">Profil ryzyka: krótka ankieta, która podpowiada, który z czterech stylów oceny do Ciebie pasuje</span><span lang="en">Risk profile: a short questionnaire that suggests which of the four assessment styles fits you</span></li>
+          <li><span lang="pl">Każda liczba w tekście modelu jest sprawdzana z danymi, które dostał (grounding), i oznaczana, jeśli się nie zgadza</span><span lang="en">Every number in the model's text is checked against the figures it was given (grounding), and flagged if it doesn't match</span></li>
         </ul>
       </div>
-      <figure class="frame"><img src="img/insights.webp" width="2880" height="1800" loading="lazy" alt="Insights page, Next steps tab: a ranked ladder of what to do next, from an emergency buffer to tax-advantaged accounts"></figure>
+      <figure class="frame"><img src="img/insights.webp" width="2880" height="1800" loading="lazy" alt="Strona Analiz, zakładka Kolejne kroki: uszeregowana drabina kolejnych kroków, od poduszki finansowej po konta z ulgą podatkową" data-alt-en="Insights page, Next steps tab: a ranked ladder of what to do next, from an emergency buffer to tax-advantaged accounts"></figure>
     </div>
 
     <div class="feature flip">
       <div class="text">
-        <p class="eyebrow">Wallet assessment</p>
-        <h2>A private portfolio review, on your own hardware</h2>
-        <p class="lead">Tell it what kind of investor you want to be. A language model then checks what you actually hold against that goal and says plainly where the two differ.</p>
+        <p class="eyebrow"><span lang="pl">Ocena portfela</span><span lang="en">Wallet assessment</span></p>
+        <h2><span lang="pl">Prywatny przegląd portfela na Twoim własnym sprzęcie</span><span lang="en">A private portfolio review, on your own hardware</span></h2>
+        <p class="lead"><span lang="pl">Wybierz styl inwestowania, który chcesz przyjąć. Model językowy porównuje to, co faktycznie masz, z tym celem i mówi wprost, gdzie jedno rozmija się z drugim.</span><span lang="en">Tell it what kind of investor you want to be. A language model then checks what you actually hold against that goal and says plainly where the two differ.</span></p>
         <ul class="ticks">
-          <li>Qwen3.5 122B writes the review; Bielik 11B translates it into natural Polish</li>
-          <li>The request goes to your own GPU server, not a cloud API</li>
-          <li>Runs in the background, since a large model takes minutes</li>
-          <li>Each report is stored with the figures it was based on, so an old review still makes sense months later</li>
+          <li><span lang="pl">Qwen3.5 122B pisze ocenę; Bielik 11B tłumaczy ją na naturalny polski</span><span lang="en">Qwen3.5 122B writes the review; Bielik 11B translates it into natural Polish</span></li>
+          <li><span lang="pl">Zapytanie trafia do Twojego własnego serwera GPU, a nie do chmurowego API</span><span lang="en">The request goes to your own GPU server, not a cloud API</span></li>
+          <li><span lang="pl">Działa w tle, bo duży model potrzebuje kilku minut</span><span lang="en">Runs in the background, since a large model takes minutes</span></li>
+          <li><span lang="pl">Każdy raport jest zapisany razem z liczbami, na których się opierał, więc stara ocena ma sens nawet po miesiącach</span><span lang="en">Each report is stored with the figures it was based on, so an old review still makes sense months later</span></li>
         </ul>
       </div>
       <figure>
-        <div class="frame"><img src="img/report.webp" width="2880" height="2100" loading="lazy" alt="Assessment page with a style picker and a written review: summary, risks and recommendations"></div>
-        <figcaption>Sample report on demo data.</figcaption>
+        <div class="frame"><img src="img/report.webp" width="2880" height="2100" loading="lazy" alt="Strona oceny z wyborem stylu i pisemną oceną: podsumowanie, ryzyka i rekomendacje" data-alt-en="Assessment page with a style picker and a written review: summary, risks and recommendations"></div>
+        <figcaption><span lang="pl">Przykładowy raport na danych demonstracyjnych.</span><span lang="en">Sample report on demo data.</span></figcaption>
       </figure>
     </div>
 
-    <h3 class="sub">Four styles, four yardsticks</h3>
+    <h3 class="sub"><span lang="pl">Cztery style, cztery miary</span><span lang="en">Four styles, four yardsticks</span></h3>
     <div class="grid4 styles">
-      <div class="card"><h3>Safe</h3><p>Capital preservation first. Expects at least six months of cover and is strict about concentration in stocks, crypto or any single holding.</p></div>
-      <div class="card"><h3>Balanced</h3><p>Real equity exposure plus a three-to-six-month buffer. No single class should dominate, and speculative holdings stay a modest slice.</p></div>
-      <div class="card"><h3>Risky</h3><p>Drawdowns and conviction bets are accepted, but it still insists on enough cash that a bad year never forces a sale at the bottom.</p></div>
-      <div class="card"><h3>Long-term</h3><p>A horizon of ten years or more. Idle cash and fees count as real costs, and each holding has to make sense a decade from now.</p></div>
+      <div class="card"><h3><span lang="pl">Bezpieczny</span><span lang="en">Safe</span></h3><p><span lang="pl">Najpierw ochrona kapitału. Oczekuje co najmniej sześciu miesięcy rezerwy i surowo ocenia koncentrację w akcjach, krypto czy pojedynczej pozycji.</span><span lang="en">Capital preservation first. Expects at least six months of cover and is strict about concentration in stocks, crypto or any single holding.</span></p></div>
+      <div class="card"><h3><span lang="pl">Zrównoważony</span><span lang="en">Balanced</span></h3><p><span lang="pl">Realna ekspozycja na akcje plus poduszka na trzy do sześciu miesięcy. Żadna klasa nie powinna dominować, a pozycje spekulacyjne to skromny wycinek.</span><span lang="en">Real equity exposure plus a three-to-six-month buffer. No single class should dominate, and speculative holdings stay a modest slice.</span></p></div>
+      <div class="card"><h3><span lang="pl">Ryzykowny</span><span lang="en">Risky</span></h3><p><span lang="pl">Akceptuje obsunięcia i zakłady z przekonania, ale nadal wymaga tyle gotówki, żeby zły rok nigdy nie zmusił do sprzedaży na dnie.</span><span lang="en">Drawdowns and conviction bets are accepted, but it still insists on enough cash that a bad year never forces a sale at the bottom.</span></p></div>
+      <div class="card"><h3><span lang="pl">Długoterminowy</span><span lang="en">Long-term</span></h3><p><span lang="pl">Horyzont dziesięciu lat lub dłuższy. Bezczynna gotówka i opłaty to realne koszty, a każda pozycja musi mieć sens za dekadę.</span><span lang="en">A horizon of ten years or more. Idle cash and fees count as real costs, and each holding has to make sense a decade from now.</span></p></div>
     </div>
 
     <div class="pair ai-facts">
       <div>
-        <h3 class="sub">What the model sees</h3>
+        <h3 class="sub"><span lang="pl">Co widzi model</span><span lang="en">What the model sees</span></h3>
         <ul class="ticks">
-          <li>Every holding with its value and share, rolled up by class and by risk band</li>
-          <li>Monthly commitments by category</li>
-          <li>Twelve months of income, recorded spend and effective spend, plus your savings rate</li>
-          <li>The same numbers the dashboard shows</li>
+          <li><span lang="pl">Każdą pozycję z wartością i udziałem, zsumowaną według klas i pasm ryzyka</span><span lang="en">Every holding with its value and share, rolled up by class and by risk band</span></li>
+          <li><span lang="pl">Miesięczne zobowiązania według kategorii</span><span lang="en">Monthly commitments by category</span></li>
+          <li><span lang="pl">Dwanaście miesięcy przychodów, zapisanych i efektywnych wydatków oraz stopę oszczędności</span><span lang="en">Twelve months of income, recorded spend and effective spend, plus your savings rate</span></li>
+          <li><span lang="pl">Te same liczby, które pokazuje pulpit</span><span lang="en">The same numbers the dashboard shows</span></li>
         </ul>
       </div>
       <div>
-        <h3 class="sub">What you get back, and the rules it follows</h3>
+        <h3 class="sub"><span lang="pl">Co dostajesz i jakich zasad się trzyma</span><span lang="en">What you get back, and the rules it follows</span></h3>
         <ul class="ticks">
-          <li>Summary, What stands out, Risks and Recommendations, in that order</li>
-          <li>Every recommendation names a target: a percentage, an amount or months of cover</li>
-          <li>It uses only your figures, never invents a number, and says when something is missing</li>
-          <li>It never recommends specific tickers, funds or products. It's analysis, not financial advice.</li>
+          <li><span lang="pl">Podsumowanie, Co się wyróżnia, Ryzyka i Rekomendacje, w tej kolejności</span><span lang="en">Summary, What stands out, Risks and Recommendations, in that order</span></li>
+          <li><span lang="pl">Każda rekomendacja wskazuje cel: procent, kwotę albo liczbę miesięcy rezerwy</span><span lang="en">Every recommendation names a target: a percentage, an amount or months of cover</span></li>
+          <li><span lang="pl">Używa tylko Twoich liczb, nigdy nie wymyśla wartości i mówi, gdy czegoś brakuje</span><span lang="en">It uses only your figures, never invents a number, and says when something is missing</span></li>
+          <li><span lang="pl">Nigdy nie poleca konkretnych spółek, funduszy ani produktów. To analiza, a nie doradztwo finansowe.</span><span lang="en">It never recommends specific tickers, funds or products. It's analysis, not financial advice.</span></li>
         </ul>
       </div>
     </div>
@@ -481,69 +576,69 @@
 
 <section id="portable">
   <div class="wrap">
-    <p class="eyebrow">Your data, portable</p>
-    <h2>Take your numbers with you</h2>
+    <p class="eyebrow"><span lang="pl">Twoje dane, przenośne</span><span lang="en">Your data, portable</span></p>
+    <h2><span lang="pl">Zabierz swoje liczby ze sobą</span><span lang="en">Take your numbers with you</span></h2>
     <div class="cards">
-      <div class="card"><h3>A PDF report for any period</h3><p>Last month, quarter, year to date, twelve months or all time: total value, allocation by class and by tax wrapper, deposits against growth per asset, a line that reconciles start, deposits and growth to today, and the portfolio's XIRR. In English or Polish, with optional commentary from your own model.</p></div>
-      <div class="card"><h3>Export and import a wallet</h3><p>Download your setup (assets in their current state, income sources, recurring expenses and settings) as a versioned JSON file, or import one after a dry-run preview. Import only ever adds: it never overwrites or deletes.</p></div>
-      <div class="card"><h3>Room for the whole household</h3><p>Turn sign-in on and every person gets their own wallet, isolated from the others and encrypted with their own key.</p></div>
+      <div class="card"><h3><span lang="pl">Raport PDF za dowolny okres</span><span lang="en">A PDF report for any period</span></h3><p><span lang="pl">Ostatni miesiąc, kwartał, od początku roku, dwanaście miesięcy albo cały okres: łączna wartość, alokacja według klas i kont podatkowych, wpłaty wobec wzrostu dla każdego aktywa, zestawienie, które uzgadnia stan początkowy, wpłaty i wzrost ze stanem dzisiejszym, oraz XIRR portfela. Po polsku lub po angielsku, z opcjonalnym komentarzem Twojego własnego modelu.</span><span lang="en">Last month, quarter, year to date, twelve months or all time: total value, allocation by class and by tax wrapper, deposits against growth per asset, a line that reconciles start, deposits and growth to today, and the portfolio's XIRR. In English or Polish, with optional commentary from your own model.</span></p></div>
+      <div class="card"><h3><span lang="pl">Eksport i import portfela</span><span lang="en">Export and import a wallet</span></h3><p><span lang="pl">Pobierz swoją konfigurację (aktywa w obecnym stanie, źródła przychodu, wydatki cykliczne i ustawienia) jako wersjonowany plik JSON albo zaimportuj go po podglądzie na sucho. Import tylko dodaje: nigdy niczego nie nadpisuje ani nie usuwa.</span><span lang="en">Download your setup (assets in their current state, income sources, recurring expenses and settings) as a versioned JSON file, or import one after a dry-run preview. Import only ever adds: it never overwrites or deletes.</span></p></div>
+      <div class="card"><h3><span lang="pl">Miejsce dla całego domu</span><span lang="en">Room for the whole household</span></h3><p><span lang="pl">Włącz logowanie, a każda osoba dostanie własny portfel, odizolowany od pozostałych i zaszyfrowany własnym kluczem.</span><span lang="en">Turn sign-in on and every person gets their own wallet, isolated from the others and encrypted with their own key.</span></p></div>
     </div>
   </div>
 </section>
 
 <section id="security">
   <div class="wrap">
-    <p class="eyebrow">Security</p>
-    <h2>Security built in from the start</h2>
+    <p class="eyebrow"><span lang="pl">Bezpieczeństwo</span><span lang="en">Security</span></p>
+    <h2><span lang="pl">Bezpieczeństwo wbudowane od początku</span><span lang="en">Security built in from the start</span></h2>
     <div class="grid4">
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-        <h3>Any OIDC sign-on</h3><p class="muted">Authorization code with PKCE and no client secret. Entra ID works out of the box, with an app role that keeps out the rest of the tenant; any other OIDC issuer can be configured. A half-finished setup stops the app instead of leaving the API open.</p>
+        <h3><span lang="pl">Dowolne logowanie OIDC</span><span lang="en">Any OIDC sign-on</span></h3><p class="muted"><span lang="pl">Authorization code z PKCE i bez sekretu klienta. Entra ID działa od razu, z rolą aplikacji, która odcina resztę tenanta; można skonfigurować dowolnego innego wydawcę OIDC. Niedokończona konfiguracja zatrzymuje aplikację, zamiast zostawić API otwarte.</span><span lang="en">Authorization code with PKCE and no client secret. Entra ID works out of the box, with an app role that keeps out the rest of the tenant; any other OIDC issuer can be configured. A half-finished setup stops the app instead of leaving the API open.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 11l2 2 4-4"/></svg>
-        <h3>One wallet per person</h3><p class="muted">Every account sees only its own data. The filter is applied once, in the database session, and a session without a user fails closed.</p>
+        <h3><span lang="pl">Jeden portfel na osobę</span><span lang="en">One wallet per person</span></h3><p class="muted"><span lang="pl">Każde konto widzi tylko własne dane. Filtr jest nakładany raz, w sesji bazy danych, a sesja bez użytkownika kończy się odmową.</span><span lang="en">Every account sees only its own data. The filter is applied once, in the database session, and a session without a user fails closed.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
-        <h3>Row-level security</h3><p class="muted">On PostgreSQL every table has a forced row-level security policy as a second layer, and the app's database role cannot bypass it.</p>
+        <h3><span lang="pl">Zabezpieczenia na poziomie wierszy</span><span lang="en">Row-level security</span></h3><p class="muted"><span lang="pl">W PostgreSQL każda tabela ma wymuszoną politykę row-level security jako drugą warstwę, a rola bazodanowa aplikacji nie może jej obejść.</span><span lang="en">On PostgreSQL every table has a forced row-level security policy as a second layer, and the app's database role cannot bypass it.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
-        <h3>Encrypted per user</h3><p class="muted">Amounts, notes and everything else about your money are stored as AES-256-GCM ciphertext under your own key, so a database dump shows no figures.</p>
+        <h3><span lang="pl">Szyfrowanie dla każdego z osobna</span><span lang="en">Encrypted per user</span></h3><p class="muted"><span lang="pl">Kwoty, notatki i wszystko inne o Twoich pieniądzach są zapisane jako szyfrogram AES-256-GCM pod Twoim własnym kluczem, więc zrzut bazy nie pokazuje żadnych liczb.</span><span lang="en">Amounts, notes and everything else about your money are stored as AES-256-GCM ciphertext under your own key, so a database dump shows no figures.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-        <h3>Recovery code</h3><p class="muted">A one-time code reattaches your encrypted data if your sign-in identity ever changes. Attempts are rate-limited.</p>
+        <h3><span lang="pl">Kod odzyskiwania</span><span lang="en">Recovery code</span></h3><p class="muted"><span lang="pl">Jednorazowy kod ponownie podłącza Twoje zaszyfrowane dane, jeśli tożsamość logowania kiedyś się zmieni. Liczba prób jest ograniczona.</span><span lang="en">A one-time code reattaches your encrypted data if your sign-in identity ever changes. Attempts are rate-limited.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3.2 4.1M6.6 6.6A13 13 0 0 0 2 12c1 2.5 5 7 10 7a9.7 9.7 0 0 0 4.4-1"/></svg>
-        <h3>No personal data</h3><p class="muted">A user is kept as a hash of issuer and subject. Your name and e-mail come from the sign-in token and are never stored or logged.</p>
+        <h3><span lang="pl">Bez danych osobowych</span><span lang="en">No personal data</span></h3><p class="muted"><span lang="pl">Użytkownik jest przechowywany jako skrót wydawcy i identyfikatora. Imię i e-mail pochodzą z tokenu logowania i nigdy nie są zapisywane ani logowane.</span><span lang="en">A user is kept as a hash of issuer and subject. Your name and e-mail come from the sign-in token and are never stored or logged.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>
-        <h3>Mutual TLS</h3><p class="muted">The backend proves its identity with a certificate to PostgreSQL and to the model server.</p>
+        <h3>Mutual TLS</h3><p class="muted"><span lang="pl">Backend potwierdza swoją tożsamość certyfikatem wobec PostgreSQL i serwera modeli.</span><span lang="en">The backend proves its identity with a certificate to PostgreSQL and to the model server.</span></p>
       </div>
       <div class="card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>
-        <h3>Self-hosted</h3><p class="muted">Your financial data stays on your own server or cluster. There's no third-party SaaS.</p>
+        <h3><span lang="pl">Na własnym serwerze</span><span lang="en">Self-hosted</span></h3><p class="muted"><span lang="pl">W wersji self-hosted dane finansowe zostają na Twoim serwerze lub klastrze, bez zewnętrznego SaaS-u po drodze. Wolisz wersję hostowaną? Jest <a href="https://mojefinanse.eu">mojefinanse.eu</a>.</span><span lang="en">In the self-hosted edition your financial data stays on your own server or cluster, with no third-party SaaS in between. Prefer it hosted? There's <a href="https://mojefinanse.eu">mojefinanse.eu</a>.</span></p>
       </div>
     </div>
     <div class="pair">
-      <figure><div class="frame"><img src="img/dashboard-dark.webp" width="2880" height="1800" loading="lazy" alt="Dashboard in dark mode"></div><figcaption><b>Dark mode</b>, with charts themed to match.</figcaption></figure>
-      <figure><div class="frame"><img src="img/dashboard-pl.webp" width="2880" height="1800" loading="lazy" alt="Dashboard in Polish"></div><figcaption><b>English and Polish</b> throughout. Base currency can be PLN, EUR, USD or CHF.</figcaption></figure>
+      <figure><div class="frame"><img src="img/dashboard-dark.webp" width="2880" height="1800" loading="lazy" alt="Pulpit w trybie ciemnym" data-alt-en="Dashboard in dark mode"></div><figcaption><span lang="pl"><b>Tryb ciemny</b>, z wykresami w pasującej kolorystyce.</span><span lang="en"><b>Dark mode</b>, with charts themed to match.</span></figcaption></figure>
+      <figure><div class="frame"><img src="img/dashboard-pl.webp" width="2880" height="1800" loading="lazy" alt="Pulpit po polsku" data-alt-en="Dashboard in Polish"></div><figcaption><span lang="pl"><b>Polski i angielski</b> w całej aplikacji. Waluta bazowa: PLN, EUR, USD lub CHF.</span><span lang="en"><b>English and Polish</b> throughout. Base currency can be PLN, EUR, USD or CHF.</span></figcaption></figure>
     </div>
   </div>
 </section>
 
 <section id="not-advice">
   <div class="wrap">
-    <p class="eyebrow">Not advice</p>
-    <h2>A tracking tool, not a financial adviser</h2>
-    <p class="lead">MyFinance computes and explains what you already have; it never invests for you and never picks a security. Nothing here is investment, tax or legal advice — the tax, retirement and AI-review pages say so, and the AI review never recommends a specific ticker, fund or product.</p>
+    <p class="eyebrow"><span lang="pl">To nie porada</span><span lang="en">Not advice</span></p>
+    <h2><span lang="pl">Narzędzie do śledzenia finansów, a nie doradca finansowy</span><span lang="en">A tracking tool, not a financial adviser</span></h2>
+    <p class="lead"><span lang="pl">MyFinance liczy i wyjaśnia to, co już masz; nigdy nie inwestuje za Ciebie i nigdy nie wybiera papierów wartościowych. Nic tutaj nie jest poradą inwestycyjną, podatkową ani prawną. Strony podatkowe, emerytalne i oceny AI mówią to wprost, a ocena AI nigdy nie poleca konkretnej spółki, funduszu ani produktu.</span><span lang="en">MyFinance computes and explains what you already have; it never invests for you and never picks a security. Nothing here is investment, tax or legal advice — the tax, retirement and AI-review pages say so, and the AI review never recommends a specific ticker, fund or product.</span></p>
     <div class="pair">
-      <p class="muted" style="align-self:center">Terms of use are versioned. Once signed in, a checkbox modal asks you to accept the current wording before you continue, and asks again whenever the wording changes.</p>
-      <figure class="frame"><img src="img/terms.webp" width="768" height="624" loading="lazy" alt="Before you start terms modal, with the acceptance checkbox, shown before it is accepted"></figure>
+      <p class="muted" style="align-self:center"><span lang="pl">Zasady korzystania są wersjonowane. Po zalogowaniu okno z polem wyboru prosi o akceptację aktualnej treści, zanim przejdziesz dalej, i pyta ponownie przy każdej jej zmianie.</span><span lang="en">Terms of use are versioned. Once signed in, a checkbox modal asks you to accept the current wording before you continue, and asks again whenever the wording changes.</span></p>
+      <figure class="frame"><img src="img/terms.webp" width="768" height="624" loading="lazy" alt="Okno „Zanim zaczniesz” z polem akceptacji zasad korzystania, przed zaakceptowaniem" data-alt-en="Before you start terms modal, with the acceptance checkbox, shown before it is accepted"></figure>
     </div>
   </div>
 </section>
@@ -551,41 +646,78 @@
 <section class="dark" id="start">
   <div class="wrap qs">
     <div>
-      <p class="eyebrow">Get started</p>
-      <h2>Up and running with one command</h2>
+      <p class="eyebrow"><span lang="pl">Jak zacząć</span><span lang="en">Get started</span></p>
+      <h2><span lang="pl">Uruchomienie jednym poleceniem</span><span lang="en">Up and running with one command</span></h2>
       <pre><span class="p">$</span> git clone https://github.com/swiru95/MyFinance.git
 <span class="p">$</span> cd MyFinance
 <span class="p">$</span> docker compose up --build
 
-<span class="c"># open http://localhost:3000</span></pre>
-      <p class="lead" style="margin-top:24px">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away. Turn sign-in on and each person gets their own encrypted wallet.</p>
+<span class="c"><span lang="pl"># otwórz http://localhost:3000</span><span lang="en"># open http://localhost:3000</span></span></pre>
+      <p class="lead" style="margin-top:24px"><span lang="pl">Logowanie i ocena AI są wyłączone, dopóki ich nie skonfigurujesz, więc aplikacja od razu działa lokalnie. Włącz logowanie, a każda osoba dostanie własny zaszyfrowany portfel.</span><span lang="en">Sign-in and the AI review stay off until you configure them, so the app runs locally straight away. Turn sign-in on and each person gets their own encrypted wallet.</span></p>
+      <p class="lead" style="margin-top:16px"><span lang="pl">Nie chcesz nic instalować? Załóż darmowe konto w becie na <a href="https://mojefinanse.eu">mojefinanse.eu</a>.</span><span lang="en">Rather not install anything? Create a free beta account at <a href="https://mojefinanse.eu">mojefinanse.eu</a>.</span></p>
     </div>
     <table class="stack-table">
       <tr><td>Frontend</td><td>Next.js 15, TypeScript, Tailwind, Recharts</td></tr>
       <tr><td>Backend</td><td>Python, FastAPI, SQLAlchemy</td></tr>
-      <tr><td>Database</td><td>SQLite, or PostgreSQL over mutual TLS with row-level security</td></tr>
-      <tr><td>Deploy</td><td>Docker Compose, or a Helm chart on Kubernetes with images on GHCR</td></tr>
-      <tr><td>Prices</td><td>Public FX, precious-metal and crypto APIs, with offline fallbacks</td></tr>
-      <tr><td>Models</td><td>Any OpenAI-compatible server, such as llama-server</td></tr>
+      <tr><td><span lang="pl">Baza danych</span><span lang="en">Database</span></td><td><span lang="pl">SQLite albo PostgreSQL przez mutual TLS z row-level security</span><span lang="en">SQLite, or PostgreSQL over mutual TLS with row-level security</span></td></tr>
+      <tr><td><span lang="pl">Wdrożenie</span><span lang="en">Deploy</span></td><td><span lang="pl">Docker Compose albo Helm chart na Kubernetesie z obrazami w GHCR</span><span lang="en">Docker Compose, or a Helm chart on Kubernetes with images on GHCR</span></td></tr>
+      <tr><td><span lang="pl">Ceny</span><span lang="en">Prices</span></td><td><span lang="pl">Publiczne API kursów walut, metali szlachetnych i krypto, z zapasowymi danymi offline</span><span lang="en">Public FX, precious-metal and crypto APIs, with offline fallbacks</span></td></tr>
+      <tr><td><span lang="pl">Modele</span><span lang="en">Models</span></td><td><span lang="pl">Dowolny serwer zgodny z API OpenAI, np. llama-server</span><span lang="en">Any OpenAI-compatible server, such as llama-server</span></td></tr>
     </table>
   </div>
 </section>
 
 <section class="closing">
   <div class="wrap">
-    <h2>Know what you own. Know what you really spend.</h2>
+    <h2><span lang="pl">Wiedz, co masz. Wiedz, ile naprawdę wydajesz.</span><span lang="en">Know what you own. Know what you really spend.</span></h2>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/swiru95/MyFinance">Get MyFinance on GitHub</a>
+      <a class="btn btn-primary" href="https://mojefinanse.eu"><span lang="pl">Wypróbuj mojefinanse.eu (darmowa beta)</span><span lang="en">Try mojefinanse.eu (free beta)</span></a>
+      <a class="btn btn-light" href="https://github.com/swiru95/MyFinance"><span lang="pl">Pobierz MyFinance z GitHuba</span><span lang="en">Get MyFinance on GitHub</span></a>
     </div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <span>MyFinance · self-hosted budget &amp; portfolio tracker</span>
-    <span>Screenshots show demo data.</span>
+    <span><span lang="pl">MyFinance · budżet i portfel na własnym serwerze · wersja SaaS: <a href="https://mojefinanse.eu">mojefinanse.eu</a></span><span lang="en">MyFinance · self-hosted budget &amp; portfolio tracker · hosted edition: <a href="https://mojefinanse.eu">mojefinanse.eu</a></span></span>
+    <span><span lang="pl">Zrzuty ekranu pokazują dane przykładowe.</span><span lang="en">Screenshots show demo data.</span></span>
   </div>
 </footer>
+
+<script>
+  (function () {
+    var meta = {
+      pl: { title: 'MyFinance — budżet i portfel inwestycyjny na własnym serwerze',
+            description: document.querySelector('meta[name="description"]').content },
+      en: { title: 'MyFinance — self-hosted budget & portfolio tracker',
+            description: 'A budget and portfolio tracker built for Poland: what you own in its real unit, what you really spend, and when you could stop working. Open source and self-hosted, or free in beta at mojefinanse.eu.' }
+    };
+    var imgs = document.querySelectorAll('img[data-alt-en]');
+    imgs.forEach(function (img) { img.setAttribute('data-alt-pl', img.alt); });
+
+    function apply(lang) {
+      document.documentElement.lang = lang;
+      document.title = meta[lang].title;
+      document.querySelector('meta[name="description"]').content = meta[lang].description;
+      imgs.forEach(function (img) { img.alt = img.getAttribute('data-alt-' + lang); });
+      document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-set-lang') === lang));
+      });
+    }
+
+    document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var lang = b.getAttribute('data-set-lang');
+        try { localStorage.setItem('lang', lang); } catch (e) {}
+        // drop a ?lang= from the address so a reload keeps the choice just made
+        if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+        apply(lang);
+      });
+    });
+
+    apply(document.documentElement.lang === 'en' ? 'en' : 'pl');
+  })();
+</script>
 
 </body>
 </html>
