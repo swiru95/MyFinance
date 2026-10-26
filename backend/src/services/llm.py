@@ -108,12 +108,16 @@ def complete(
     temperature: float = 0.3,
     max_tokens: int = 4096,
     response_format: dict | None = None,
+    timeout: float | None = None,
 ) -> str:
     """Run one chat completion and return the assistant's text.
 
     Reasoning models answer with `reasoning_content` alongside `content`. Only
     `content` is returned: the chain of thought is the model working, not the
     report, and storing it would bury the actual assessment.
+
+    `timeout` overrides settings.llm_timeout for callers that must answer
+    within a web request (routes/statement.py).
 
     `response_format` is passed through verbatim (OpenAI's `json_schema` or
     `json_object` shape) when the caller wants structured output. Not every
@@ -143,7 +147,7 @@ def complete(
         headers["Authorization"] = f"Bearer {settings.llm_api_key}"
 
     try:
-        with httpx.Client(timeout=settings.llm_timeout, verify=_ssl_context()) as client:
+        with httpx.Client(timeout=timeout or settings.llm_timeout, verify=_ssl_context()) as client:
             res = client.post(url, json=payload, headers=headers)
     except httpx.HTTPError as exc:
         raise LLMUnavailable(f"Could not reach the model server: {exc}") from exc

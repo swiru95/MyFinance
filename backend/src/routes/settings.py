@@ -1,5 +1,5 @@
 """Settings endpoints (base currency, timezone, advanced-feature switches,
-terms-of-use acceptance).
+the statement-import assistant, terms-of-use acceptance).
 
 Settings are per user. Terms acceptance is not a setting any more: it lives on
 the user row (models/user.py), which is not one of the scoped tables, so it is
@@ -15,8 +15,11 @@ from ..deps import get_db
 from ..models.user import User
 from ..models.settings import Setting
 from ..schemas.settings import BirthYearIn, SettingsIn, TermsAcceptIn
+from ..schemas.statement import StatementAssistIn
+from ..services import llm
 from ..config import BASE_CURRENCIES, DEFAULT_TIMEZONE, TERMS_VERSION, TIMEZONES
 from .helpers import get_features, get_timezone
+from .statement import statement_assist_mode
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -51,6 +54,10 @@ def _payload(db: Session, user_id) -> dict:
         "terms": _terms_state(db, user_id),
         # Optional; encrypted at rest under the user's own key (models/user.py).
         "birth_year": _birth_year(db, user_id),
+        # Who helps read a bank statement: nobody (code only), a model in the
+        # browser, or the server's model - the last only where one is configured.
+        "statement_assist": statement_assist_mode(db),
+        "statement_assist_server": llm.configured(),
     }
 
 
@@ -99,6 +106,19 @@ def accept_terms(
     user.terms_version = payload.version
     # Naive UTC, like every other timestamp column here.
     user.terms_accepted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.commit()
+    return _payload(db, principal.user_id)
+
+
+@router.put("/statement-assist")
+def set_statement_assist(
+    payload: StatementAssistIn,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_user),
+):
+    if payload.mode == "server" and not llm.configured():
+        raise HTTPException(422, "No model is configured on this server.")
+    _put(db, "statement_assist", payload.mode)
     db.commit()
     return _payload(db, principal.user_id)
 

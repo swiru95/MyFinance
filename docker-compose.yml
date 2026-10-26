@@ -20,6 +20,8 @@ services:
       - MYFINANCE_LLM_API_KEY=${MYFINANCE_LLM_API_KEY:-}
       - MYFINANCE_LLM_MODEL=${MYFINANCE_LLM_MODEL:-Thinker}
       - MYFINANCE_LLM_TRANSLATE_MODEL=${MYFINANCE_LLM_TRANSLATE_MODEL:-Bielik}
+      # Statement import, "on this server" mode (README "Statement import").
+      - MYFINANCE_LLM_IMPORT_MODEL=${MYFINANCE_LLM_IMPORT_MODEL:-Bielik}
       - MYFINANCE_LLM_VERIFY_TLS=${MYFINANCE_LLM_VERIFY_TLS:-false}
     volumes:
       - myfinance-data:/app/data

@@ -220,6 +220,17 @@ class Settings(BaseSettings):
     # Polish runs longer than.
     llm_translate_max_tokens: int = 8192
 
+    # --- Statement import assistant (routes/statement.py) ------------------
+    # The model that helps read a bank statement when a wallet chooses "on the
+    # server" (Settings): maps CSV columns it does not recognise, reads PDFs
+    # whose payments are not printed with a minus, and matches payments to
+    # recurring expenses. Short Polish answers, so the Polish-native model.
+    llm_import_model: str = "Bielik"
+    # Under the gateway's 60 s route timeout: a slow call (the router may be
+    # loading the model) ends as a clean 503 that the browser retries once,
+    # instead of the gateway cutting the connection.
+    llm_import_timeout: float = 55.0
+
     class Config:
         env_prefix = "MYFINANCE_"
 

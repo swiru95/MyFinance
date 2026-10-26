@@ -6,11 +6,14 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check:import": "rm -rf .import-check && tsc -p tsconfig.import-check.json && node scripts/check-import.cjs"
   },
   "dependencies": {
     "@azure/msal-browser": "5.22.0",
-    "next": "15.5.26",
+    "@mlc-ai/web-llm": "0.2.86",
+    "next": "15.5.28",
+    "pdfjs-dist": "6.4.299",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "2.13.0"

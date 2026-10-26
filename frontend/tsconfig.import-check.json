@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".import-check",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "lib": [
+      "es2022",
+      "dom"
+    ],
+    "jsx": "react-jsx",
+    "incremental": false,
+    "skipLibCheck": true,
+    "rootDir": "src"
+  },
+  "include": [
+    "src/lib/import/csv.ts",
+    "src/lib/import/statement.ts",
+    "src/lib/import/match.ts"
+  ]
+}

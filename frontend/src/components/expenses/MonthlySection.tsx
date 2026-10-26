@@ -10,6 +10,7 @@ import MonthEditorCard from "./MonthEditorCard";
 import MonthStatTiles from "./MonthStatTiles";
 import RecordedMonthsTable from "./RecordedMonthsTable";
 import Disclosure from "@/components/Disclosure";
+import StatementImport from "./StatementImport";
 
 const currentMonthKey = () => {
   const now = new Date();
@@ -35,6 +36,7 @@ export default function MonthlySection({ hasBusinessIncome }: Props) {
   const [analytics, setAnalytics] = useState<MonthlyAnalytics | null>(null);
   const [selected, setSelected] = useState<string>(currentMonthKey());
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -63,10 +65,16 @@ export default function MonthlySection({ hasBusinessIncome }: Props) {
 
   return (
     <div id="monthly" className="scroll-mt-24 space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold">{t("exp.monthly.title")}</h2>
-        <p className="text-sm muted">{t("exp.monthly.subtitle")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">{t("exp.monthly.title")}</h2>
+          <p className="text-sm muted">{t("exp.monthly.subtitle")}</p>
+        </div>
+        <button type="button" className="btn-ghost" onClick={() => setImporting(true)}>
+          {t("stmt.open")}
+        </button>
       </div>
+      <StatementImport open={importing} onClose={() => setImporting(false)} onSaved={refresh} />
 
       {error && <div className="banner-error">{error}</div>}
 

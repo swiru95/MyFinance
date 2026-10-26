@@ -38,6 +38,7 @@ from .routes import prices as prices_routes
 from .routes import reports as reports_routes
 from .routes import report_pdf as report_pdf_routes
 from .routes import statistics as statistics_routes
+from .routes import statement as statement_routes
 from .routes import settings as settings_routes
 from .routes import tax as tax_routes
 from .routes import wallet as wallet_routes
@@ -125,6 +126,7 @@ protected = [
     report_pdf_routes.router,
     reports_routes.router,
     statistics_routes.router,
+    statement_routes.router,
     settings_routes.router,
     tax_routes.router,
     wallet_routes.router,
