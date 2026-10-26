@@ -18,9 +18,12 @@ type Job = "columns" | "extract" | "match";
 type Step =
   | { kind: "pick"; error?: string }
   | { kind: "password"; bytes: ArrayBuffer; wrong: boolean }
-  | { kind: "consent"; mb: number; run: () => Promise<void>; back: Step }
+  // Asked before a model download (browser) or before any of this file goes to the server's model.
+  | { kind: "consent"; text: string; action: string; run: () => Promise<void>; back: Step }
   | { kind: "busy"; text: string }
-  | { kind: "review"; skipped: number; incomplete: boolean; assisted: boolean };
+  | { kind: "review"; skipped: number; incomplete: boolean; assisted: boolean }
+  // The last look before anything is written: per month, what is marked paid and what other spending becomes.
+  | { kind: "confirm"; back: Extract<Step, { kind: "review" }> };
 
 const assistLib = () => import("@/lib/import/assist");
 
@@ -37,6 +40,8 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const active = useRef<Assistant | null>(null);
+  // "On this server" was allowed for the file now open (asked once per file, not per job).
+  const serverOk = useRef(false);
   // Bumped on close: a run still going when the dialog closes drops its result.
   const run = useRef(0);
 
@@ -54,11 +59,25 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
     onClose();
   }
 
-  /** Runs `task` with the wallet's assistant; in the browser, asks before the first download of a model. */
+  /** Runs `task` with the wallet's assistant. Asks first: on the server, before any of this file is sent; in the
+   *  browser, before the first download of a model. */
   async function withAssist(job: Job, task: (a: Assistant) => Promise<void>, back: Step, unavailable: string) {
     const lib = await assistLib();
     if (mode === "off") return setStep({ kind: "pick", error: unavailable });
-    if (mode === "server") return task(lib.serverAssistant());
+    if (mode === "server") {
+      if (serverOk.current) return task(lib.serverAssistant());
+      return setStep({
+        kind: "consent",
+        text: t("stmt.serverConsent"),
+        action: t("stmt.send"),
+        run: () =>
+          guarded(() => {
+            serverOk.current = true;
+            return task(lib.serverAssistant());
+          }),
+        back,
+      });
+    }
     if (!(await lib.browserSupported())) return setStep({ kind: "pick", error: t("stmt.unsupported") });
     const go = async () => {
       const a = lib.browserAssistant((p) => setStep({ kind: "busy", text: t("stmt.loadingModel", { pct: Math.round(p * 100) }) }));
@@ -72,7 +91,7 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
     };
     const size = lib.SIZE_FOR[job];
     if (await lib.modelCached(size)) return go();
-    setStep({ kind: "consent", mb: lib.DOWNLOAD_MB[size], run: () => guarded(go), back });
+    setStep({ kind: "consent", text: t("stmt.consent", { mb: lib.DOWNLOAD_MB[size] }), action: t("stmt.download"), run: () => guarded(go), back });
   }
 
   async function guarded(job: () => Promise<void>, onError: Step = { kind: "pick", error: t("stmt.failed") }) {
@@ -111,6 +130,7 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
     if (file.size > (isPdf ? MAX_PDF_BYTES : MAX_CSV_BYTES))
       return setStep({ kind: "pick", error: t("stmt.tooBig", { pdf: MAX_PDF_BYTES >> 20, csv: MAX_CSV_BYTES >> 20 }) });
     const bytes = await file.arrayBuffer();
+    serverOk.current = false;
     if (isPdf) await guarded(() => openPdf(bytes));
     else await guarded(() => openCsv(decodeText(bytes)));
   }
@@ -196,7 +216,7 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
 
   const { months: plan, foreign } = planMonths(rows, baseCurrency);
 
-  async function apply() {
+  async function apply(back: Extract<Step, { kind: "review" }>) {
     const todo = plan.filter((p) => chosen.has(p.month));
     setSaving(true);
     setMsg(null);
@@ -219,7 +239,10 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
     setSaving(false);
     onSaved();
     if (ok === todo.length) close();
-    else setMsg(t("stmt.applyFailed", { ok, n: todo.length }));
+    else {
+      setStep(back);
+      setMsg(t("stmt.applyFailed", { ok, n: todo.length }));
+    }
   }
 
   const patch = (key: string, p: Partial<ImportRow>) => setRows((all) => all.map((r) => (r.key === key ? { ...r, ...p } : r)));
@@ -288,13 +311,13 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
 
           {step.kind === "consent" && (
             <div className="space-y-4">
-              <p className="text-sm">{t("stmt.consent", { mb: step.mb })}</p>
+              <p className="text-sm">{step.text}</p>
               <div className="flex gap-2">
                 <button type="button" className="btn-ghost" onClick={() => setStep(step.back)}>
                   {t("stmt.cancel")}
                 </button>
                 <button type="button" className="btn-primary" onClick={() => step.run()}>
-                  {t("stmt.download")}
+                  {step.action}
                 </button>
               </div>
             </div>
@@ -393,14 +416,52 @@ export default function StatementImport({ open, onClose, onSaved }: { open: bool
               {msg && <p className="banner-error">{msg}</p>}
             </>
           )}
+
+          {step.kind === "confirm" && (
+            <section className="space-y-3">
+              <h3 className="font-semibold">{t("stmt.confirmTitle")}</h3>
+              {plan
+                .filter((p) => chosen.has(p.month))
+                .map((p) => {
+                  const rec = records[p.month];
+                  const paid = (byMonth[p.month] ?? []).filter((c) => p.paid.has(c.expense_id));
+                  return (
+                    <div key={p.month} className="rounded-xl border p-3 text-sm divider">
+                      <p className="font-medium tabular-nums">{p.month}</p>
+                      <p className="mt-1 muted">
+                        {t("stmt.confirmPaid")}:{" "}
+                        {paid.length ? paid.map((c) => `${c.name} ${money(p.paid.get(c.expense_id)!, c.currency)}`).join(", ") : t("stmt.confirmNone")}
+                      </p>
+                      <p className="muted">
+                        {t("stmt.confirmOther", {
+                          now: rec ? money(rec.other_spent ?? rec.actual_spent, rec.currency) : t("stmt.confirmNone"),
+                          next: money(p.other),
+                        })}
+                      </p>
+                    </div>
+                  );
+                })}
+              <p className="text-xs subtle">{t("stmt.confirmNote")}</p>
+            </section>
+          )}
         </div>
 
         {step.kind === "review" && (
           <div className="flex gap-2 border-t p-5 divider">
-            <button type="button" className="btn-ghost" onClick={() => setStep({ kind: "pick" })} disabled={saving}>
+            <button type="button" className="btn-ghost" onClick={() => setStep({ kind: "pick" })}>
               {t("stmt.another")}
             </button>
-            <button type="button" className="btn-primary flex-1 justify-center" onClick={apply} disabled={saving || !chosen.size}>
+            <button type="button" className="btn-primary flex-1 justify-center" onClick={() => setStep({ kind: "confirm", back: step })} disabled={!chosen.size}>
+              {t("stmt.next", { n: chosen.size })}
+            </button>
+          </div>
+        )}
+        {step.kind === "confirm" && (
+          <div className="flex gap-2 border-t p-5 divider">
+            <button type="button" className="btn-ghost" onClick={() => setStep(step.back)} disabled={saving}>
+              {t("stmt.back")}
+            </button>
+            <button type="button" className="btn-primary flex-1 justify-center" onClick={() => apply(step.back)} disabled={saving || !chosen.size}>
               {saving ? t("stmt.applying") : t("stmt.apply", { n: chosen.size })}
             </button>
           </div>

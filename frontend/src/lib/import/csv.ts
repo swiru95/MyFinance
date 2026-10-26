@@ -50,7 +50,9 @@ export interface CsvTable {
   own: Set<string>;
 }
 
-const isData = (r: string[]) => r.some((c) => parseDate(c)) && r.some((c) => !isNaN(parseAmount(c)));
+/** An amount cell: two decimals, optionally a currency code or a trailing minus ("30.11.2025" is not one). */
+const isAmount = (c: string) => /\d[.,]\d{2}(\s?[A-Z]{3})?\s*-?$/.test(c.trim()) && !isNaN(parseAmount(c));
+const isData = (r: string[]) => r.some((c) => parseDate(c)) && r.some(isAmount);
 
 export function readCsv(text: string): CsvTable | null {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -69,6 +71,19 @@ const AMOUNT_NAMES = /^kwota|amount|wartość/i;
 const DEBIT_NAMES = /obciążen|wypływ|debit|wydatk/i;
 const CREDIT_NAMES = /uznani|wpływ|credit/i;
 const NOTE_NAMES = /kontrahent|odbiorc|tytuł|opis|counterparty|payee|merchant|title|description/i;
+/** Unnamed trailing columns with labelled details (PKO BP: "Nazwa nadawcy/odbiorcy: …", "Lokalizacja: Adres: …
+ *  Miasto: …", "Tytuł: …"): the merchant is there, while "Opis transakcji" only says "Płatność kartą". */
+const DETAIL = /^\s*(nazwa (nadawcy|odbiorcy)[^:]*|lokalizacja|tytu[łl])\s*:\s*/i;
+const DETAIL_NOISE = /\bkraj:\s*\S+|\b(adres|miasto):\s*|\brachunek (odbiorcy|nadawcy)[^:]*:\s*[\d ]*|\b\d{6,}\b|\b\d{2}(?: \d{4}){6}\b/gi;
+const tidy = (c: string) => c.replace(DETAIL, "").replace(DETAIL_NOISE, " ").replace(/\s+/g, " ").trim();
+
+function details(row: string[], header: string[], skip: number[]): string[] {
+  return row
+    .map((c, i) => (!skip.includes(i) && !(header[i] ?? "").trim() || /^unnamed/i.test(header[i] ?? "") ? c : ""))
+    .filter((c) => DETAIL.test(c))
+    .map(tidy)
+    .filter(Boolean);
+}
 /** Exact names: "Kwota (waluta rachunku)" names an amount, not a currency. */
 const CURRENCY_NAMES = /^(waluta|currency)$/i;
 
@@ -129,7 +144,7 @@ export function mappingFits(m: CsvMapping, { data }: CsvTable): boolean {
   );
 }
 
-export function applyMapping(m: CsvMapping, { data, own }: CsvTable, baseCurrency: string): { rows: ImportRow[]; skipped: number } {
+export function applyMapping(m: CsvMapping, { header, data, own }: CsvTable, baseCurrency: string): { rows: ImportRow[]; skipped: number } {
   const ownIn = (cell: string | undefined) => own.has((cell ?? "").replace(/\D/g, ""));
   // A column holding an own account on nearly every row is the statement's account, not the payee's.
   const width = Math.max(...data.map((r) => r.length));
@@ -154,12 +169,8 @@ export function applyMapping(m: CsvMapping, { data, own }: CsvTable, baseCurrenc
       if (date) skipped++;
       return;
     }
-    const note = cleanNote(
-      m.description
-        .map((c) => r[c] ?? "")
-        .filter(Boolean)
-        .join(" · "),
-    );
+    const parts = [...details(r, header, [m.date, m.amount, m.debit, m.credit, ...m.description]), ...m.description.map((c) => tidy(r[c] ?? ""))];
+    const note = cleanNote([...new Set(parts.filter(Boolean))].join(" · "));
     const transfer = payeeCols.some((c) => ownIn(r[c]));
     rows.push({ key: `csv-${i}`, date, amount: Math.round(out * 100) / 100, currency, note, commitment: null, checked: !transfer, unverified: false, transfer });
   });
