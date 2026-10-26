@@ -8,6 +8,7 @@ import * as startStrings from "./strings/start";
 import * as pdfReportStrings from "./strings/pdfReport";
 import * as recoveryStrings from "./strings/recovery";
 import * as walletStrings from "./strings/wallet";
+import * as statementStrings from "./strings/statement";
 
 export type Language = "en" | "pl";
 export type LanguageSetting = Language | "auto";
@@ -715,11 +716,13 @@ const DICTS: Record<Language, Dict> = {
     ...en, ...incomeStrings.en, ...fireStrings.en, ...insightsStrings.en,
     ...featuresStrings.en, ...glossaryStrings.en, ...startStrings.en,
     ...pdfReportStrings.en, ...recoveryStrings.en, ...walletStrings.en,
+    ...statementStrings.en,
   },
   pl: {
     ...pl, ...incomeStrings.pl, ...fireStrings.pl, ...insightsStrings.pl,
     ...featuresStrings.pl, ...glossaryStrings.pl, ...startStrings.pl,
     ...pdfReportStrings.pl, ...recoveryStrings.pl, ...walletStrings.pl,
+    ...statementStrings.pl,
   },
 };
 

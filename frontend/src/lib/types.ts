@@ -181,6 +181,10 @@ export interface Settings {
   terms: TermsState;
   /** Optional, stored encrypted; only for age-based analysis. */
   birth_year: number | null;
+  /** Who helps read a bank statement (lib/import/assist.ts): nobody, a model in the browser, the server's model. */
+  statement_assist: "off" | "browser" | "server";
+  /** Whether this server has a model for "server" mode. */
+  statement_assist_server: boolean;
 }
 
 /** GET /api/recovery/status - answers even when the account is locked. */

@@ -280,6 +280,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ base_currency, timezone, features }),
     }),
+  setStatementAssist: (mode: "off" | "browser" | "server") =>
+    request<Settings>("/settings/statement-assist", {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
   setBirthYear: (birth_year: number | null) =>
     request<Settings>("/settings/birth-year", {
       method: "PUT",

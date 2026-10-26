@@ -76,6 +76,75 @@ function FeaturesSection() {
   );
 }
 
+const ASSIST_MODES = ["off", "browser", "server"] as const;
+
+/** Who helps read a bank statement on the Expenses page (lib/import/assist.ts). "server" needs a model configured
+ *  on the backend; the backend refuses it otherwise, and the option is disabled here to match. */
+function StatementAssistSection() {
+  const { t } = useI18n();
+  const { settings, apply } = useSettings();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const mode = settings?.statement_assist ?? "off";
+
+  async function choose(next: (typeof ASSIST_MODES)[number]) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      apply(await api.setStatementAssist(next));
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : t("common.failedSave"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card max-w-md space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold">{t("set.stmt.title")}</h2>
+        <p className="text-sm muted">{t("set.stmt.subtitle")}</p>
+      </div>
+      <fieldset className="space-y-3" disabled={busy}>
+        <legend className="sr-only">{t("set.stmt.title")}</legend>
+        {ASSIST_MODES.map((m) => {
+          const unavailable = m === "server" && !settings?.statement_assist_server;
+          return (
+            <label key={m} className={`flex items-start gap-3 ${unavailable ? "opacity-60" : "cursor-pointer"}`}>
+              <input
+                type="radio"
+                name="statement-assist"
+                className="mt-1 h-4 w-4 shrink-0"
+                checked={mode === m}
+                disabled={unavailable}
+                onChange={() => choose(m)}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{t(`set.stmt.${m}`)}</span>
+                <span className="mt-0.5 block text-xs muted">{t(unavailable ? "set.stmt.serverOff" : `set.stmt.${m}.desc`)}</span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+      {mode === "browser" && (
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          onClick={() =>
+            import("@/lib/import/assist")
+              .then((m) => m.deleteBrowserModels())
+              .then(() => setMsg(t("set.stmt.modelsDeleted")))
+          }
+        >
+          {t("set.stmt.deleteModels")}
+        </button>
+      )}
+      {msg && <p className="text-xs muted">{msg}</p>}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { t, locale } = useI18n();
   const { settings, apply } = useSettings();
@@ -147,6 +216,8 @@ export default function SettingsPage() {
       </div>
 
       <FeaturesSection />
+
+      <StatementAssistSection />
 
       <form onSubmit={save} className="card max-w-md space-y-4">
         <div>
