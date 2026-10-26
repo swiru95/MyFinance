@@ -45,7 +45,8 @@ _COLUMNS_SYSTEM = (
     "date: the transaction or booking date column. amount: one signed amount column, or -1 if amounts are "
     "split. debit / credit: separate money-out / money-in columns, or -1. outgoing: whether money going out "
     "is printed negative or positive in the amount column. description: up to 3 columns describing the payee "
-    "or title. currency: the currency column, or -1."
+    "or title. currency: the currency column, or -1. Exact shape: "
+    '{"date": 0, "amount": -1, "debit": 3, "credit": 4, "outgoing": "negative", "description": [1], "currency": -1}'
 )
 
 _EXTRACT_SCHEMA = {
@@ -82,7 +83,9 @@ _EXTRACT_SYSTEM = (
     "as YYYY-MM-DD, exactly as printed (convert the format only). amount: the amount as printed, without a sign. "
     "direction: out for money leaving the account (card payment, transfer out, BLIK, fee, withdrawal), in for "
     "money arriving. currency: as printed, PLN if none. description: the merchant or title, short. Ignore "
-    "balances, totals and page headers. Answer with JSON only."
+    "balances, totals and page headers. Answer with JSON only, exact shape: "
+    '{"transactions": [{"line": 12, "date": "2026-10-01", "amount": 45.99, "direction": "out", '
+    '"currency": "PLN", "description": "Sklep"}]}'
 )
 
 _MATCH_SCHEMA = {
@@ -112,16 +115,24 @@ _MATCH_SYSTEM = (
     "You match recurring expenses (rent, utilities, subscriptions, loans) to the payments of one month of a "
     "Polish bank statement. A payment pays an expense when its payee or title names the same company or "
     "service, even if the amount differs a little. For each expense give the id of the paying payment, or -1 "
-    "if none clearly pays it. Use a payment at most once. Answer with JSON only."
+    "if none clearly pays it. Use a payment at most once. Answer with JSON only, exact shape: "
+    '{"matches": [{"commitment": 1, "payment": 10}, {"commitment": 2, "payment": -1}]}'
 )
 
 
 def _ask(system: str, user: str, schema: dict, max_tokens: int) -> dict:
-    text = llm.complete(
+    """One structured answer. Constrained by the schema where the model supports
+    it; a model whose grammar sampler cannot take it (Bielik answers 400 "Failed
+    to initialize samplers") is asked again without it - the prompts spell out
+    the exact shape, and every caller checks the result field by field."""
+    ask = lambda rf: llm.complete(  # noqa: E731
         settings.llm_import_model, system, user,
-        temperature=0.0, max_tokens=max_tokens, timeout=settings.llm_import_timeout,
-        response_format={"type": "json_schema", "json_schema": schema},
+        temperature=0.0, max_tokens=max_tokens, timeout=settings.llm_import_timeout, response_format=rf,
     )
+    try:
+        text = ask({"type": "json_schema", "json_schema": schema})
+    except llm.LLMBadRequest:
+        text = ask(None)
     start = text.find("{")
     if start == -1:
         raise ValueError("model did not return a JSON object")
@@ -135,10 +146,12 @@ def columns(header: list[str], sample: list[list[str]]) -> dict:
     out = _ask(_COLUMNS_SYSTEM, user, _COLUMNS_SCHEMA, 200)
     width = max([len(header)] + [len(r) for r in sample])
     col = lambda v: v if isinstance(v, int) and 0 <= v < width else -1  # noqa: E731
+    debit = col(out.get("debit"))
     return {
         "date": col(out.get("date")),
-        "amount": col(out.get("amount")),
-        "debit": col(out.get("debit")),
+        # Split debit/credit columns win: a model naming both sometimes calls a text column "amount".
+        "amount": -1 if debit >= 0 else col(out.get("amount")),
+        "debit": debit,
         "credit": col(out.get("credit")),
         "outgoing": "positive" if out.get("outgoing") == "positive" else "negative",
         "description": [c for c in (out.get("description") or [])[:3] if col(c) >= 0],
@@ -184,7 +197,11 @@ def match(commitments: list[dict], payments: list[dict]) -> list[dict]:
     payment_ids = {p["id"] for p in payments}
     used: set[int] = set()
     result = []
-    for m in out.get("matches") or []:
+    pairs = out.get("matches")
+    if pairs is None:
+        # Unconstrained models sometimes answer {"<expense id>": <payment id>}.
+        pairs = [{"commitment": int(k), "payment": v} for k, v in out.items() if str(k).lstrip("-").isdigit()]
+    for m in pairs or []:
         c, p = (m.get("commitment"), m.get("payment")) if isinstance(m, dict) else (None, None)
         if c in commitment_ids and p in payment_ids and p not in used:
             used.add(p)

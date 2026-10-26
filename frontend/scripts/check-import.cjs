@@ -91,6 +91,9 @@ check("csv: debit and credit columns, own account on every row", () => {
   assert.equal(m.debit, 3);
   assert.ok(csv.mappingFits(m, table));
   const out = csv.applyMapping(m, table, "PLN");
+  // A model's mapping that also names the description column "amount" reads the same rows.
+  const wrong = csv.applyMapping({ ...m, amount: 1 }, table, "PLN");
+  assert.deepEqual(wrong.rows.map((r) => r.amount), [89.9, 250]);
   assert.deepEqual(
     out.rows.map((r) => [r.date, r.amount, r.transfer]),
     [

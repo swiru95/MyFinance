@@ -112,6 +112,20 @@ def test_match_only_offered_ids_each_payment_once(client, fake_llm):
     assert r.json()["matches"] == [{"commitment": 1, "payment": 10}, {"commitment": 2, "payment": 12}]
 
 
+def test_model_without_schema_support_is_asked_again_plainly(client, fake_llm):
+    answers, calls, llm = fake_llm
+    _server_mode(client)
+    answers.append(llm.LLMBadRequest("Model server returned 400: Failed to initialize samplers"))
+    answers.append('{"1": 10, "2": -1}')
+    r = client.post("/api/statement/match", json={
+        "commitments": [{"id": 1, "name": "Prąd", "amount": 180}, {"id": 2, "name": "Internet", "amount": 60}],
+        "payments": [{"id": 10, "date": "2026-10-05", "amount": 172.4, "note": "PGE OBRÓT"}],
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["matches"] == [{"commitment": 1, "payment": 10}]
+    assert calls[0]["response_format"] is not None and calls[1]["response_format"] is None
+
+
 def test_model_failure_is_503_without_the_statement_text(client, fake_llm):
     answers, _, llm = fake_llm
     _server_mode(client)

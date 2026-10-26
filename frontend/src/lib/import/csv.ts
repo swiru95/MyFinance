@@ -112,16 +112,19 @@ export function guessHeuristic({ header, data }: CsvTable): CsvMapping {
   return { date, amount, debit, credit, outgoing: "negative", description, currency: currency >= 0 ? currency : named(CURRENCY_NAMES) };
 }
 
+const most = (data: string[][], test: (r: string[]) => boolean) => data.filter(test).length * 4 >= data.length * 3;
+
+/** A column of amounts: at least one, and in most rows an amount or nothing (a debit column is empty on incoming
+ *  rows). */
+const amountColumn = (col: number, data: string[][]) =>
+  col >= 0 && data.some((r) => !isNaN(parseAmount(r[col] ?? ""))) && most(data, (r) => !r[col] || !isNaN(parseAmount(r[col])));
+
 /** A mapping is usable when its date column parses in most rows and its amount column(s) parse as amounts. */
 export function mappingFits(m: CsvMapping, { data }: CsvTable): boolean {
-  const most = (test: (r: string[]) => boolean) => data.filter(test).length * 4 >= data.length * 3;
-  // A debit column is empty on incoming rows, so empty cells pass; at least one must hold an amount.
-  const amountOk = (col: number) =>
-    col >= 0 && data.some((r) => !isNaN(parseAmount(r[col] ?? ""))) && most((r) => !r[col] || !isNaN(parseAmount(r[col])));
   return (
     m.date >= 0 &&
-    most((r) => !!parseDate(r[m.date] ?? "")) &&
-    (amountOk(m.amount) || amountOk(m.debit)) &&
+    most(data, (r) => !!parseDate(r[m.date] ?? "")) &&
+    (amountColumn(m.amount, data) || amountColumn(m.debit, data)) &&
     m.description.every((c) => c >= 0 && c !== m.date)
   );
 }
@@ -131,12 +134,14 @@ export function applyMapping(m: CsvMapping, { data, own }: CsvTable, baseCurrenc
   // A column holding an own account on nearly every row is the statement's account, not the payee's.
   const width = Math.max(...data.map((r) => r.length));
   const payeeCols = [...Array(width).keys()].filter((c) => data.filter((r) => ownIn(r[c])).length * 10 < data.length * 9);
+  // The signed amount column, unless it is not one (a model may name a text column) and debit columns are.
+  const signed = amountColumn(m.amount, data) || !amountColumn(m.debit, data);
   const rows: ImportRow[] = [];
   let skipped = 0;
   data.forEach((r, i) => {
     const date = parseDate(r[m.date] ?? "");
     let out = NaN;
-    if (m.amount >= 0) {
+    if (signed && m.amount >= 0) {
       const v = parseAmount(r[m.amount] ?? "");
       out = m.outgoing === "negative" ? -v : v;
     } else if (m.debit >= 0) {
