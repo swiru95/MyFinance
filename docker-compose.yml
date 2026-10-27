@@ -3,6 +3,9 @@ services:
     build: ./backend
     container_name: myfinance-backend
     restart: unless-stopped
+    # The API does not create tables at startup (a separate schema job does that on Kubernetes), so on a fresh volume
+    # every request failed with 500. Run the job first; it is idempotent and only migrates what is missing.
+    command: sh -c "python -m src.schema && exec uvicorn src.main:app --host 0.0.0.0 --port 8000"
     environment:
       - MYFINANCE_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
       # Entra ID SSO. Leave both unset and the API is open and the frontend
