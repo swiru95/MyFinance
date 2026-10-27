@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instrukcja obsługi MyFinance — krok po kroku</title>
+<meta name="description" content="Instrukcja obsługi MyFinance, wersji open source na własnym serwerze: pierwsze uruchomienie, aktywa, przychody z podatkiem, wydatki i rozliczenie miesiąca, wyciąg z banku, emerytura, analizy i ustawienia.">
+<meta property="og:title" content="Instrukcja obsługi MyFinance">
+<meta property="og:description" content="Gdzie co jest w MyFinance i jak krok po kroku prowadzić budżet, portfel i rozliczenie miesiąca. Wersja SaaS: mojefinanse.eu.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://demo.mojefinanse.eu/instrukcja/">
+<meta property="og:image" content="https://demo.mojefinanse.eu/img/guide/dashboard.webp">
+<meta property="og:locale" content="pl_PL">
+<meta property="og:locale:alternate" content="en_GB">
+<!-- Both languages live in this one file, like the home page: one canonical URL, no hreflang alternates. -->
+<link rel="canonical" href="https://demo.mojefinanse.eu/instrukcja/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235B54E8'/%3E%3Ctext x='32' y='45' font-family='Arial' font-size='36' font-weight='700' fill='white' text-anchor='middle'%3E%E2%82%A3%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=Fraunces:opsz,wght@9..144,500..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script>
+  // Same language choice as the home page: ?lang= wins, then the saved choice, then the browser's list; Polish default.
+  (function () {
+    var langs = ['pl', 'en'], lang = 'pl', saved = null;
+    var q = new URLSearchParams(location.search).get('lang');
+    try { saved = localStorage.getItem('lang'); } catch (e) {}
+    if (langs.indexOf(q) >= 0) lang = q;
+    else if (langs.indexOf(saved) >= 0) lang = saved;
+    else {
+      var prefs = navigator.languages || [navigator.language || ''];
+      for (var i = 0; i < prefs.length; i++) {
+        var l = String(prefs[i]).slice(0, 2).toLowerCase();
+        if (langs.indexOf(l) >= 0) { lang = l; break; }
+      }
+    }
+    document.documentElement.lang = lang;
+  })();
+</script>
+<style>
+  :root {
+    --ink: #121629; --ink-2: #1C2140; --ink-line: #2C3150;
+    --paper: #F5F3EE; --card: #FDFCF9; --line: #DDD8CC;
+    --accent: #5B54E8; --accent-soft: #A9A5FF; --amber: #F2A93B;
+    --muted: #4E5468; --muted-dark: #B7BAD3;
+    --head: 'Fraunces', Georgia, serif; --body: 'DM Sans', Arial, sans-serif; --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --wrap: 1180px; --gutter: 24px; --read: 820px;
+  }
+  html[lang="pl"] [lang="en"], html[lang="en"] [lang="pl"] { display: none !important; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 18px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  img { display: block; max-width: 100%; height: auto; }
+  a { color: var(--accent); }
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
+  .read { max-width: var(--read); margin: 0 auto; padding: 0 var(--gutter); }
+  h1, h2, h3 { font-family: var(--head); font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  p { margin: 0; }
+  code, kbd { font-family: var(--mono); font-size: 0.86em; background: #ECE9E1; border-radius: 5px; padding: 1px 5px; }
+  .ui { font-weight: 700; color: #3A33C9; }
+
+  body > nav { position: sticky; top: 0; z-index: 10; background: rgba(18, 22, 41, 0.86); backdrop-filter: blur(12px); border-bottom: 1px solid var(--ink-line); }
+  body > nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--paper); font-weight: 700; font-size: 18px; text-decoration: none; }
+  .brand i { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); font-style: normal; font-size: 17px; }
+  .nav-links { display: flex; gap: 28px; }
+  .nav-links a { color: var(--muted-dark); text-decoration: none; font-size: 15px; }
+  .nav-links a:hover, .nav-links a[aria-current] { color: var(--paper); }
+  .nav-end { display: flex; align-items: center; gap: 10px; }
+  .lang-switch { display: inline-flex; border: 1px solid var(--ink-line); border-radius: 10px; overflow: hidden; }
+  .lang-switch button { background: none; border: 0; color: var(--muted-dark); font: 600 13px var(--body); letter-spacing: 0.06em; padding: 8px 10px; cursor: pointer; }
+  .lang-switch button:hover { color: var(--paper); }
+  .lang-switch button[aria-pressed="true"] { background: var(--ink-2); color: var(--paper); }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; font-weight: 600; font-size: 14px; text-decoration: none; border: 1px solid var(--ink-line); color: var(--paper); }
+  .btn:hover { background: var(--ink-2); }
+
+  .hero { background: radial-gradient(circle at 80% 30%, #2B2F7A 0%, var(--ink) 60%); color: var(--paper); padding: 72px 0 64px; }
+  .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-soft); margin-bottom: 14px; }
+  .hero h1 { font-size: clamp(40px, 6vw, 68px); line-height: 1.05; }
+  .hero .lead { margin-top: 20px; font-size: 20px; color: var(--muted-dark); max-width: 680px; }
+  .saas { display: flex; gap: 14px; align-items: flex-start; margin-top: 28px; max-width: 680px; padding: 16px 18px; border: 1px solid var(--ink-line); border-radius: 14px; background: rgba(28, 33, 64, 0.7); color: #d9d7ff; font-size: 17px; }
+  .saas a { color: var(--paper); font-weight: 700; }
+  .badge { flex: none; display: inline-block; margin-top: 3px; background: var(--amber); color: var(--ink); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1; padding: 6px 10px; border-radius: 999px; }
+
+  main { padding: 56px 0 96px; }
+  .note { border: 1px solid var(--line); background: #EFEDE6; border-radius: 12px; padding: 14px 18px; font-size: 15px; color: var(--muted); }
+  .toc { margin-top: 32px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 26px; }
+  .toc h2 { font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+  .toc ol { margin: 12px 0 0; padding-left: 22px; columns: 2; column-gap: 40px; font-size: 16px; }
+  .toc li { break-inside: avoid; margin-bottom: 6px; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  article section { padding-top: 64px; scroll-margin-top: 72px; }
+  article h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.12; margin-bottom: 18px; }
+  article h2 .n { color: var(--accent); margin-right: 10px; }
+  article h3 { font-family: var(--body); font-size: 20px; font-weight: 700; letter-spacing: 0; margin: 28px 0 10px; }
+  article p + p { margin-top: 14px; }
+  article p { color: #2A2F45; }
+  ol.steps { list-style: none; counter-reset: s; margin: 18px 0 0; padding: 0; display: grid; gap: 12px; }
+  ol.steps li { counter-increment: s; position: relative; padding-left: 42px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; display: grid; place-items: center; }
+  ul.dots { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  ul.dots li { position: relative; padding-left: 22px; }
+  ul.dots li::before { content: ""; position: absolute; left: 4px; top: 11px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .tip { margin-top: 18px; border-left: 4px solid var(--accent); background: #ECEBFB; border-radius: 0 12px 12px 0; padding: 12px 16px; font-size: 16px; }
+  .warn { border-left-color: var(--amber); background: #FBF2E2; }
+  figure { margin: 26px 0 0; }
+  figure img { border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 50px rgba(18, 22, 41, 0.12); }
+  figure.phone img { max-width: 280px; margin: 0 auto; }
+  figcaption { margin-top: 10px; font-size: 14px; color: var(--muted); text-align: center; }
+  table.map { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 16px; }
+  table.map th, table.map td { text-align: left; vertical-align: top; padding: 10px 12px 10px 0; border-top: 1px solid var(--line); }
+  table.map th { width: 30%; }
+  pre { margin: 18px 0 0; background: var(--ink-2); border-radius: 12px; padding: 18px 20px; overflow-x: auto; font-family: var(--mono); font-size: 15px; line-height: 1.7; color: var(--paper); }
+  pre .p { color: var(--amber); }
+  pre .c { color: var(--muted-dark); }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-top: 12px; }
+  summary { cursor: pointer; list-style: none; padding: 16px 20px; font-weight: 700; display: flex; justify-content: space-between; gap: 12px; }
+  summary::after { content: "+"; color: var(--accent); font-size: 22px; line-height: 1; }
+  details[open] summary::after { content: "−"; }
+  details p { padding: 0 20px 18px; }
+
+  footer { background: var(--ink); color: var(--muted-dark); border-top: 1px solid var(--ink-line); padding: 40px 0; font-size: 15px; }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+  footer a { color: var(--paper); }
+
+  @media (max-width: 960px) { .nav-links { display: none; } }
+  @media (max-width: 600px) {
+    :root { --gutter: 16px; }
+    body { font-size: 17px; }
+    .toc ol { columns: 1; }
+    table.map th { width: 38%; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="/"><i>₣</i>MyFinance</a>
+    <div class="nav-links">
+      <a href="/"><span lang="pl">Strona główna</span><span lang="en">Home</span></a>
+      <a href="/#features"><span lang="pl">Funkcje</span><span lang="en">Features</span></a>
+      <a href="/#start"><span lang="pl">Jak zacząć</span><span lang="en">Get started</span></a>
+      <a href="/instrukcja/" aria-current="page"><span lang="pl">Instrukcja</span><span lang="en">User guide</span></a>
+    </div>
+    <div class="nav-end">
+      <div class="lang-switch" role="group" aria-label="Język / Language">
+        <button type="button" data-set-lang="pl" aria-pressed="false" title="Polski">PL</button>
+        <button type="button" data-set-lang="en" aria-pressed="false" title="English">EN</button>
+      </div>
+      <a class="btn" href="https://github.com/swiru95/MyFinance">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="read">
+    <p class="eyebrow"><span lang="pl">Instrukcja obsługi</span><span lang="en">User guide</span></p>
+    <h1><span lang="pl">MyFinance krok po kroku</span><span lang="en">MyFinance, step by step</span></h1>
+    <p class="lead"><span lang="pl">Gdzie co jest w wersji open source na własnym serwerze i jak zrobić najczęstsze rzeczy: pierwsze uruchomienie, aktywa, przychody z polskim podatkiem, wydatki i rozliczenie miesiąca, wyciąg z banku, emerytura, analizy i ustawienia.</span><span lang="en">Where everything is in the open-source, self-hosted edition and how to do the common things: first run, assets, income with Polish tax, spending and the monthly close, bank statements, retirement, insights and settings.</span></p>
+    <p class="saas"><span class="badge">SaaS</span><span><span lang="pl">Ta instrukcja dotyczy wersji self-hosted. Jeśli korzystasz z wersji SaaS, <a href="https://mojefinanse.eu">Moje Finanse na mojefinanse.eu</a>, jej instrukcja jest tutaj: <a href="https://mojefinanse.eu/instrukcja/">mojefinanse.eu/instrukcja</a>. To osobne aplikacje i część ekranów wygląda inaczej.</span><span lang="en">This guide is for the self-hosted edition. If you use the hosted (SaaS) edition, <a href="https://mojefinanse.eu">Moje Finanse at mojefinanse.eu</a>, its guide is here: <a href="https://mojefinanse.eu/instrukcja/">mojefinanse.eu/instrukcja</a> (Polish). They are separate apps and some screens differ.</span></span></p>
+  </div>
+</header>
+
+<main>
+<div class="read">
+  <p class="note"><span lang="pl">MyFinance to narzędzie do śledzenia własnych finansów: liczy na danych, które wpisujesz. Nie jest doradztwem inwestycyjnym, podatkowym ani prawnym. Obliczenia podatkowe to szacunki, prognozy nie są gwarancją. Zrzuty ekranu pokazują zmyśloną personę demo; interfejs na zrzutach jest po polsku.</span><span lang="en">MyFinance is a tool for tracking your own finances: it works on the data you enter. It is not investment, tax or legal advice. Tax figures are estimates and projections are not guarantees. Screenshots show a made-up demo persona, with the interface in Polish.</span></p>
+
+  <nav class="toc" aria-label="Spis treści / Contents">
+    <h2><span lang="pl">W tej instrukcji</span><span lang="en">In this guide</span></h2>
+    <ol>
+      <li><a href="#uruchomienie"><span lang="pl">Uruchomienie</span><span lang="en">Running it</span></a></li>
+      <li><a href="#pierwsze-kroki"><span lang="pl">Pierwsze kroki</span><span lang="en">First steps</span></a></li>
+      <li><a href="#mapa"><span lang="pl">Gdzie co jest</span><span lang="en">Where everything is</span></a></li>
+      <li><a href="#pulpit"><span lang="pl">Pulpit</span><span lang="en">Dashboard</span></a></li>
+      <li><a href="#aktywa"><span lang="pl">Aktywa</span><span lang="en">Assets</span></a></li>
+      <li><a href="#przychody"><span lang="pl">Przychody</span><span lang="en">Income</span></a></li>
+      <li><a href="#wydatki"><span lang="pl">Wydatki i rozliczenie miesiąca</span><span lang="en">Expenses and the monthly close</span></a></li>
+      <li><a href="#wyciag"><span lang="pl">Wyciąg z banku</span><span lang="en">Bank statements</span></a></li>
+      <li><a href="#emerytura"><span lang="pl">Emerytura (FIRE)</span><span lang="en">Retirement (FIRE)</span></a></li>
+      <li><a href="#analizy"><span lang="pl">Analizy</span><span lang="en">Insights</span></a></li>
+      <li><a href="#kalkulatory"><span lang="pl">Kalkulatory</span><span lang="en">Calculators</span></a></li>
+      <li><a href="#ustawienia"><span lang="pl">Ustawienia i bezpieczeństwo</span><span lang="en">Settings and security</span></a></li>
+      <li><a href="#faq"><span lang="pl">Najczęstsze pytania</span><span lang="en">FAQ</span></a></li>
+    </ol>
+  </nav>
+
+<article>
+
+<section id="uruchomienie">
+  <h2><span class="n">1.</span><span lang="pl">Uruchomienie</span><span lang="en">Running it</span></h2>
+  <p><span lang="pl">Całą aplikację uruchamia Docker Compose. Pierwsze budowanie obrazów trwa kilka minut.</span><span lang="en">Docker Compose runs the whole app. The first image build takes a few minutes.</span></p>
+  <pre><span class="p">$</span> git clone https://github.com/swiru95/MyFinance.git
+<span class="p">$</span> cd MyFinance
+<span class="p">$</span> docker compose up --build
+
+<span class="c"><span lang="pl"># aplikacja: http://localhost:3000 · API: http://localhost:8000/docs</span><span lang="en"># app: http://localhost:3000 · API: http://localhost:8000/docs</span></span></pre>
+  <ul class="dots">
+    <li><span lang="pl">Bez skonfigurowanego logowania aplikacja otwiera się od razu i wszyscy korzystający z instancji widzą jeden wspólny portfel. Po włączeniu logowania (Entra ID albo dowolny dostawca OIDC) każda osoba ma własny, zaszyfrowany portfel, a w prawym górnym rogu pojawia się menu konta z przyciskiem <span class="ui">Wyloguj się</span>.</span><span lang="en">With no sign-in configured the app opens straight away and everyone using the instance shares one wallet. Turn sign-in on (Entra ID or any OIDC provider) and each person gets their own encrypted wallet, with an account menu and <span class="ui">Sign out</span> at the top right.</span></li>
+    <li><span lang="pl">Funkcje AI (Analizy, komentarz w raporcie PDF, model do wyciągów „na tym serwerze”) wymagają serwera zgodnego z API OpenAI, np. llama-server, ustawionego zmiennymi <code>MYFINANCE_LLM_BASE_URL</code> i <code>MYFINANCE_LLM_API_KEY</code>. Bez nich reszta aplikacji działa normalnie.</span><span lang="en">The AI features (Insights, the PDF report commentary, the “on this server” statement model) need an OpenAI-compatible server such as llama-server, set with <code>MYFINANCE_LLM_BASE_URL</code> and <code>MYFINANCE_LLM_API_KEY</code>. Everything else works without them.</span></li>
+    <li><span lang="pl">Chcesz najpierw się rozejrzeć? Pustą bazę SQLite można wypełnić zmyśloną personą: <code>python -m src.demo_seed</code> w katalogu <code>backend</code> (szczegóły w README).</span><span lang="en">Want to look around first? An empty SQLite database can be filled with a made-up persona: <code>python -m src.demo_seed</code> in <code>backend</code> (see the README).</span></li>
+  </ul>
+</section>
+
+<section id="pierwsze-kroki">
+  <h2><span class="n">2.</span><span lang="pl">Pierwsze kroki</span><span lang="en">First steps</span></h2>
+  <h3><span lang="pl">Zasady korzystania</span><span lang="en">Terms of use</span></h3>
+  <p><span lang="pl">Przy pierwszym wejściu (i po każdej zmianie zasad) pojawia się okno <span class="ui">Zanim zaczniesz</span>. Zaznacz <span class="ui">Przeczytałem(-am) i akceptuję zasady korzystania.</span> i kliknij <span class="ui">Akceptuję i przechodzę dalej</span>. Pełny tekst jest pod linkiem <span class="ui">Zasady korzystania</span> w stopce.</span><span lang="en">On first use (and whenever the terms change) a <span class="ui">Before you start</span> window appears. Tick <span class="ui">I have read and accept the terms of use.</span> and click <span class="ui">Accept and continue</span>. The full text is under <span class="ui">Terms of use</span> in the footer.</span></p>
+  <h3><span lang="pl">Kod odzyskiwania</span><span lang="en">Recovery code</span></h3>
+  <p><span lang="pl">Dane są szyfrowane kluczem powiązanym z logowaniem. Jeśli tożsamość logowania się zmieni, następne logowanie otworzy puste konto, a jednorazowy kod odzyskiwania pozwala przypisać stare dane z powrotem.</span><span lang="en">Your data is encrypted with a key tied to your sign-in. If that identity ever changes, the next sign-in opens an empty account, and a one-time recovery code lets you reattach the old data.</span></p>
+  <ol class="steps">
+    <li><span lang="pl">W oknie <span class="ui">Zapisz kod odzyskiwania</span> kliknij <span class="ui">Utwórz mój kod odzyskiwania</span>.</span><span lang="en">In <span class="ui">Save a recovery code</span>, click <span class="ui">Create my recovery code</span>.</span></li>
+    <li><span lang="pl">Zapisz kod <code>MF1-…</code> poza przeglądarką: <span class="ui">Kopiuj</span> do menedżera haseł albo <span class="ui">Pobierz .txt</span>. Zobaczysz go tylko raz.</span><span lang="en">Keep the <code>MF1-…</code> code outside the browser: <span class="ui">Copy</span> it to a password manager or <span class="ui">Download .txt</span>. It is shown only once.</span></li>
+    <li><span lang="pl">Zaznacz <span class="ui">Zapisałem(-am) go.</span>, przepisz kod w polu potwierdzenia i kliknij <span class="ui">Potwierdź</span>.</span><span lang="en">Tick <span class="ui">I have saved it.</span>, type the code back and click <span class="ui">Confirm</span>.</span></li>
+  </ol>
+  <p class="tip warn"><span lang="pl"><span class="ui">Nie teraz</span> ukrywa okno tylko do przeładowania strony – wraca, dopóki kod nie zostanie potwierdzony. Kod możesz też utworzyć później w Ustawieniach.</span><span lang="en"><span class="ui">Not now</span> hides the window only until the page reloads; it comes back until a code is confirmed. You can also create the code later in Settings.</span></p>
+  <h3><span lang="pl">„Jak zarabiasz?” i funkcje</span><span lang="en">“How do you earn?” and features</span></h3>
+  <p><span lang="pl">Nowy portfel pokazuje na Pulpicie kartę <span class="ui">Jak zarabiasz?</span>: <span class="ui">Umowa o pracę (UoP)</span>, <span class="ui">Własna działalność (B2B)</span> albo <span class="ui">Chcę tylko śledzić wydatki</span>. Po wpisaniu kwoty brutto (lub faktury) i daty powstaje pierwsze źródło dochodu z rozsądnymi wartościami domyślnymi. Jeśli kafelek dochodu od razu pokazuje 0 zł, odśwież stronę.</span><span lang="en">A new wallet shows a <span class="ui">How do you earn?</span> card on the Dashboard: employment (UoP), your own business (B2B) or just tracking spending. Enter the gross amount (or the invoice) and a start date and the first income source is created with sensible defaults. If the income tile still shows 0, reload the page.</span></p>
+  <p><span lang="pl">Na start włączone są tylko Pulpit, Przychody, Wydatki i Ustawienia. Aktywa, Emeryturę, Kalkulatory i Analizy (w Ustawieniach: „Insights”) włączasz pojedynczo w <span class="ui">Ustawienia → Funkcje</span>; przełącznik działa od razu, a wyłączenie funkcji nie usuwa danych.</span><span lang="en">Only Dashboard, Income, Expenses and Settings are on at first. Turn on Assets, Retirement, Calculators and Insights one by one in <span class="ui">Settings → Features</span>; a switch takes effect at once, and turning a feature off deletes nothing.</span></p>
+</section>
+
+<section id="mapa">
+  <h2><span class="n">3.</span><span lang="pl">Gdzie co jest</span><span lang="en">Where everything is</span></h2>
+  <table class="map">
+    <tr><th><span lang="pl">Pulpit</span><span lang="en">Dashboard</span></th><td><span lang="pl">Dochód, stałe koszty i wydatki miesiąca, nadchodzące płatności, wartość portfela, poduszka, ceny, wykresy.</span><span lang="en">The month's income, fixed costs and spending, upcoming payments, portfolio value, cushion, prices, charts.</span></td></tr>
+    <tr><th><span lang="pl">Aktywa</span><span lang="en">Assets</span></th><td><span lang="pl">Karty aktywów, aktualizacje stanu, historia, raport PDF.</span><span lang="en">Asset cards, balance updates, history, PDF report.</span></td></tr>
+    <tr><th><span lang="pl">Przychody</span><span lang="en">Income</span></th><td><span lang="pl">Źródła dochodu z podatkiem i składkami, harmonogram roku, pieniądze „nie Twoje” (VAT, zaliczki), inne dochody.</span><span lang="en">Income sources with tax and contributions, the year's schedule, money that is not yours yet (VAT, advances), other income.</span></td></tr>
+    <tr><th><span lang="pl">Wydatki</span><span lang="en">Expenses</span></th><td><span lang="pl">Stałe zobowiązania, rozliczenie miesiąca, wyciąg z banku, analiza.</span><span lang="en">Recurring commitments, the monthly close, bank statements, analysis.</span></td></tr>
+    <tr><th><span lang="pl">Emerytura</span><span lang="en">Retirement</span></th><td><span lang="pl">Niezależność finansowa (FIRE) z Twoich danych.</span><span lang="en">Financial independence (FIRE) from your own data.</span></td></tr>
+    <tr><th><span lang="pl">Analizy</span><span lang="en">Insights</span></th><td><span lang="pl">Kolejne kroki, podsumowanie miesiąca, profil, ocena portfela.</span><span lang="en">Next steps, monthly digest, profile, wallet assessment.</span></td></tr>
+    <tr><th><span lang="pl">Kalkulatory</span><span lang="en">Calculators</span></th><td><span lang="pl">UoP ↔ B2B, kalkulator wsteczny, parametry roku. Nic się nie zapisuje.</span><span lang="en">UoP ↔ B2B, reverse calculator, the year's parameters. Nothing is saved.</span></td></tr>
+    <tr><th><span lang="pl">Ustawienia</span><span lang="en">Settings</span></th><td><span lang="pl">Wygląd, język, funkcje, waluta, strefa czasowa, plik portfela, kod odzyskiwania.</span><span lang="en">Appearance, language, features, currency, time zone, wallet file, recovery code.</span></td></tr>
+  </table>
+  <figure class="phone"><img src="/img/guide/mobile-menu.webp" width="390" height="760" loading="lazy" alt="Pulpit MyFinance na telefonie; menu pod ikoną w prawym górnym rogu" data-alt-en="The MyFinance dashboard on a phone; the menu is under the icon at the top right"><figcaption><span lang="pl">Na telefonie menu stron jest pod ikoną ☰ w prawym górnym rogu.</span><span lang="en">On a phone the page menu is under ☰ at the top right.</span></figcaption></figure>
+</section>
+
+<section id="pulpit">
+  <h2><span class="n">4.</span><span lang="pl">Pulpit</span><span lang="en">Dashboard</span></h2>
+  <ul class="dots">
+    <li><span lang="pl"><b>Dochód w tym miesiącu</b> – netto ze źródeł. <b>Stałe koszty miesięczne</b> – wydatki cykliczne przeliczone na miesiąc (przy JDG razem z ZUS i zdrowotną). <b>Wydano w tym miesiącu</b> – z rozliczenia miesiąca, z procentem zaoszczędzonego przychodu.</span><span lang="en"><b>Income this month</b> – net from your sources. <b>Fixed monthly costs</b> – recurring expenses as a monthly figure (with ZUS and health contributions for a JDG). <b>Spent this month</b> – from the monthly close, with the share of income saved.</span></li>
+    <li><span lang="pl"><b>Nadchodzące</b> – płatności jednorazowe oraz kwartalne i roczne w ciągu 90 dni.</span><span lang="en"><b>Coming up</b> – one-off payments, and quarterly or yearly ones due within 90 days.</span></li>
+    <li><span lang="pl">Z włączonymi Aktywami: <b>Wartość portfela</b>, <b>Poduszka wystarczy na</b> (aktywa bezpieczne ÷ zobowiązania miesięczne), <b>Ceny</b>, konta z ulgą podatkową, wykres wartości w czasie (podział: razem, aktywa, klasy, ryzyko) i struktura portfela.</span><span lang="en">With Assets on: <b>Total portfolio</b>, <b>Your cushion lasts</b> (safe assets ÷ monthly commitments), <b>Prices</b>, tax-advantaged accounts, the value-over-time chart (split by total, asset, class or risk) and the breakdown.</span></li>
+  </ul>
+  <figure><img src="/img/guide/dashboard.webp" width="1280" height="820" loading="lazy" alt="Pulpit MyFinance: dochód, stałe koszty, wydano, nadchodzące, wartość portfela, poduszka, ceny" data-alt-en="MyFinance dashboard: income, fixed costs, spent, coming up, portfolio value, cushion, prices"><figcaption><span lang="pl">Pulpit persony demo z włączonymi wszystkimi funkcjami.</span><span lang="en">The demo persona's dashboard with every feature on.</span></figcaption></figure>
+</section>
+
+<section id="aktywa">
+  <h2><span class="n">5.</span><span lang="pl">Aktywa</span><span lang="en">Assets</span></h2>
+  <p><span lang="pl">Każde aktywo trzymasz w jego prawdziwej jednostce: waluty w PLN, EUR, USD lub CHF, złoto, srebro, platynę i pallad w gramach lub uncjach, BTC, ETH, SOL, XRP i BNB w liczbie monet. Wszystko jest przeliczane na walutę bazową po bieżących cenach.</span><span lang="en">Each asset is kept in its real unit: currencies in PLN, EUR, USD or CHF, gold, silver, platinum and palladium in grams or ounces, BTC, ETH, SOL, XRP and BNB by coin count. Everything is converted to your base currency at live prices.</span></p>
+  <h3><span lang="pl">Dodanie aktywa</span><span lang="en">Adding an asset</span></h3>
+  <ol class="steps">
+    <li><span lang="pl">Kliknij <span class="ui">+ Dodaj aktywo</span> (albo <span class="ui">+ Dodaj …</span> na gotowej, pustej karcie).</span><span lang="en">Click <span class="ui">+ Add asset</span> (or <span class="ui">+ Add …</span> on a ready-made empty card).</span></li>
+    <li><span lang="pl">Wybierz <span class="ui">Rodzaj</span>; dla metalu lub kryptowaluty wybór z listy uzupełnia nazwę, ikonę, kategorię i profil ryzyka.</span><span lang="en">Pick the <span class="ui">Kind</span>; for a metal or a coin, choosing it from the list fills in the name, icon, category and risk profile.</span></li>
+    <li><span lang="pl">Opcjonalnie ustaw <span class="ui">Profil ryzyka</span> i <span class="ui">Konto z ulgą podatkową</span> (IKE, IKZE, PPK, OIPE, OKI), potem <span class="ui">Dodaj aktywo</span> i wpisz pierwszy stan.</span><span lang="en">Optionally set the <span class="ui">Risk profile</span> and the <span class="ui">Tax-advantaged account</span> (IKE, IKZE, PPK, OIPE, OKI), then <span class="ui">Add asset</span> and enter its first balance.</span></li>
+  </ol>
+  <figure><img src="/img/guide/dodaj-aktywo.webp" width="1280" height="820" loading="lazy" alt="Okno Dodaj aktywo: rodzaj, nazwa, kategoria, ikona, profil ryzyka, konto z ulgą podatkową" data-alt-en="Add asset window: kind, name, category, icon, risk profile, tax-advantaged account"></figure>
+  <h3><span lang="pl">Aktualizacja stanu</span><span lang="en">Updating a balance</span></h3>
+  <ol class="steps">
+    <li><span lang="pl">Na karcie kliknij <span class="ui">Aktualizuj</span> i wpisz <b>aktualny, łączny</b> stan (saldo albo całkowitą ilość), nie różnicę.</span><span lang="en">Click <span class="ui">Update</span> on the card and enter the <b>current total</b> (balance or full quantity), not the difference.</span></li>
+    <li><span lang="pl">W polu <span class="ui">Ile wpłaciłeś(-aś) od ostatniej aktualizacji?</span> wpisz dopłatę (wypłata to liczba ujemna). Przy złocie i krypto jest wyliczana ze zmiany ilości. Dzięki temu aplikacja oddziela Twoje pieniądze od wzrostu rynku.</span><span lang="en">In <span class="ui">How much did you pay in since the last update?</span> enter what you added (a withdrawal is negative). For gold and crypto it is worked out from the change in quantity. That is how the app separates your money from market growth.</span></li>
+    <li><span lang="pl">Kliknij <span class="ui">Zapisz aktualizację</span>. <span class="ui">Historia</span> pokaże wszystkie wpisy z podziałem na wpłatę i wzrost.</span><span lang="en">Click <span class="ui">Save update</span>. <span class="ui">History</span> lists every entry, split into deposit and growth.</span></li>
+  </ol>
+  <figure><img src="/img/guide/aktualizacja.webp" width="1280" height="820" loading="lazy" alt="Aktualizacja złota: ilość w gramach lub uncjach, cena bieżąca, podział zmiany na wpłatę i wzrost" data-alt-en="Updating gold: grams or ounces, live price, the change split into deposit and growth"></figure>
+  <p class="tip warn"><span lang="pl"><span class="ui">Edytuj → Archiwizuj</span> chowa sprzedane aktywo, ale zostawia jego historię na wykresach. <span class="ui">Usuń na stałe</span> i przycisk <span class="ui">✕</span> na karcie usuwają historię bezpowrotnie (✕ – wszystkie wpisy stanu tego aktywa).</span><span lang="en"><span class="ui">Edit → Archive</span> hides a sold asset but keeps its history on the charts. <span class="ui">Delete permanently</span> and the <span class="ui">✕</span> on a card remove history for good (✕ removes every balance entry of that asset).</span></p>
+  <p><span lang="pl"><b>Raport PDF</b> na tej stronie pobiera wartość, alokację, konta z ulgą i efektywność aktywów za wybrany okres.</span><span lang="en">The <b>PDF report</b> on this page downloads value, allocation, tax-advantaged accounts and per-asset performance for a chosen period.</span></p>
+</section>
+
+<section id="przychody">
+  <h2><span class="n">6.</span><span lang="pl">Przychody</span><span lang="en">Income</span></h2>
+  <ol class="steps">
+    <li><span lang="pl">Kliknij <span class="ui">+ Dodaj źródło</span>, wpisz nazwę i wybierz <span class="ui">Rodzaj</span>: <b>UoP</b> (brutto miesięcznie), <b>B2B</b> (faktura miesięczna, stawka dzienna albo godzinowa; skala, liniowy lub ryczałt; etap ZUS) albo <b>Inne</b> (kwota już netto, np. najem, 800+).</span><span lang="en">Click <span class="ui">+ Add source</span>, name it and pick the <span class="ui">Kind</span>: <b>UoP</b> (monthly gross), <b>B2B</b> (monthly invoice, day or hour rate; skala, liniowy or ryczałt; ZUS stage) or <b>Other</b> (already net, e.g. rent, 800+).</span></li>
+    <li><span lang="pl">Ustaw walutę i datę <span class="ui">Od</span>. Pod <span class="ui">Więcej opcji</span> są m.in. KUP, praca twórcza, PIT-2, ulga dla młodych, PPK, koszty, chorobowe i VAT.</span><span lang="en">Set the currency and the <span class="ui">From</span> date. <span class="ui">More options</span> holds deductible costs, creative work, PIT-2, the under-26 relief, PPK, costs, sickness insurance and VAT.</span></li>
+    <li><span lang="pl">Kliknij <span class="ui">Dodaj źródło</span>. Karta pokaże brutto, netto, podatki i składki oraz stopę efektywną za bieżący rok.</span><span lang="en">Click <span class="ui">Add source</span>. The card shows gross, net, taxes and contributions and the effective rate for the year.</span></li>
+  </ol>
+  <figure><img src="/img/guide/przychody.webp" width="1280" height="820" loading="lazy" alt="Przychody: karty źródeł B2B, najmu i UoP z sumami roku" data-alt-en="Income: B2B, rental and UoP source cards with year totals"></figure>
+  <ul class="dots">
+    <li><span lang="pl"><b>Harmonogram roczny</b>: kliknij wiersz miesiąca, aby wpisać wyjątek – dni pracy, koszty albo rzeczywiste netto z paska (<span class="ui">Nadpisz netto</span>).</span><span lang="en"><b>Year schedule</b>: click a month's row to enter an exception – working days, costs, or the real net from your payslip (<span class="ui">Override net</span>).</span></li>
+    <li><span lang="pl"><b>Pieniądze na koncie, które nie są Twoje</b>: VAT, ZUS i zaliczki z B2B z terminami płatności. Aplikacja nie wie, czy zostały zapłacone.</span><span lang="en"><b>Money in your account that is not yours</b>: B2B VAT, ZUS and tax advances with their due dates. The app does not know whether they were paid.</span></li>
+    <li><span lang="pl"><b>Inne dochody (spoza źródeł)</b>: jednorazowe wpływy, np. prezent albo zwrot.</span><span lang="en"><b>Other income</b>: one-off money such as a gift or a refund.</span></li>
+    <li><span lang="pl">Podatek liczony jest narastająco w roku (próg 120 000 zł, limit 30-krotności ZUS), więc netto może się różnić między miesiącami.</span><span lang="en">Tax is worked out year to date (the 120 000 zł threshold, the ZUS 30× cap), so net pay can differ from month to month.</span></li>
+  </ul>
+  <figure><img src="/img/guide/harmonogram.webp" width="1280" height="820" loading="lazy" alt="Harmonogram roczny źródła B2B: brutto, ZUS, zdrowotna, zaliczka PIT, VAT i netto w każdym miesiącu" data-alt-en="Year schedule of a B2B source: gross, ZUS, health, PIT advance, VAT and net for each month"></figure>
+</section>
+
+<section id="wydatki">
+  <h2><span class="n">7.</span><span lang="pl">Wydatki i rozliczenie miesiąca</span><span lang="en">Expenses and the monthly close</span></h2>
+  <h3><span lang="pl">Stałe zobowiązania</span><span lang="en">Recurring commitments</span></h3>
+  <ol class="steps">
+    <li><span lang="pl">Kliknij <span class="ui">+ Dodaj wydatek</span>, wpisz nazwę, kwotę i walutę.</span><span lang="en">Click <span class="ui">+ Add expense</span>, enter a name, amount and currency.</span></li>
+    <li><span lang="pl"><span class="ui">Jak często?</span>: Miesięcznie, Kwartalnie, Rocznie albo Jednorazowo; <span class="ui">Pierwsza płatność</span> wyznacza kolejne terminy.</span><span lang="en"><span class="ui">How often?</span>: monthly, quarterly, yearly or once; the <span class="ui">First payment</span> date sets the next ones.</span></li>
+    <li><span lang="pl">Opcjonalnie data końca (np. ostatnia rata), kategoria i notatki, potem <span class="ui">Dodaj wydatek</span>.</span><span lang="en">Optionally an end date (e.g. the last instalment), a category and notes, then <span class="ui">Add expense</span>.</span></li>
+  </ol>
+  <figure><img src="/img/guide/wydatki.webp" width="1280" height="820" loading="lazy" alt="Wydatki: stałe koszty miesięczne, nadchodzące, struktura według kategorii" data-alt-en="Expenses: fixed monthly costs, coming up, breakdown by category"></figure>
+  <h3><span lang="pl">Miesiąc po miesiącu</span><span lang="en">Month by month</span></h3>
+  <ol class="steps">
+    <li><span lang="pl">W sekcji <span class="ui">Miesiąc po miesiącu</span> wybierz miesiąc (niezapisane mają dopisek „nieuzupełniony”).</span><span lang="en">In <span class="ui">Month by month</span>, pick the month (unsaved ones are marked as not filled in).</span></li>
+    <li><span lang="pl">Odznacz zobowiązania, których nie zapłacono, i popraw kwotę rachunku, jeśli była inna niż zwykle.</span><span lang="en">Untick commitments that were not paid and correct a bill's amount if it differed from usual.</span></li>
+    <li><span lang="pl">W <span class="ui">Pozostałe wydatki</span> wpisz jedną kwotę na jedzenie, paliwo i resztę – wystarczy szacunek. Z włączonymi Aktywami podpowiedź „Nie wiesz?” liczy ją z dochodu i zmiany portfela (<span class="ui">Wpisz …</span>).</span><span lang="en">In <span class="ui">Other spending</span> enter one figure for food, fuel and the rest – an estimate will do. With Assets on, the hint works it out from income and how the portfolio moved.</span></li>
+    <li><span lang="pl">Kliknij <span class="ui">Zapisz</span> z nazwą miesiąca. <span class="ui">Pokaż analizę</span> rozwija nadwyżkę, stopę oszczędzania, wydatki efektywne i tabelę zapisanych miesięcy.</span><span lang="en">Click <span class="ui">Save</span> with the month's name. <span class="ui">Show analysis</span> opens surplus, savings rate, effective spend and the table of saved months.</span></li>
+  </ol>
+  <figure><img src="/img/guide/miesiac.webp" width="1280" height="1240" loading="lazy" alt="Edytor miesiąca: przychód, zobowiązania do odhaczenia, pozostałe wydatki z podpowiedzią" data-alt-en="Month editor: income, commitments to tick off, other spending with a hint"></figure>
+  <p class="tip"><span lang="pl"><b>Wydatki efektywne</b> = dochód − zmiana wartości portfela w miesiącu. Spadek rynku liczy się tu tak samo jak wydatek, a wzrost może dać wynik ujemny. ZUS i zdrowotna z JDG są już odjęte od netto, więc nie ma ich na liście do odhaczenia.</span><span lang="en"><b>Effective spend</b> = income − the change in portfolio value over the month. A market drop counts the same as spending, and a rise can make it negative. JDG ZUS and health contributions are already taken off net income, so they are not on the tick list.</span></p>
+</section>
+
+<section id="wyciag">
+  <h2><span class="n">8.</span><span lang="pl">Wyciąg z banku</span><span lang="en">Bank statements</span></h2>
+  <p><span lang="pl">Wyciąg PDF lub CSV wypełnia miesiące, które obejmuje: płatności za stałe wydatki oznaczają je jako zapłacone, reszta trafia do pozostałych wydatków. Plik jest czytany w przeglądarce, a nic nie zapisuje się bez potwierdzenia.</span><span lang="en">A PDF or CSV statement fills the months it covers: payments for recurring expenses mark them paid, the rest goes to other spending. The file is read in your browser and nothing is saved until you confirm.</span></p>
+  <ol class="steps">
+    <li><span lang="pl"><span class="ui">Wydatki → Miesiąc po miesiącu → Wczytaj wyciąg</span>, potem <span class="ui">Wybierz PDF lub CSV</span> (PDF z hasłem: hasło z wiadomości od banku).</span><span lang="en"><span class="ui">Expenses → Month by month → Import a statement</span>, then choose a PDF or CSV (for a password-protected PDF, the password from the bank's message).</span></li>
+    <li><span lang="pl">Sprawdź przypisania: każdą płatność można przypisać do stałego wydatku albo do pozostałych. Stałe wydatki dopasowuje się po dokładnej kwocie; przelewy na własne konta i miesiące objęte tylko częściowo startują odznaczone.</span><span lang="en">Check the assignments: each payment can go to a recurring expense or to other spending. Recurring expenses match by exact amount; transfers to your own accounts and partly covered months start unticked.</span></li>
+    <li><span lang="pl"><span class="ui">Dalej: podsumowanie</span>, a po sprawdzeniu <span class="ui">Potwierdź i zaktualizuj miesiące</span>.</span><span lang="en"><span class="ui">Next: summary</span>, then <span class="ui">Confirm and update months</span>.</span></li>
+  </ol>
+  <p><span lang="pl">W <span class="ui">Ustawienia → Wczytywanie wyciągów</span> wybierasz, czy pomaga model językowy: <b>Wyłączony</b> (tylko kod), <b>W tej przeglądarce</b> (WebGPU, jednorazowe pobranie do ok. 1,3 GB; wyciąg zostaje w przeglądarce) albo <b>Na tym serwerze</b> (fragmenty trafiają do modelu Twojej instalacji i nie są zapisywane).</span><span lang="en">In <span class="ui">Settings → Statement import</span> you choose whether a language model helps: <b>Off</b> (code only), <b>In this browser</b> (WebGPU, a one-off download of up to about 1.3 GB; the statement stays in the browser) or <b>On this server</b> (excerpts go to your installation's model and are not stored).</span></p>
+</section>
+
+<section id="emerytura">
+  <h2><span class="n">9.</span><span lang="pl">Emerytura (FIRE)</span><span lang="en">Retirement (FIRE)</span></h2>
+  <p><span lang="pl">Strona liczy niezależność finansową z Twojego portfela, wydatków i dochodów. Najpierw rozwiń <span class="ui">Ustawienia</span> na tej stronie, podaj rok urodzenia (opcjonalnie docelowy wiek FI, wiek emerytalny i oczekiwaną emeryturę ZUS z PUE ZUS) i kliknij <span class="ui">Zapisz</span>.</span><span lang="en">The page works out financial independence from your portfolio, spending and income. First open <span class="ui">Settings</span> on this page, enter your birth year (optionally a target FI age, retirement age and expected ZUS pension from PUE ZUS) and click <span class="ui">Save</span>.</span></p>
+  <ul class="dots">
+    <li><span lang="pl"><b>Kwota FI</b>, <b>Postęp</b>, <b>Lata do FI</b> i miesięczna wpłata, która prowadzi do celu.</span><span lang="en"><b>FI number</b>, <b>Progress</b>, <b>Years to FI</b> and the monthly contribution that reaches it.</span></li>
+    <li><span lang="pl"><span class="ui">Szczegóły</span>: dochód potrzebny w każdej formie, warianty (skromny, regularny, komfortowy, barista, coast), projekcja, wpływ stopy oszczędzania, dźwignie ±1000 zł i sprawdzenie, czy pieniądze bez blokady wiekowej starczą do 60. roku życia.</span><span lang="en"><span class="ui">Details</span>: the income needed in each form, variants (lean, regular, fat, barista, coast), a projection, the savings-rate curve, ±1000 zł levers and a check whether money without an age lock lasts until 60.</span></li>
+  </ul>
+  <p class="tip"><span lang="pl">To model, nie prognoza: realne stopy zwrotu, inflacja i wydatki będą inne. Pokazuje, które dźwignie mają znaczenie.</span><span lang="en">It is a model, not a forecast: real returns, inflation and spending will differ. It shows which levers matter.</span></p>
+  <figure><img src="/img/guide/emerytura.webp" width="1280" height="820" loading="lazy" alt="Emerytura: kwota FI, postęp, lata do FI i ile oszczędzać miesięcznie" data-alt-en="Retirement: FI number, progress, years to FI and the monthly contribution"></figure>
+</section>
+
+<section id="analizy">
+  <h2><span class="n">10.</span><span lang="pl">Analizy</span><span lang="en">Insights</span></h2>
+  <ul class="dots">
+    <li><span lang="pl"><b>Kolejne kroki</b> – drabinka sprawdzeń na Twoich danych (bufor, rezerwa podatkowa, fundusz awaryjny, limity IKE i IKZE, plan FIRE, aktualność danych), bez AI. Pierwszy niespełniony punkt widać na Pulpicie.</span><span lang="en"><b>Next steps</b> – a ladder of checks on your data (buffer, tax reserve, emergency fund, IKE and IKZE limits, the FIRE plan, stale data), without AI. The first open item shows on the Dashboard.</span></li>
+    <li><span lang="pl"><b>Podsumowanie miesiąca</b>, <b>Profil</b> (ankieta tolerancji ryzyka) i <b>Ocena portfela</b> (wybierasz styl: bezpieczny, zrównoważony, ryzykowny, długoterminowy) pisze model językowy Twojej instalacji; liczby są sprawdzane względem Twoich danych.</span><span lang="en"><b>Monthly digest</b>, <b>Profile</b> (a risk questionnaire) and <b>Wallet assessment</b> (you pick a style: safe, balanced, risky, long-term) are written by your installation's language model; the figures are checked against your data.</span></li>
+  </ul>
+  <figure><img src="/img/guide/analizy.webp" width="1280" height="820" loading="lazy" alt="Analizy, zakładka Kolejne kroki: drabinka sprawdzeń z oznaczeniami spełnione i częściowo" data-alt-en="Insights, Next steps tab: the ladder of checks marked done and partly done"></figure>
+</section>
+
+<section id="kalkulatory">
+  <h2><span class="n">11.</span><span lang="pl">Kalkulatory</span><span lang="en">Calculators</span></h2>
+  <p><span lang="pl"><b>Porównanie UoP ↔ B2B</b> przy podanych kwotach (netto, koszt pracodawcy, przychód równoważny, luka emerytalna), <b>kalkulator wsteczny</b> od docelowego netto i <b>parametry roku</b> ze źródłami. Nic się tu nie zapisuje, a wynik to rachunek na wpisanych liczbach, nie wskazanie formy.</span><span lang="en"><b>UoP ↔ B2B comparison</b> for the amounts you enter (net, employer cost, equivalent revenue, pension gap), a <b>reverse calculator</b> from a target net, and the <b>year's parameters</b> with sources. Nothing is saved, and a result is arithmetic on your numbers, not a pick of a tax form.</span></p>
+  <figure><img src="/img/guide/kalkulatory.webp" width="1280" height="820" loading="lazy" alt="Kalkulatory: porównanie umowy o pracę i B2B" data-alt-en="Calculators: employment versus B2B comparison"></figure>
+</section>
+
+<section id="ustawienia">
+  <h2><span class="n">12.</span><span lang="pl">Ustawienia i bezpieczeństwo</span><span lang="en">Settings and security</span></h2>
+  <ul class="dots">
+    <li><span lang="pl"><b>Wygląd</b> i <b>Język</b> – zapisywane w tej przeglądarce. <b>Waluta bazowa</b> i <b>Strefa czasowa</b> – przycisk <span class="ui">Zapisz ustawienia</span>.</span><span lang="en"><b>Appearance</b> and <b>Language</b> – kept in this browser. <b>Base currency</b> and <b>Time zone</b> – the <span class="ui">Save settings</span> button.</span></li>
+    <li><span lang="pl"><b>Plik portfela</b> – eksport konfiguracji (aktywa w obecnym stanie, źródła dochodu, wydatki cykliczne, ustawienia; bez historii) i import z podglądem. Import tylko dodaje, niczego nie nadpisuje. Plik nie jest zaszyfrowany.</span><span lang="en"><b>Wallet file</b> – export your setup (assets as they stand, income sources, recurring expenses, settings; no history) and import it with a preview. Import only adds, never overwrites. The file is not encrypted.</span></li>
+    <li><span lang="pl"><b>Kod odzyskiwania</b> – stan i <span class="ui">Utwórz nowy kod</span>. <b>Przywróć za pomocą kodu odzyskiwania</b> – gdy po zalogowaniu nową tożsamością portfel jest pusty; działa tylko na koncie bez własnych danych.</span><span lang="en"><b>Recovery code</b> – its status and <span class="ui">Create a new code</span>. <b>Restore with a recovery code</b> – when a new sign-in identity shows an empty wallet; works only on an account with no data of its own.</span></li>
+  </ul>
+  <figure><img src="/img/guide/ustawienia.webp" width="1280" height="820" loading="lazy" alt="Ustawienia: wygląd, język i funkcje" data-alt-en="Settings: appearance, language and features"></figure>
+</section>
+
+<section id="faq">
+  <h2><span class="n">13.</span><span lang="pl">Najczęstsze pytania</span><span lang="en">FAQ</span></h2>
+  <details><summary><span lang="pl">Nie widzę zakładki Aktywa, Emerytura, Analizy albo Kalkulatory.</span><span lang="en">I can't see Assets, Retirement, Insights or Calculators.</span></summary><p><span lang="pl">Nowy portfel ma je wyłączone. Włącz je w Ustawienia → Funkcje.</span><span lang="en">A new wallet has them off. Turn them on in Settings → Features.</span></p></details>
+  <details><summary><span lang="pl">Wpisałem nowe saldo, a aplikacja pokazuje duży „wzrost”.</span><span lang="en">I entered a new balance and it shows a large “growth”.</span></summary><p><span lang="pl">Przy aktualizacji nie podano wpłaty, więc cała zmiana liczy się jako wzrost. Przy kolejnych aktualizacjach wpisuj, ile dopłacono.</span><span lang="en">No deposit was entered with the update, so the whole change counts as growth. Enter what you paid in with each update.</span></p></details>
+  <details><summary><span lang="pl">Rachunek był wyższy niż zwykle.</span><span lang="en">A bill was higher than usual.</span></summary><p><span lang="pl">Popraw kwotę tylko w rozliczeniu tego miesiąca; stała kwota zostaje bez zmian.</span><span lang="en">Correct the amount in that month's close only; the recurring amount stays as it is.</span></p></details>
+  <details><summary><span lang="pl">Dlaczego „wydatki efektywne” są ujemne?</span><span lang="en">Why is effective spend negative?</span></summary><p><span lang="pl">Portfel urósł w tym miesiącu bardziej niż wyniósł dochód, zwykle przez ruch rynku. To wynik wzoru, nie błąd.</span><span lang="en">The portfolio grew by more than the month's income, usually because the market rose. That is the formula, not a bug.</span></p></details>
+  <details><summary><span lang="pl">Analizy piszą „Nie skonfigurowano modelu”.</span><span lang="en">Insights says no model is configured.</span></summary><p><span lang="pl">Teksty AI wymagają serwera modelu ustawionego przez administratora instalacji. „Kolejne kroki” działają bez niego.</span><span lang="en">The AI texts need a model server set up by whoever runs the installation. “Next steps” works without one.</span></p></details>
+  <details><summary><span lang="pl">Po zalogowaniu mam pusty portfel.</span><span lang="en">My wallet is empty after signing in.</span></summary><p><span lang="pl">Sprawdź, czy logujesz się tym samym kontem. Jeśli tożsamość naprawdę się zmieniła, na pustym koncie użyj Ustawienia → Przywróć za pomocą kodu odzyskiwania, zanim cokolwiek wpiszesz. Bez kodu i pierwotnego logowania danych nie da się odzyskać.</span><span lang="en">Check that you signed in with the same account. If the identity really changed, use Settings → Restore with a recovery code on the empty account before entering anything. Without the code and the original sign-in the data cannot be recovered.</span></p></details>
+</section>
+
+</article>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span><span lang="pl">MyFinance · budżet i portfel na własnym serwerze · wersja SaaS: <a href="https://mojefinanse.eu">mojefinanse.eu</a> (<a href="https://mojefinanse.eu/instrukcja/">instrukcja</a>)</span><span lang="en">MyFinance · self-hosted budget &amp; portfolio tracker · hosted edition: <a href="https://mojefinanse.eu">mojefinanse.eu</a> (<a href="https://mojefinanse.eu/instrukcja/">guide</a>)</span></span>
+    <span><span lang="pl">Kontakt:</span><span lang="en">Contact:</span> <a href="mailto:contact@mojefinanse.eu">contact@mojefinanse.eu</a> · <span lang="pl">Zrzuty ekranu pokazują dane przykładowe.</span><span lang="en">Screenshots show demo data.</span></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var meta = {
+      pl: { title: 'Instrukcja obsługi MyFinance — krok po kroku',
+            description: document.querySelector('meta[name="description"]').content },
+      en: { title: 'MyFinance user guide — step by step',
+            description: 'User guide for MyFinance, the open-source self-hosted edition: first run, assets, income with Polish tax, spending and the monthly close, bank statements, retirement, insights and settings.' }
+    };
+    var imgs = document.querySelectorAll('img[data-alt-en]');
+    imgs.forEach(function (img) { img.setAttribute('data-alt-pl', img.alt); });
+
+    function apply(lang) {
+      document.documentElement.lang = lang;
+      document.title = meta[lang].title;
+      document.querySelector('meta[name="description"]').content = meta[lang].description;
+      imgs.forEach(function (img) { img.alt = img.getAttribute('data-alt-' + lang); });
+      document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.getAttribute('data-set-lang') === lang));
+      });
+    }
+
+    document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var lang = b.getAttribute('data-set-lang');
+        try { localStorage.setItem('lang', lang); } catch (e) {}
+        if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+        apply(lang);
+      });
+    });
+
+    apply(document.documentElement.lang === 'en' ? 'en' : 'pl');
+  })();
+</script>
+
+</body>
+</html>
