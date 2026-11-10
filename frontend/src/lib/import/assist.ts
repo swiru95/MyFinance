@@ -11,13 +11,16 @@ import { cleanNote, CURRENCIES, groundTruth, type ImportRow } from "./parse";
  *    rest; downloaded once from Hugging Face at pinned revisions (or NEXT_PUBLIC_MODELS_URL), checked against the
  *    SRI hashes below, kept in the browser's cache. The statement never leaves the tab.
  *  - "server": the backend's llama-server model (MYFINANCE_LLM_IMPORT_MODEL). Only the part a job needs is sent
- *    (a CSV header and 8 rows, 30 lines of PDF text, one month's expenses and candidate payments), never stored.
+ *    (a CSV header and 8 rows, 30 lines of PDF text of up to 600 characters each, one month's expenses and candidate payments), never stored.
  *  Either way every answer is checked here: amounts and dates against the statement text, ids against what was
  *  offered. */
 
 export type { AssistMode, Assistant, CommitmentBrief, Extracted, PaymentBrief } from "./types";
 
 // ---- Server -----------------------------------------------------------------------------------------------------
+
+/** Must equal LINE_MAX in backend/src/schemas/statement.py. */
+export const SERVER_LINE_MAX = 600;
 
 /** The backend's model. One retry on a timeout: the first call can run out while the server loads the model. */
 export function serverAssistant(): Assistant {
@@ -34,8 +37,9 @@ export function serverAssistant(): Assistant {
   return {
     columns: (header, sample) => post<CsvMapping>("/statement/columns", { header: header.map(cell), sample: sample.map((r) => r.map(cell)) }),
     extractChunk: async (lines, firstLine) =>
-      (await post<{ transactions: Extracted[] }>("/statement/extract", { lines: lines.map((l) => l.slice(0, 300)), first_line: firstLine })).transactions,
+      (await post<{ transactions: Extracted[] }>("/statement/extract", { lines: lines.map((l) => l.slice(0, SERVER_LINE_MAX)), first_line: firstLine })).transactions,
     match: async (commitments, payments) => (await post<{ matches: { commitment: number; payment: number }[] }>("/statement/match", { commitments, payments })).matches,
+    maxLine: SERVER_LINE_MAX,
     close() {},
   };
 }
@@ -282,6 +286,8 @@ export async function extractStatement(
     onChunk(i, starts.length);
     const from = starts[i];
     const part = lines.slice(from, from + CHUNK);
+    // A line longer than the assistant reads loses its tail, which may hold the amount.
+    if (assistant.maxLine && part.some((l) => l.length > assistant.maxLine!)) incomplete = true;
     let found: Extracted[];
     try {
       found = await assistant.extractChunk(part, from + 1);

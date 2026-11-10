@@ -140,5 +140,15 @@ def test_model_failure_is_503_without_the_statement_text(client, fake_llm):
 def test_request_limits(client, fake_llm):
     _server_mode(client)
     assert client.post("/api/statement/extract", json={"lines": ["x"] * 41}).status_code == 422
-    assert client.post("/api/statement/extract", json={"lines": ["x" * 301]}).status_code == 422
+    assert client.post("/api/statement/extract", json={"lines": ["x" * 601]}).status_code == 422
     assert client.post("/api/statement/columns", json={"header": ["a"], "sample": [["b"]] * 9}).status_code == 422
+    from src.schemas.statement import LINE_MAX
+    assert LINE_MAX == 600
+
+
+def test_extract_accepts_a_line_at_the_limit(client, fake_llm):
+    answers, calls, _ = fake_llm
+    _server_mode(client)
+    answers.append(json.dumps({"transactions": []}))
+    r = client.post("/api/statement/extract", json={"lines": ["x" * 600]})
+    assert r.status_code == 200, r.text

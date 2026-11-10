@@ -33,6 +33,8 @@ export interface Assistant {
   columns(header: string[], sample: string[][]): Promise<CsvMapping>;
   /** One chunk of PDF lines; `firstLine` is the 1-based number of lines[0]. */
   extractChunk(lines: string[], firstLine: number): Promise<Extracted[]>;
+  /** Longest line this assistant reads in full; longer lines are cut, so the review is flagged incomplete. */
+  maxLine?: number;
   match(commitments: CommitmentBrief[], payments: PaymentBrief[]): Promise<{ commitment: number; payment: number }[]>;
   close(): void;
 }
