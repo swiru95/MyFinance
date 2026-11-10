@@ -105,6 +105,15 @@ def test_demo_wallet_round_trip(db):
     db.add_all(default_assets(_local_id(db)))  # the fixture's user has none; a real one does
     db.commit()
     assert demo_seed.main() == 0
+    # Income entries are history and are deliberately not exported. The seeder's
+    # dated entry (2026-08) feeds the b2b year-to-date PIT advance of every later
+    # month, so once "today" passes it the two wallets legitimately differ by a
+    # zloty. Drop the entries so the comparison covers what *is* exported and
+    # stays independent of the calendar.
+    from src.models.income import IncomeEntry
+
+    db.query(IncomeEntry).delete()
+    db.commit()
     source_exp = wallet_io.build_export(db, _local_id(db))
     # A real file: through JSON text and back.
     text = json.dumps(source_exp)
