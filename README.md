@@ -65,6 +65,10 @@ Then open:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000/docs (interactive OpenAPI docs)
 
+Both ports are bound to `127.0.0.1`, so only this machine can reach them. Without the `MYFINANCE_AUTH_*`
+variables the API has no sign-in; to reach it from other machines, configure authentication first and then
+change the `ports:` lines in `docker-compose.yml`.
+
 > **Note:** `docker compose up --build` will take a couple of minutes the first time
 > (it downloads and builds both images).
 
