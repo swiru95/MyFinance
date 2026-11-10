@@ -28,8 +28,10 @@ services:
       - MYFINANCE_LLM_VERIFY_TLS=${MYFINANCE_LLM_VERIFY_TLS:-false}
     volumes:
       - myfinance-data:/app/data
+    # Loopback only: with authentication unset the API is open. Publish on all
+    # interfaces ("8000:8000") only after configuring MYFINANCE_AUTH_* (README "Authentication").
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   frontend:
     build: ./frontend
@@ -37,8 +39,10 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Loopback only: with authentication unset the API is open. Publish on all
+    # interfaces ("3000:3000") only after configuring MYFINANCE_AUTH_* (README "Authentication").
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   myfinance-data:
