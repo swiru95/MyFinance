@@ -150,7 +150,13 @@ def complete(
         with httpx.Client(timeout=timeout or settings.llm_timeout, verify=_ssl_context()) as client:
             res = client.post(url, json=payload, headers=headers)
     except httpx.HTTPError as exc:
-        raise LLMUnavailable(f"Could not reach the model server: {exc}") from exc
+        hint = ""
+        if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+            hint = (
+                " The server's certificate could not be verified: set MYFINANCE_LLM_CA_BUNDLE to a PEM with"
+                " your CA (intermediate and root), or MYFINANCE_LLM_VERIFY_TLS=false to skip verification."
+            )
+        raise LLMUnavailable(f"Could not reach the model server: {exc}.{hint}") from exc
 
     if res.status_code != 200:
         # The body carries the server's own reason (an unknown model name, a

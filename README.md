@@ -370,7 +370,7 @@ being composed in Polish. The report page says so while it is working.
 | `MYFINANCE_LLM_MODEL` | `Thinker` | Writes the assessment |
 | `MYFINANCE_LLM_TRANSLATE_MODEL` | `Bielik` | Translates into Polish |
 | `MYFINANCE_LLM_CA_BUNDLE` | *(empty)* | PEM bundle used to verify the server. **Must contain the intermediate** — see below |
-| `MYFINANCE_LLM_VERIFY_TLS` | `false` | Only consulted when no CA bundle is given |
+| `MYFINANCE_LLM_VERIFY_TLS` | `true` | Verify against the system trust store when no CA bundle is given. Set `false` only on a network you trust |
 | `MYFINANCE_LLM_CLIENT_CERT` | *(empty)* | Client certificate, for mutual TLS |
 | `MYFINANCE_LLM_CLIENT_KEY` | *(empty)* | Its private key |
 | `MYFINANCE_LLM_TIMEOUT` | `900` | Seconds. A cold start loads ~76 GB before the first token |
@@ -438,8 +438,12 @@ being a shared admin key.
 ```bash
 export MYFINANCE_LLM_BASE_URL=https://llama.kscsc.local:8443
 export MYFINANCE_LLM_API_KEY=...          # never commit this
+export MYFINANCE_LLM_CA_BUNDLE=/certs/ca-bundle.crt   # intermediate + root of the server's CA, mounted from ./certs (see docker-compose.yml)
 docker compose up --build
 ```
+
+Without a bundle the backend refuses an unverifiable certificate; set
+`MYFINANCE_LLM_VERIFY_TLS=false` to accept it anyway.
 
 > **Generation is slow on purpose.** The model router keeps one model resident
 > at a time, so the first request after a switch waits for the whole model to be

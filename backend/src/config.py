@@ -193,9 +193,9 @@ class Settings(BaseSettings):
     # without being weakened. This is why the other consumers of this server
     # ended up on verify=off; they do not need to be.
     llm_ca_bundle: str = ""
-    # Only consulted when no CA bundle is given. Off by default so a missing
-    # bundle degrades to "works, unverified" rather than "cannot connect".
-    llm_verify_tls: bool = False
+    # Only consulted when no CA bundle is given: verify against the system trust store. On by default; set it to
+    # false only for a model server you reach over a network you trust (bank statement text travels here).
+    llm_verify_tls: bool = True
 
     # --- Mutual TLS -----------------------------------------------------
     # The pod already holds an autocert-issued identity for talking to

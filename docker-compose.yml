@@ -25,9 +25,13 @@ services:
       - MYFINANCE_LLM_TRANSLATE_MODEL=${MYFINANCE_LLM_TRANSLATE_MODEL:-Bielik}
       # Statement import, "on this server" mode (README "Statement import").
       - MYFINANCE_LLM_IMPORT_MODEL=${MYFINANCE_LLM_IMPORT_MODEL:-Bielik}
-      - MYFINANCE_LLM_VERIFY_TLS=${MYFINANCE_LLM_VERIFY_TLS:-false}
+      - MYFINANCE_LLM_VERIFY_TLS=${MYFINANCE_LLM_VERIFY_TLS:-true}
+      - MYFINANCE_LLM_CA_BUNDLE=${MYFINANCE_LLM_CA_BUNDLE:-}
     volumes:
       - myfinance-data:/app/data
+      # A private CA for the model server: put intermediate + root in ./certs/ca-bundle.crt,
+      # uncomment, and export MYFINANCE_LLM_CA_BUNDLE=/certs/ca-bundle.crt
+      # - ./certs:/certs:ro
     # Loopback only: with authentication unset the API is open. Publish on all
     # interfaces ("8000:8000") only after configuring MYFINANCE_AUTH_* (README "Authentication").
     ports:
