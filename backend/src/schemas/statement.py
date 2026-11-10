@@ -7,7 +7,10 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-Text = Annotated[str, Field(max_length=300)]
+# One PDF text line. Flattened bank tables (mBank, PKO) run past 300 characters;
+# 600 keeps a 30-line chunk well inside the import model's context.
+LINE_MAX = 600
+Text = Annotated[str, Field(max_length=LINE_MAX)]
 
 
 class ColumnsIn(BaseModel):
