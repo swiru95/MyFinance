@@ -30,12 +30,7 @@ jobs:
       # pdftotext: the PDF report tests read the generated PDF back as text.
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils
       - run: pip install -r requirements-dev.txt
-      # test_demo_wallet_round_trip fails on main (income differs after a
-      # wallet export/import); tracked separately, remove this deselect
-      # with the fix.
-      - run: >-
-          python -m pytest -q -p no:cacheprovider
-          --deselect tests/test_wallet_io.py::test_demo_wallet_round_trip
+      - run: python -m pytest -q -p no:cacheprovider
 
   frontend:
     runs-on: ubuntu-latest
